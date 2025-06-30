@@ -1,0 +1,186 @@
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Roboto", Arial, sans-serif;
+  background: linear-gradient(135deg, #f5ecd7 0%, #dbc7b1 100%);
+  min-height: 100vh;
+  color: #604620;
+}
+
+.App {
+  min-height: 100vh;
+  text-align: center;
+  background: transparent;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: #a37c2d;
+  font-weight: 600;
+  margin-top: 0.5em;
+}
+
+a {
+  color: #a37c2d;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover {
+  color: #604620;
+}
+
+button, .btn {
+  background: #a37c2d;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 22px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 4px;
+  box-shadow: 0 1px 6px #e6d2b6c0;
+  transition: background 0.15s, color 0.2s, box-shadow 0.2s;
+}
+button:hover, .btn:hover {
+  background: #c8a86c;
+  color: #442a06;
+  box-shadow: 0 2px 12px #d6bb9380;
+}
+
+input, select, textarea {
+  border-radius: 8px;
+  border: 1px solid #d6bb93;
+  padding: 8px 10px;
+  font-size: 16px;
+  background: #fff8f1;
+  margin: 3px;
+  color: #442a06;
+  transition: border 0.2s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #a37c2d;
+  outline: none;
+}
+
+table {
+  background: #fffdf7;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px #e8dcc6a0;
+  margin: 0 auto 24px auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 17px;
+}
+
+th, td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #eee1cc;
+}
+th {
+  background: #f5ecd7;
+  color: #a37c2d;
+  font-weight: 700;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  background: #ede2d0;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2cba0;
+  border-radius: 7px;
+}
+
+@media (max-width: 800px) {
+  .App, body {
+    font-size: 15px;
+    padding: 0 2vw;
+  }
+  table, th, td {
+    font-size: 15px;
+    padding: 8px;
+  }
+}
+
+/* Логотип */
+.logo-centered {
+  display: block;
+  margin: 40px auto 22px auto;
+  max-width: 320px;
+  filter: drop-shadow(0 6px 32px #d6bb9390);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Cards/blocks */
+.card, .panel, .box {
+  background: #fffdf7;
+  border-radius: 18px;
+  box-shadow: 0 4px 22px #e8dcc6a8;
+  padding: 36px 28px;
+  margin: 16px auto;
+  max-width: 800px;
+}
+
+/* Для пояснень і підписів */
+.note, .description, .subtext {
+  color: #b0956e;
+  font-size: 14px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  letter-spacing: 0.02em;
+}
+
+/* Меню — горизонтальне */
+.menu-bar {
+  background: #fff9ef;
+  border-bottom: 2px solid #ecd6b3;
+  box-shadow: 0 2px 14px #e2cba050;
+  display: flex;
+  gap: 18px;
+  padding: 16px 30px;
+  position: sticky;
+  top: 0;
+  z-index: 99;
+}
+
+.menu-bar button, .menu-bar .btn {
+  background: #fff6e3;
+  color: #a37c2d;
+  border: 1px solid #dbc7b1;
+  box-shadow: 0 1px 3px #e6d2b660;
+  padding: 8px 20px;
+  margin: 0 2px;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.menu-bar button.active, .menu-bar .btn.active {
+  background: #a37c2d;
+  color: #fff;
+}
+
+.menu-bar button:hover, .menu-bar .btn:hover {
+  background: #dbc7b1;
+  color: #604620;
+}
+
+/* Акцентовані рядки/повідомлення */
+.alert, .msg, .message {
+  background: #fff6e3;
+  color: #9c6218;
+  border-left: 6px solid #a37c2d;
+  border-radius: 12px;
+  padding: 12px 22px;
+  margin: 18px auto;
+  font-size: 17px;
+  max-width: 720px;
+}
+
+/* Для зручності — короткий reset */
+* {
+  box-sizing: border-box;
+}

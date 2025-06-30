@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlalchemy
+pyodbc
+pydantic
+fastapi-cors
+python-multipart
+Pillow 
