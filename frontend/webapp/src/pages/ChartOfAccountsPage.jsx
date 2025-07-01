@@ -90,23 +90,23 @@ export default function ChartOfAccountsPage() {
       {/* ТАБ 1: План рахунків */}
       {tab === "accounts" && (
         loading ? <div>Завантаження...</div> :
-        <table style={{ width: "100%", background: "#fff", borderRadius: 8, borderCollapse: "collapse" }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px #0001', marginTop: 12, border: '1px solid #e0c9a0' }}>
           <thead>
-            <tr>
-              <th>ID</th>
-              <th>Код</th>
-              <th>Назва</th>
-              <th>Тип</th>
-              <th>Мета</th>
+            <tr style={{borderBottom:'2px solid #e0c9a0'}}>
+              {/* <th style={{textAlign:'left',padding:'8px 0',borderRight:'1px solid #e0c9a0'}}>ID</th> */}
+              <th style={{textAlign:'left',padding:'8px 0',borderRight:'1px solid #e0c9a0'}}>Код</th>
+              <th style={{textAlign:'left',borderRight:'1px solid #e0c9a0'}}>Назва</th>
+              <th style={{textAlign:'left',borderRight:'1px solid #e0c9a0'}}>Тип</th>
+              <th style={{textAlign:'left'}}>Мета</th>
             </tr>
           </thead>
           <tbody>
             {accounts.map(acc => (
-              <tr key={acc.ID}>
-                <td>{acc.ID}</td>
-                <td>{acc.AccountCode}</td>
-                <td>{acc.Name}</td>
-                <td>{acc.AccountType}</td>
+              <tr key={acc.ID} style={{borderBottom:'1px solid #e0c9a0'}}>
+                {/* <td style={{borderRight:'1px solid #e0c9a0'}}>{acc.ID}</td> */}
+                <td style={{borderRight:'1px solid #e0c9a0'}}>{acc.AccountCode}</td>
+                <td style={{borderRight:'1px solid #e0c9a0'}}>{acc.Name}</td>
+                <td style={{borderRight:'1px solid #e0c9a0'}}>{acc.AccountType}</td>
                 <td>{acc.AccountPurpose}</td>
               </tr>
             ))}

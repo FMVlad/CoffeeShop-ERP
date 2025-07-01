@@ -135,11 +135,7 @@ export default function ProductNameRulesPage() {
   }
 
   return (
-    <div style={{ 
-      minHeight: "100vh", 
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-      padding: 20
-    }}>
+    <div style={{background:'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',minHeight:'100vh',paddingTop:32}}>
       <div style={{ maxWidth: 1000, margin: "0 auto" }}>
         {/* Шапка */}
         <div style={{
