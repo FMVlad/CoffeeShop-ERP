@@ -14,7 +14,7 @@ def get_categories(
     cursor = db.cursor()
     query = """
         SELECT ID, CategoryName, ProductType, UnitID, IsVAT, IsExcise,
-               ParentID, DisplayOrder, CategoryCode
+               ParentID, CategoryCode
         FROM Categories
         WHERE 1=1
     """
@@ -22,7 +22,7 @@ def get_categories(
     if search:
         query += " AND CategoryName LIKE ?"
         params.append(f"%{search}%")
-    query += " ORDER BY DisplayOrder, CategoryName OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+    query += " ORDER BY CategoryName OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
     params.extend([skip, limit])
     cursor.execute(query, *params)
     columns = [col[0] for col in cursor.description]
@@ -38,7 +38,6 @@ def add_category(category: dict, db=Depends(get_db)):
         category.get("IsVAT", False),
         category.get("IsExcise", False),
         category.get("ParentID"),
-        category.get("DisplayOrder"),
         category.get("CategoryCode"),
     )
     if not fields[0]:
@@ -46,8 +45,8 @@ def add_category(category: dict, db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("""
         INSERT INTO Categories
-            (CategoryName, ProductType, UnitID, IsVAT, IsExcise, ParentID, DisplayOrder, CategoryCode)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (CategoryName, ProductType, UnitID, IsVAT, IsExcise, ParentID, CategoryCode)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, fields)
     db.commit()
     return {"message": "Категорію додано"}
@@ -61,8 +60,8 @@ def update_category(id: int, category: dict, db=Depends(get_db)):
         category.get("IsVAT", False),
         category.get("IsExcise", False),
         category.get("ParentID"),
-        category.get("DisplayOrder"),
         category.get("CategoryCode"),
+        category.get("ProductCardTemplateID"),
         id,
     )
     if not fields[0]:
@@ -71,7 +70,7 @@ def update_category(id: int, category: dict, db=Depends(get_db)):
     cursor.execute("""
         UPDATE Categories SET
             CategoryName=?, ProductType=?, UnitID=?, IsVAT=?, IsExcise=?,
-            ParentID=?, DisplayOrder=?, CategoryCode=?
+            ParentID=?, CategoryCode=?, ProductCardTemplateID=?
         WHERE ID=?
     """, fields)
     db.commit()

@@ -9,6 +9,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => r.json()),
+  updateCategory: (id, data) =>
+    fetch(`${API_BASE}/categories/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    }).then(r => r.json()),
+  deleteCategory: (id) =>
+    fetch(`${API_BASE}/categories/${id}`, { method: "DELETE" }).then(r => r.json()),
 
   // --- Шаблони карток (шапки) ---
   getProductCardTemplates: () =>
@@ -197,7 +205,7 @@ saveProductFullNameFields: (fields) =>
     fetch(`${API_BASE}/typical-operation-entries/${id}`, { method: "DELETE" }).then(r => r.json()),
 
   // --- ВИРОБНИКИ ---
-  getManufacturers: () => fetch(`${API_BASE}/manufacturers`).then(r => r.json()),
+  getManufacturers: () => fetch(`${API_BASE}/manufacturers2`).then(r => r.json()),
   addManufacturer: (data) =>
     fetch(`${API_BASE}/manufacturers`, {
       method: 'POST',
