@@ -145,59 +145,77 @@ export default function ProductCard({
     setSaving(true);
     try {
       console.log('💾 Зберігаємо товар:', fields);
-      const url = isEditMode ? `http://localhost:8000/api/products/${productId}` : 'http://localhost:8000/api/products';
-      const method = isEditMode ? 'PUT' : 'POST';
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fields)
-      });
+      if (isEditMode) {
+        // Для існуючого товару - звичайне оновлення
+        const response = await fetch(`http://localhost:8000/api/products/${productId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fields)
+        });
 
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Якщо це новий товар і є тимчасове фото, перезавантажуємо його з правильною назвою
-        if (!isEditMode && result.id && fields.Photo && photoPreview) {
-          console.log('🔄 Перезавантажуємо фото для нового товару ID:', result.id);
-          
-          try {
-            // Завантажуємо тимчасове фото
-            const tempPhotoResponse = await fetch(photoPreview);
-            const tempPhotoBlob = await tempPhotoResponse.blob();
-            
-            // Створюємо File об'єкт
-            const tempPhotoFile = new File([tempPhotoBlob], 'photo.jpg', { type: 'image/jpeg' });
-            
-            // Завантажуємо фото з правильною назвою
-            const formData = new FormData();
-            formData.append('file', tempPhotoFile);
-            
-            const photoUploadResponse = await fetch(`http://localhost:8000/api/products/${result.id}/upload-photo`, {
-              method: 'POST',
-              body: formData
-            });
-            
-            if (photoUploadResponse.ok) {
-              const photoResult = await photoUploadResponse.json();
-              console.log('✅ Фото перезавантажено з правильною назвою:', photoResult.filename);
-              
-              // Оновлюємо URL фото
-              const newPhotoUrl = `http://localhost:8000/api/photo/${photoResult.filename}`;
-              setPhotoPreview(newPhotoUrl);
-            }
-          } catch (photoError) {
-            console.error('⚠️ Помилка перезавантаження фото:', photoError);
-            // Не блокуємо збереження товару через помилку фото
-          }
+        if (response.ok) {
+          const result = await response.json();
+          onSave(result);
+          alert('✅ Товар оновлено!');
+        } else {
+          const errorText = await response.text();
+          console.error('❌ Помилка сервера:', errorText);
+          alert('❌ Помилка збереження');
         }
-        
-        onSave(result);
-        alert(isEditMode ? '✅ Товар оновлено!' : '✅ Товар створено!');
       } else {
-        const errorText = await response.text();
-        console.error('❌ Помилка сервера:', errorText);
-        alert('❌ Помилка збереження');
+        // Для нового товару - спочатку створюємо БЕЗ фото
+        const fieldsWithoutPhoto = { ...fields };
+        delete fieldsWithoutPhoto.Photo; // Прибираємо фото
+        
+        const response = await fetch('http://localhost:8000/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fieldsWithoutPhoto)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ Товар створено з ID:', result.id);
+          
+          // Якщо є фото - завантажуємо його з правильною назвою
+          if (photoPreview) {
+            console.log('🔄 Завантажуємо фото для нового товару ID:', result.id);
+            
+            try {
+              // Завантажуємо тимчасове фото
+              const tempPhotoResponse = await fetch(photoPreview);
+              const tempPhotoBlob = await tempPhotoResponse.blob();
+              
+              // Створюємо File об'єкт
+              const tempPhotoFile = new File([tempPhotoBlob], 'photo.jpg', { type: 'image/jpeg' });
+              
+              // Завантажуємо фото з правильною назвою
+              const formData = new FormData();
+              formData.append('file', tempPhotoFile);
+              
+              const photoUploadResponse = await fetch(`http://localhost:8000/api/products/${result.id}/upload-photo`, {
+                method: 'POST',
+                body: formData
+              });
+              
+              if (photoUploadResponse.ok) {
+                const photoResult = await photoUploadResponse.json();
+                console.log('✅ Фото завантажено з правильною назвою:', photoResult.filename);
+              }
+            } catch (photoError) {
+              console.error('⚠️ Помилка завантаження фото:', photoError);
+              // Не блокуємо збереження товару через помилку фото
+            }
+          }
+          
+          onSave(result);
+          alert('✅ Товар створено!');
+        } else {
+          const errorText = await response.text();
+          console.error('❌ Помилка сервера:', errorText);
+          alert('❌ Помилка збереження');
+        }
       }
     } catch (error) {
       console.error('❌ Помилка:', error);

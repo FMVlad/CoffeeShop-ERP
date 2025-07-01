@@ -45,8 +45,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 build_dir = os.path.join(current_dir, "..", "..", "frontend", "webapp", "build")
 print("Build dir:", build_dir)
 
-# Uploads directory
-uploads_dir = os.path.join(current_dir, "..", "uploads")
+# Uploads directory - виправляємо шлях до app/uploads
+uploads_dir = os.path.join(current_dir, "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 print("Uploads dir:", uploads_dir)
 

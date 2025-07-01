@@ -6,6 +6,49 @@ from PIL import Image
 
 router = APIRouter()
 
+def generate_ean13_barcode(db, barcode_prefix):
+    """Генерує EAN13 штрихкод з автоматичним інкрементом"""
+    cursor = db.cursor()
+    
+    # Отримуємо поточний номер штрихкоду
+    cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodeNum'")
+    result = cursor.fetchone()
+    
+    if result and result[0]:
+        barcode_num = int(result[0])
+    else:
+        # Якщо BarcodeNum не налаштовано, почнемо з 1
+        barcode_num = 1
+    
+    while True:
+        # Динамічно визначаємо кількість цифр для номера
+        num_digits = 12 - len(barcode_prefix)
+        barcode_without_checksum = f"{barcode_prefix}{barcode_num:0{num_digits}d}"
+        
+        # Обчислюємо контрольну суму EAN13
+        odd_sum = sum(int(barcode_without_checksum[i]) for i in range(0, 12, 2))
+        even_sum = sum(int(barcode_without_checksum[i]) for i in range(1, 12, 2))
+        total = odd_sum + (even_sum * 3)
+        checksum = (10 - (total % 10)) % 10
+        
+        # Повний штрихкод
+        full_barcode = barcode_without_checksum + str(checksum)
+        
+        # Перевіряємо унікальність
+        cursor.execute("SELECT COUNT(*) FROM Products WHERE Barcode = ?", (full_barcode,))
+        exists = cursor.fetchone()[0]
+        if not exists:
+            break
+        barcode_num += 1
+    
+    # Оновлюємо лічильник
+    cursor.execute("UPDATE SystemParameters SET ParamValue = ? WHERE ParamKey = 'BarcodeNum'", 
+                  (str(barcode_num + 1),))
+    
+    print(f"🏷️ Згенеровано унікальний штрихкод: {full_barcode} (номер: {barcode_num})")
+    
+    return full_barcode
+
 @router.get("/products")
 def get_products(db=Depends(get_db)):
     cursor = db.cursor()
@@ -66,27 +109,64 @@ async def upload_image(file: UploadFile = File(...), db=Depends(get_db)):
 @router.post("/products")
 def create_product(data: dict, db=Depends(get_db)):
     cursor = db.cursor()
+    
+    # Автоматична генерація штрихкоду якщо не вказано
+    if not data.get('Barcode') or data.get('Barcode').strip() == '':
+        try:
+            # Отримуємо префікс з BarcodePrefix параметру
+            cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodePrefix'")
+            prefix_result = cursor.fetchone()
+            
+            if not prefix_result or not prefix_result[0]:
+                print("⚠️ BarcodePrefix не налаштовано, пропускаємо генерацію штрихкоду")
+                data['Barcode'] = ""  # Залишаємо пустим
+            else:
+                prefix = prefix_result[0]
+                data['Barcode'] = generate_ean13_barcode(db, prefix)
+                print(f"🏷️ Автоматично згенеровано штрихкод: {data['Barcode']} (префікс: {prefix})")
+        except Exception as e:
+            print(f"⚠️ Помилка генерації штрихкоду: {e}, залишаємо пустим")
+            data['Barcode'] = ""  # Залишаємо пустим у разі помилки
+    
     columns = list(data.keys())
     values = list(data.values())
     placeholders = ', '.join(['?' for _ in values])
     column_list = ', '.join(columns)
     
-    query = f"INSERT INTO Products ({column_list}) VALUES ({placeholders})"
+    # Використовуємо OUTPUT INSERTED.ID для отримання нового ID
+    query = f"INSERT INTO Products ({column_list}) OUTPUT INSERTED.ID VALUES ({placeholders})"
     print(f"🔍 SQL запит: {query}")
     print(f"📊 Значення: {values}")
     
     cursor.execute(query, values)
+    new_id = cursor.fetchone()[0]  # Отримуємо ID з OUTPUT
     db.commit()
     
-    # Отримуємо ID нового товару
-    new_id = cursor.lastrowid
     print(f"✅ Створено товар з ID: {new_id}")
     
-    return {"message": "Товар створено!", "id": new_id}
+    return {"message": "Товар створено!", "id": int(new_id), "barcode": data.get('Barcode')}
 
 @router.put("/products/{id}")
 def update_product(id: int, data: dict, db=Depends(get_db)):
     cursor = db.cursor()
+    
+    # Автоматична генерація штрихкоду якщо не вказано (ПРИ ЗБЕРЕЖЕННІ ТАКОЖ!)
+    if not data.get('Barcode') or data.get('Barcode').strip() == '':
+        try:
+            # Отримуємо префікс з BarcodePrefix параметру
+            cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodePrefix'")
+            prefix_result = cursor.fetchone()
+            
+            if not prefix_result or not prefix_result[0]:
+                print("⚠️ BarcodePrefix не налаштовано, пропускаємо генерацію штрихкоду")
+                data['Barcode'] = ""  # Залишаємо пустим
+            else:
+                prefix = prefix_result[0]
+                data['Barcode'] = generate_ean13_barcode(db, prefix)
+                print(f"🏷️ Автоматично згенеровано штрихкод при збереженні: {data['Barcode']} (префікс: {prefix})")
+        except Exception as e:
+            print(f"⚠️ Помилка генерації штрихкоду: {e}, залишаємо пустим")
+            data['Barcode'] = ""  # Залишаємо пустим у разі помилки
     
     # Генеруємо SET частину запиту
     set_clauses = []
@@ -105,7 +185,7 @@ def update_product(id: int, data: dict, db=Depends(get_db)):
     cursor.execute(query, values)
     db.commit()
 
-    return {"message": "Товар оновлено!"}
+    return {"message": "Товар оновлено!", "barcode": data.get('Barcode')}
 
 @router.delete("/products/{id}")
 def delete_product(id: int, db=Depends(get_db)):

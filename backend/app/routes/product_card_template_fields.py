@@ -46,19 +46,6 @@ BASE_FIELDS = [
         "IsStandard": True
     },
     {
-        "ID": "std_barcode_discount",
-        "DisplayName": "Штрихкод уцінки",
-        "SqlName": "BarcodeDiscount",
-        "FieldType": "string",
-        "MaxLength": 20,
-        "Precision": None,
-        "IsRequired": False,
-        "IsVisible": True,
-        "DisplayOrder": 3,
-        "Description": "Штрихкод для уцінених товарів",
-        "IsStandard": True
-    },
-    {
         "ID": "std_article",
         "DisplayName": "Артикул",
         "SqlName": "Article",
@@ -67,7 +54,7 @@ BASE_FIELDS = [
         "Precision": None,
         "IsRequired": False,
         "IsVisible": True,
-        "DisplayOrder": 4,
+        "DisplayOrder": 3,
         "Description": "Артикул виробника",
         "IsStandard": True
     },
@@ -80,7 +67,7 @@ BASE_FIELDS = [
         "Precision": None,
         "IsRequired": True,
         "IsVisible": True,
-        "DisplayOrder": 5,
+        "DisplayOrder": 4,
         "Description": "Категорія товару",
         "IsStandard": True
     },
@@ -93,7 +80,7 @@ BASE_FIELDS = [
         "Precision": None,
         "IsRequired": False,
         "IsVisible": True,
-        "DisplayOrder": 6,
+        "DisplayOrder": 5,
         "Description": "Виробник товару",
         "IsStandard": True
     },
@@ -106,7 +93,7 @@ BASE_FIELDS = [
         "Precision": None,
         "IsRequired": False,
         "IsVisible": True,
-        "DisplayOrder": 7,
+        "DisplayOrder": 6,
         "Description": "Зображення товару",
         "IsStandard": True
     },
