@@ -7,7 +7,7 @@ router = APIRouter()
 @router.get("/product-card-templates")
 def get_card_templates(db=Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT ID, Name, Description FROM ProductCardTemplateHeaders ORDER BY ID")
+    cursor.execute("SELECT ID, Name, Description, IsDefault FROM ProductCardTemplateHeaders ORDER BY ID")
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -45,7 +45,7 @@ def update_card_template(id: int, data: dict, db=Depends(get_db)):
 @router.delete("/product-card-templates/{id}")
 def delete_card_template(id: int, db=Depends(get_db)):
     cursor = db.cursor()
-    # Перевіряємо, чи є пов’язані поля (можеш забрати цей блок, якщо не треба)
+    # Перевіряємо, чи є пов'язані поля (можеш забрати цей блок, якщо не треба)
     cursor.execute("SELECT COUNT(*) FROM ProductCardTemplates WHERE TemplateID = ?", (id,))
     if cursor.fetchone()[0] > 0:
         raise HTTPException(status_code=400, detail="Неможливо видалити шаблон: спочатку видаліть усі його поля!")
