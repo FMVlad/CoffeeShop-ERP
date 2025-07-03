@@ -109,7 +109,12 @@ export default function ProductsPage() {
   }
 
   return (
-    <div style={{background:'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',minHeight:'100vh',width:'100vw',padding:'32px 0'}}>
+    <div style={{
+      marginLeft: 240,
+      padding: 20,
+      background: "#d9b48f",
+      minHeight: "100vh"
+    }}>
       <div style={{maxWidth:1100, margin:'0 auto'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'linear-gradient(90deg,#7b6eea 0%,#a37c2d 100%)',borderRadius:18,padding:'18px 32px',marginBottom:32,boxShadow:'0 2px 12px #0001'}}>
           <div style={{display:'flex',alignItems:'center',gap:14}}>

@@ -16,6 +16,7 @@ export default function ProductCard({
   const [saving, setSaving] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attributeValues, setAttributeValues] = useState([]);
+  const [fullName, setFullName] = useState("");
 
   const isEditMode = productId !== null;
 
@@ -72,6 +73,16 @@ export default function ProductCard({
 
     loadData();
   }, [templateId, productId, isEditMode]);
+
+  useEffect(() => {
+    if (productId) {
+      fetch(`http://localhost:8000/api/products/${productId}/fullname`)
+        .then(r => r.json())
+        .then(data => setFullName(data.FullName || ""));
+    } else {
+      setFullName("");
+    }
+  }, [productId, fields, attributeValues]);
 
   const handleChange = (sqlName, value) => {
     setFields(prev => ({ ...prev, [sqlName]: value }));
@@ -345,14 +356,7 @@ export default function ProductCard({
 
   if (loading) {
     return (
-      <div style={{ 
-        display: "flex", 
-        justifyContent: "center", 
-        alignItems: "center", 
-        minHeight: "400px",
-        fontSize: 18,
-        color: "#666"
-      }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "400px", fontSize: 18, color: "#666" }}>
         Завантаження...
       </div>
     );
@@ -363,186 +367,65 @@ export default function ProductCard({
 
   return (
     <div style={{
-      maxWidth: 800,
-      margin: "20px auto",
-      background: "white",
-      borderRadius: 16,
-      boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-      overflow: "hidden"
+      maxWidth: 900,
+      margin: "40px auto",
+      background: "#fff",
+      borderRadius: 20,
+      boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
+      overflow: "hidden",
+      padding: 0
     }}>
       {/* Заголовок */}
-      <div style={{
-        background: "#f8f9fa",
-        padding: "20px 24px",
-        borderBottom: "1px solid #e9ecef"
-      }}>
-        <h2 style={{
-          margin: 0,
-          fontSize: 24,
-          fontWeight: 600,
-          color: "#333"
-        }}>
-          Деталі товару
-        </h2>
+      <div style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", padding: "28px 40px", textAlign: "center" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>🛒 Деталі товару</h1>
+        {fullName && (
+          <div style={{ marginTop: 12, fontSize: 20, fontWeight: 600, color: "#ffeaa7", textShadow: "0 1px 2px #3333" }}>
+            {fullName}
+          </div>
+        )}
       </div>
 
       {/* Вкладки */}
-      <div style={{
-        display: "flex",
-        background: "#f8f9fa",
-        borderBottom: "1px solid #e9ecef"
-      }}>
-        <button
-          onClick={() => setActiveTab("details")}
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            border: "none",
-            background: activeTab === "details" ? "white" : "transparent",
-            borderBottom: activeTab === "details" ? "2px solid #007bff" : "2px solid transparent",
-            fontSize: 14,
-            fontWeight: 600,
-            color: activeTab === "details" ? "#007bff" : "#666",
-            cursor: "pointer",
-            transition: "all 0.2s"
-          }}
-        >
-          Основні дані
-        </button>
-        <button
-          onClick={() => setActiveTab("attributes")}
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            border: "none",
-            background: activeTab === "attributes" ? "white" : "transparent",
-            borderBottom: activeTab === "attributes" ? "2px solid #007bff" : "2px solid transparent",
-            fontSize: 14,
-            fontWeight: 600,
-            color: activeTab === "attributes" ? "#007bff" : "#666",
-            cursor: "pointer",
-            transition: "all 0.2s"
-          }}
-        >
-          Додаткові поля
-        </button>
-        <button
-          onClick={() => setActiveTab("pricing")}
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            border: "none",
-            background: activeTab === "pricing" ? "white" : "transparent",
-            borderBottom: activeTab === "pricing" ? "2px solid #007bff" : "2px solid transparent",
-            fontSize: 14,
-            fontWeight: 600,
-            color: activeTab === "pricing" ? "#007bff" : "#666",
-            cursor: "pointer",
-            transition: "all 0.2s"
-          }}
-        >
-          Ціни
-        </button>
+      <div style={{ display: "flex", background: "#f8f9fa", borderBottom: "1px solid #e9ecef" }}>
+        <button onClick={() => setActiveTab("details")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "details" ? "white" : "transparent", borderBottom: activeTab === "details" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "details" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Основні дані</button>
+        <button onClick={() => setActiveTab("attributes")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "attributes" ? "white" : "transparent", borderBottom: activeTab === "attributes" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "attributes" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Додаткові поля</button>
+        <button onClick={() => setActiveTab("pricing")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "pricing" ? "white" : "transparent", borderBottom: activeTab === "pricing" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "pricing" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Ціни</button>
       </div>
 
       {/* Контент */}
-      <div style={{ padding: "24px" }}>
+      <div style={{ padding: "40px" }}>
         {activeTab === "details" && (
-          <div style={{ display: "flex", gap: 24 }}>
+          <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
             {/* Фото зліва */}
-            <div style={{ flex: "0 0 200px" }}>
-              <div style={{ marginBottom: 12, fontWeight: 600, fontSize: 14 }}>
-                Фото
-              </div>
-              
-              {getPhotoUrl() ? (
+            <div style={{ flex: "0 0 220px" }}>
+              <div style={{ marginBottom: 16, fontWeight: 600, fontSize: 15, color: "#555" }}>Фото</div>
+              {photoPreview ? (
                 <div style={{ position: "relative" }}>
-                  <img 
-                    src={getPhotoUrl()} 
-                    alt="Товар"
-                    style={{ 
-                      width: 200, 
-                      height: 200, 
-                      objectFit: "cover", 
-                      borderRadius: 12,
-                      border: "1px solid #ddd"
-                    }}
-                    onError={(e) => {
-                      console.error('❌ Помилка завантаження фото:', e.target.src);
-                      setPhotoPreview(null);
-                      handleChange('Photo', '');
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      setPhotoPreview(null);
-                      handleChange('Photo', '');
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: 8,
-                      right: 8,
-                      background: "rgba(0,0,0,0.7)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: 24,
-                      height: 24,
-                      fontSize: 12,
-                      cursor: "pointer"
-                    }}
-                  >
-                    ✕
-                  </button>
+                  <img src={photoPreview} alt="Товар" style={{ width: 200, height: 200, objectFit: "cover", borderRadius: 16, border: "2px solid #e9ecef", background: "#f8f9fa" }} />
+                  <button onClick={() => { setPhotoPreview(null); handleChange('Photo', ''); }} style={{ position: "absolute", top: 8, right: 8, background: "#e74c3c", color: "white", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>✕</button>
                 </div>
               ) : (
-                <div 
-                  style={{
-                    width: 200,
-                    height: 200,
-                    border: "2px dashed #ddd",
-                    borderRadius: 12,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    background: "#f8f9fa"
-                  }}
-                  onClick={() => document.getElementById('photo-input').click()}
-                >
+                <div style={{ width: 200, height: 200, border: "2px dashed #ddd", borderRadius: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "#f8f9fa" }} onClick={() => document.getElementById('photo-input').click()}>
                   <div style={{ fontSize: 48, marginBottom: 8, color: "#ccc" }}>📷</div>
-                  <div style={{ fontSize: 12, color: "#666", textAlign: "center" }}>
-                    Клікніть для завантаження<br/>фото товару
-                  </div>
-                  <input
-                    id="photo-input"
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={(e) => e.target.files[0] && handlePhotoUpload(e.target.files[0])}
-                  />
+                  <div style={{ fontSize: 13, color: "#666", textAlign: "center" }}>Клікніть для завантаження<br/>фото товару</div>
+                  <input id="photo-input" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files[0] && handlePhotoUpload(e.target.files[0])} />
                 </div>
               )}
             </div>
-
             {/* Поля справа */}
             <div style={{ flex: 1 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                 {standardFields.map(renderField)}
               </div>
             </div>
           </div>
         )}
-
         {activeTab === "attributes" && (
-          <div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             {additionalFields.length > 0 ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                {additionalFields.map(renderField)}
-              </div>
+              additionalFields.map(renderField)
             ) : (
-              <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
+              <div style={{ textAlign: "center", color: "#999", padding: 40, gridColumn: "1/3" }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
                 <div>Додаткові поля не налаштовані</div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>
@@ -552,7 +435,6 @@ export default function ProductCard({
             )}
           </div>
         )}
-
         {activeTab === "pricing" && (
           <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
@@ -562,45 +444,10 @@ export default function ProductCard({
             </div>
           </div>
         )}
-
         {/* Кнопки */}
-        <div style={{ 
-          display: "flex", 
-          gap: 12, 
-          marginTop: 32, 
-          justifyContent: "flex-end" 
-        }}>
-          <button 
-            onClick={onCancel}
-            disabled={saving}
-            style={{
-              background: "#6c757d",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              padding: "12px 24px",
-              fontWeight: 600,
-              cursor: saving ? "not-allowed" : "pointer",
-              opacity: saving ? 0.6 : 1
-            }}
-          >
-            Скасувати
-          </button>
-          <button 
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              background: saving ? "#6c757d" : "#c4282d",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              padding: "12px 24px",
-              fontWeight: 600,
-              cursor: saving ? "not-allowed" : "pointer"
-            }}
-          >
-            {saving ? "Збереження..." : "Зберегти"}
-          </button>
+        <div style={{ display: "flex", gap: 16, marginTop: 40, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} disabled={saving} style={{ background: "#6c757d", color: "white", border: "none", borderRadius: 10, padding: "14px 32px", fontWeight: 700, fontSize: 16, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>Скасувати</button>
+          <button onClick={handleSave} disabled={saving} style={{ background: saving ? "#636e72" : "#c4282d", color: "white", border: "none", borderRadius: 10, padding: "14px 32px", fontWeight: 700, fontSize: 16, cursor: saving ? "not-allowed" : "pointer" }}>{saving ? "Збереження..." : "Зберегти"}</button>
         </div>
       </div>
     </div>
