@@ -18,6 +18,7 @@ import ProductCardTemplatesPage from "./pages/ProductCardTemplatesPage";
 import ProductFullNameFieldsPage from "./pages/ProductNameRulesPage";
 import ProductCardTemplateFields from "./pages/ProductCardTemplateFields";
 import ProductCard from './components/ProductCard';
+// import CatalogProductsPage from './pages/CatalogProductsPage';
 import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
         <Route path="/product-card-templates" element={<ProductCardTemplatesPage />} />
         <Route path="/product-card-template-fields" element={<ProductCardTemplateFields />} />
         <Route path="/product-name-rules" element={<ProductFullNameFieldsPage />} />
+        {/* <Route path="/catalog-products" element={<CatalogProductsPage />} /> */}
       </Routes>
     </BrowserRouter>
   );

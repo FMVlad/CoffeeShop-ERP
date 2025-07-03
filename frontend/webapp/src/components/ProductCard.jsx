@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { api } from '../api';
 
 export default function ProductCard({ 
-  templateId = 1, 
+  templateId = 3, 
   productId = null,
   onSave = () => {},
   onCancel = () => {}
@@ -14,6 +15,7 @@ export default function ProductCard({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [attributeValues, setAttributeValues] = useState([]);
 
   const isEditMode = productId !== null;
 
@@ -54,6 +56,10 @@ export default function ProductCard({
           if (productData.Photo) {
             setPhotoPreview(`http://localhost:8000/api/photo/${productData.Photo}`);
           }
+
+          // Підвантажуємо додаткові параметри
+          const attrs = await api.getProductAttributes(productId);
+          setAttributeValues(attrs);
         }
 
         setFields(initialFields);
@@ -141,6 +147,19 @@ export default function ProductCard({
     }
   };
 
+  const handleAttributeChange = (fieldId, value) => {
+    setAttributeValues(prev => {
+      const idx = prev.findIndex(a => a.FieldID === fieldId);
+      if (idx !== -1) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], Value: value };
+        return updated;
+      } else {
+        return [...prev, { FieldID: fieldId, Value: value }];
+      }
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -156,6 +175,10 @@ export default function ProductCard({
 
         if (response.ok) {
           const result = await response.json();
+          // Зберігаємо додаткові параметри
+          if (attributeValues.length > 0) {
+            await api.saveProductAttributes(result.id, attributeValues);
+          }
           onSave(result);
           alert('✅ Товар оновлено!');
         } else {
@@ -209,6 +232,10 @@ export default function ProductCard({
             }
           }
           
+          // Зберігаємо додаткові параметри
+          if (attributeValues.length > 0) {
+            await api.saveProductAttributes(result.id, attributeValues);
+          }
           onSave(result);
           alert('✅ Товар створено!');
         } else {
@@ -226,7 +253,7 @@ export default function ProductCard({
   };
 
   const renderField = (field) => {
-    const { SqlName, DisplayName, FieldType, IsRequired } = field;
+    const { SqlName, DisplayName, FieldType, IsRequired, ID: FieldID } = field;
     
     if (SqlName === "CategoryID") {
       return (
@@ -302,6 +329,8 @@ export default function ProductCard({
       );
     }
     
+    // Для додаткових полів беремо значення з attributeValues
+    const attrValue = attributeValues.find(a => a.FieldID === FieldID)?.Value || fields[SqlName] || "";
     return (
       <div key={SqlName} style={{ marginBottom: 16 }}>
         <label style={{ 
@@ -313,55 +342,31 @@ export default function ProductCard({
         }}>
           {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
         </label>
-        {FieldType === "textarea" ? (
-          <textarea
-            value={fields[SqlName] || ""}
-            onChange={e => handleChange(SqlName, e.target.value)}
-            placeholder={`Введіть ${DisplayName.toLowerCase()}`}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              minHeight: 80,
-              resize: "vertical",
-              boxSizing: "border-box"
-            }}
-          />
-        ) : FieldType === "number" ? (
-          <input
-            type="number"
-            value={fields[SqlName] || ""}
-            onChange={e => handleChange(SqlName, e.target.value)}
-            placeholder={`Введіть ${DisplayName.toLowerCase()}`}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              boxSizing: "border-box"
-            }}
-          />
-        ) : (
-          <input
-            type="text"
-            value={fields[SqlName] || ""}
-            onChange={e => handleChange(SqlName, e.target.value)}
-            placeholder={`Введіть ${DisplayName.toLowerCase()}`}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              boxSizing: "border-box"
-            }}
-          />
-        )}
+        <input
+          type={FieldType === "number" ? "number" : "text"}
+          value={attrValue}
+          onChange={e => handleAttributeChange(FieldID, e.target.value)}
+          placeholder={`Введіть ${DisplayName.toLowerCase()}`}
+          style={{
+            width: "100%",
+            padding: "12px",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            fontSize: 14,
+            boxSizing: "border-box"
+          }}
+        />
       </div>
     );
+  };
+
+  // Визначаємо, яке фото показувати: прев'ю чи повне
+  const getPhotoUrl = () => {
+    if (photoPreview && isEditMode && fields.Photo) {
+      // Після збереження показуємо прев'ю
+      return `http://localhost:8000/api/preview/${fields.Photo}`;
+    }
+    return photoPreview;
   };
 
   if (loading) {
@@ -476,10 +481,10 @@ export default function ProductCard({
                 Фото
               </div>
               
-              {photoPreview ? (
+              {getPhotoUrl() ? (
                 <div style={{ position: "relative" }}>
                   <img 
-                    src={photoPreview} 
+                    src={getPhotoUrl()} 
                     alt="Товар"
                     style={{ 
                       width: 200, 

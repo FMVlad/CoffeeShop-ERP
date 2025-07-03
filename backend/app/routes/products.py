@@ -186,7 +186,7 @@ async def upload_product_photo(id: int, file: UploadFile = File(...), db=Depends
         
         # Оновлюємо запис у базі
         cursor.execute("UPDATE Products SET Photo = ? WHERE ID = ?", (filename, id))
-        db.commit()
+    db.commit()
         
         print(f"✅ Запис у базі оновлено: Photo = {filename}")
         

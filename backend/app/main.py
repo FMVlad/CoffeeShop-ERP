@@ -77,3 +77,4 @@ app.include_router(product_full_name_fields_router, prefix="/api")
 @app.get("/")
 def read_root():
     return {"message": "Welcome to CoffeeBot API!"}
+ 

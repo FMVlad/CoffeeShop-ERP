@@ -283,4 +283,26 @@ async def upload_product_photo(id: int, file: UploadFile = File(...), db=Depends
 def get_manufacturers(db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("SELECT ID, Name FROM Manufacturers ORDER BY Name")
-    return [{"ID": row[0], "ManufacturerName": row[1]} for row in cursor.fetchall()] 
+    return [{"ID": row[0], "ManufacturerName": row[1]} for row in cursor.fetchall()]
+
+@router.get("/products/{id}/attributes")
+def get_product_attributes(id: int, db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("SELECT FieldID, AttrValue FROM ProductAttributes WHERE ProductID = ?", (id,))
+    return [{"FieldID": row[0], "Value": row[1]} for row in cursor.fetchall()]
+
+@router.post("/products/{id}/attributes")
+def save_product_attributes(id: int, attributes: list, db=Depends(get_db)):
+    cursor = db.cursor()
+    for attr in attributes:
+        field_id = attr.get("FieldID")
+        value = attr.get("Value")
+        # Перевіряємо чи вже є такий запис
+        cursor.execute("SELECT ID FROM ProductAttributes WHERE ProductID = ? AND FieldID = ?", (id, field_id))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("UPDATE ProductAttributes SET AttrValue = ? WHERE ID = ?", (value, row[0]))
+        else:
+            cursor.execute("INSERT INTO ProductAttributes (ProductID, FieldID, AttrValue) VALUES (?, ?, ?)", (id, field_id, value))
+    db.commit()
+    return {"message": "Додаткові параметри збережено!"} 

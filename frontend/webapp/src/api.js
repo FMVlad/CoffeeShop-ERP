@@ -258,5 +258,11 @@ saveProductFullNameFields: (fields) =>
   deleteCompany: (id) =>
     fetch(`${API_BASE}/companies/${id}`, { method: 'DELETE' }).then(r => r.json()),
 
+  getProductAttributes: (productId) => fetch(`${API_BASE}/products/${productId}/attributes`).then(r => r.json()),
+  saveProductAttributes: (productId, attributes) => fetch(`${API_BASE}/products/${productId}/attributes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(attributes)
+  }).then(r => r.json()),
 
 };

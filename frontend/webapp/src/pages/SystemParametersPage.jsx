@@ -45,9 +45,9 @@ export default function SystemParametersPage() {
   
   const handleUpdate = async (id, param) => {
     try {
-      await api.updateSystemParameter(id, param);
-      setMessage("Значення збережено!");
-      setTimeout(() => setMessage(""), 1200);
+    await api.updateSystemParameter(id, param);
+    setMessage("Значення збережено!");
+    setTimeout(() => setMessage(""), 1200);
       loadParams();
     } catch (err) {
       setError(`Помилка збереження: ${err.message}`);
@@ -57,7 +57,7 @@ export default function SystemParametersPage() {
   const handleDelete = async (id) => {
     if (window.confirm("Видалити параметр?")) {
       try {
-        await api.deleteSystemParameter(id);
+      await api.deleteSystemParameter(id);
         loadParams();
       } catch (err) {
         setError(`Помилка видалення: ${err.message}`);
@@ -68,10 +68,10 @@ export default function SystemParametersPage() {
   const handleAdd = async () => {
     if (!newParam.ParamKey.trim()) return;
     try {
-      await api.addSystemParameter(newParam);
-      setNewParam({ ParamKey: "", ParamValue: "" });
-      setMessage("Додано!");
-      setTimeout(() => setMessage(""), 1200);
+    await api.addSystemParameter(newParam);
+    setNewParam({ ParamKey: "", ParamValue: "" });
+    setMessage("Додано!");
+    setTimeout(() => setMessage(""), 1200);
       loadParams();
     } catch (err) {
       setError(`Помилка додавання: ${err.message}`);

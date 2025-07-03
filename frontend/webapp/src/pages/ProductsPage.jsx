@@ -7,6 +7,8 @@ export default function ProductsPage() {
   const [categories, setCategories] = useState([]);
   const [showProductCard, setShowProductCard] = useState(false);
   const [editingProductId, setEditingProductId] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [templateId, setTemplateId] = useState(3); // дефолт
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,12 +42,21 @@ export default function ProductsPage() {
     }
   };
 
+  // При виборі категорії оновлюємо templateId
+  const handleCategoryChange = (categoryId) => {
+    setSelectedCategory(categoryId);
+    const category = categories.find(c => c.ID === Number(categoryId));
+    if (category && category.TemplateID) {
+      setTemplateId(category.TemplateID);
+    }
+  };
+
   // Показ ProductCard
   if (showProductCard) {
     return (
       <div style={{ marginLeft: 240, padding: 20 }}>
         <ProductCard
-          templateId={1}
+          templateId={templateId}
           productId={editingProductId}
           onSave={(result) => {
             setShowProductCard(false);
@@ -62,7 +73,7 @@ export default function ProductsPage() {
   }
 
   if (loading) {
-    return (
+  return (
       <div style={{ 
         marginLeft: 240, 
         padding: 40, 
@@ -89,50 +100,19 @@ export default function ProductsPage() {
   return (
     <div style={{background:'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',minHeight:'100vh',width:'100vw',padding:'32px 0'}}>
       <div style={{maxWidth:1100, margin:'0 auto'}}>
-        <button onClick={() => window.location.assign('/webapp')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:8,padding:'8px 20px',fontWeight:600,cursor:'pointer',marginBottom:18}}>← На головну</button>
-        <h2 style={{fontSize: 24, marginBottom: 24}}>Товари</h2>
-        {/* Заголовок */}
-        <div style={{
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          color: "white",
-          padding: "24px 32px",
-          borderRadius: 16,
-          marginBottom: 24,
-          boxShadow: "0 10px 40px rgba(0,0,0,0.15)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h1 style={{
-              fontSize: 28,
-              margin: 0,
-              fontWeight: 700,
-              textShadow: "0 2px 4px rgba(0,0,0,0.3)"
-            }}>
-              📦 Каталог товарів
-            </h1>
-            <button
-              onClick={() => {
-                setEditingProductId(null);
-                setShowProductCard(true);
-              }}
-              style={{
-                background: "linear-gradient(135deg, #00b894 0%, #00a085 100%)",
-                color: "white",
-                border: "none",
-                borderRadius: 12,
-                padding: "14px 28px",
-                fontWeight: 700,
-                fontSize: 16,
-                cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(0, 184, 148, 0.4)",
-                textShadow: "0 1px 2px rgba(0,0,0,0.2)",
-                transition: "all 0.3s"
-              }}
-            >
-              ✨ Новий товар
-            </button>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'linear-gradient(90deg,#7b6eea 0%,#a37c2d 100%)',borderRadius:18,padding:'18px 32px',marginBottom:32,boxShadow:'0 2px 12px #0001'}}>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <span style={{fontSize:32}}>📦</span>
+            <span style={{fontSize:24,fontWeight:700,color:'#fff',letterSpacing:0.5}}>Каталог товарів</span>
+          </div>
+          <div style={{display:'flex',gap:12}}>
+            <button onClick={() => window.location.assign('/webapp')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>← На головну</button>
+            <button onClick={() => {
+              setEditingProductId(null);
+              setShowProductCard(true);
+            }} style={{background:'#00b894',color:'#fff',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>+ Новий товар</button>
           </div>
         </div>
-
         {/* Список товарів */}
         {products.length === 0 ? (
           <div style={{
@@ -193,32 +173,30 @@ export default function ProductsPage() {
                 }}
               >
                 {/* Фото товару */}
-                <div style={{ position: "relative", height: 200, overflow: "hidden" }}>
+                <div style={{ position: "relative", height: 120, width: 120, margin: "0 auto" }}>
                   {product.Photo ? (
                     <img
                       src={`http://localhost:8000/api/preview/${product.Photo}`}
                       alt={product.Name}
-                        style={{
+                      style={{
                         width: "100%",
                         height: "100%",
-                        objectFit: "cover",
+                        objectFit: "contain",
+                        borderRadius: 12,
                         background: "#f8f9fa"
                       }}
-                      />
-                    ) : (
-                      <div style={{
+                    />
+                  ) : (
+                    <div style={{
                       width: "100%",
                       height: "100%",
-                      background: "linear-gradient(135deg, #e9ecef 0%, #f8f9fa 100%)",
+                      background: "#f8f9fa",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      flexDirection: "column"
+                      borderRadius: 12
                     }}>
-                      <div style={{ fontSize: 48, marginBottom: 8 }}>📷</div>
-                      <div style={{ fontSize: 14, color: "#6c757d", fontWeight: 600 }}>
-                        Без фото
-                      </div>
+                      <div style={{ fontSize: 32, color: "#ccc" }}>📷</div>
                     </div>
                   )}
                 </div>
@@ -302,10 +280,10 @@ export default function ProductsPage() {
                     }}
                   >
                     ✏️ Редагувати
-                    </button>
-                  </div>
+                  </button>
+                </div>
               </div>
-            ))}
+          ))}
           </div>
         )}
       </div>
