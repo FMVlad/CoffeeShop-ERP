@@ -129,11 +129,15 @@ def add_field(data: dict, db=Depends(get_db)):
     display_order = data.get("DisplayOrder")
     description = data.get("Description", "")
 
+    cursor = db.cursor()
+    if display_order is None:
+        cursor.execute("SELECT ISNULL(MAX(DisplayOrder), 0) + 1 FROM ProductCardTemplateFields WHERE TemplateID = ?", (template_id,))
+        display_order = cursor.fetchone()[0]
+
     if not template_id or not display_name or not sql_name or not field_type:
         raise HTTPException(status_code=400, detail="Всі основні поля обовʼязкові!")
 
     # Забороняємо дубль SqlName (і серед стандартних, і серед додаткових)
-    cursor = db.cursor()
     if any(f["SqlName"].lower() == sql_name.lower() for f in BASE_FIELDS):
         raise HTTPException(status_code=400, detail="Це поле вже існує як стандартне!")
     cursor.execute("""
@@ -176,3 +180,19 @@ def delete_field(id: int, db=Depends(get_db)):
     cursor.execute("DELETE FROM ProductCardTemplateFields WHERE ID = ?", (id,))
     db.commit()
     return {"message": "Поле видалено!"}
+
+@router.post("/product-attributes/refresh-all")
+def refresh_all_product_attributes(field_id: int, db=Depends(get_db)):
+    cursor = db.cursor()
+    # Знаходимо всі товари, у яких ще немає цього параметра
+    cursor.execute("""
+        SELECT ID FROM Products WHERE ID NOT IN (
+            SELECT ProductID FROM ProductAttributes WHERE FieldID = ?
+        )
+    """, (field_id,))
+    product_ids = [row[0] for row in cursor.fetchall()]
+    # Додаємо порожній запис для кожного такого товару
+    for pid in product_ids:
+        cursor.execute("INSERT INTO ProductAttributes (ProductID, FieldID, AttrValue) VALUES (?, ?, '')", (pid, field_id))
+    db.commit()
+    return {"message": f"Оновлено {len(product_ids)} товарів!"}

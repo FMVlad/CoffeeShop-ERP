@@ -29,7 +29,18 @@ export default function ProductsPage() {
       console.log('🏷️ Отримані категорії:', categoriesData);
       console.log('📊 Кількість товарів:', Array.isArray(productsData) ? productsData.length : 'НЕ МАСИВ');
       
-      setProducts(Array.isArray(productsData) ? productsData : []);
+      // Підвантажуємо повну назву для кожного товару
+      const productsWithFullName = await Promise.all(
+        (Array.isArray(productsData) ? productsData : []).map(async (prod) => {
+          try {
+            const fullNameResp = await api.getProductFullName(prod.ID);
+            return { ...prod, FullName: fullNameResp.FullName };
+          } catch {
+            return { ...prod, FullName: prod.Name };
+          }
+        })
+      );
+      setProducts(productsWithFullName);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
     } catch (error) {
       console.error('❌ Помилка завантаження:', error);
@@ -210,7 +221,7 @@ export default function ProductsPage() {
                     margin: "0 0 8px 0",
                     lineHeight: 1.3
                   }}>
-                    {product.Name}
+                    {product.FullName || product.Name}
                   </h3>
                   
                   {product.Description && (

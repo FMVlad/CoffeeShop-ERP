@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from '../api';
 
 export default function ProductNameRulesPage() {
   const navigate = useNavigate();
@@ -7,6 +8,7 @@ export default function ProductNameRulesPage() {
   const [selectedFields, setSelectedFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadAllData();
@@ -109,6 +111,19 @@ export default function ProductNameRulesPage() {
         return field ? field.DisplayName : sqlName;
       })
       .join(" / ");
+  };
+
+  const handleRefreshFullnames = async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/products/refresh-fullnames', { method: 'POST' });
+      const result = await response.json();
+      alert(result.message || 'Оновлено!');
+    } catch (error) {
+      alert('Помилка оновлення: ' + error.message);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (loading) {
@@ -447,6 +462,27 @@ export default function ProductNameRulesPage() {
               <strong>4.</strong> Натисніть "Зберегти" щоб застосувати зміни
             </p>
           </div>
+        </div>
+
+        <div style={{ marginTop: 32, textAlign: "center" }}>
+          <button
+            onClick={handleRefreshFullnames}
+            disabled={refreshing}
+            style={{
+              background: refreshing ? "#6c757d" : "#00b894",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "14px 28px",
+              fontWeight: 700,
+              fontSize: 16,
+              cursor: refreshing ? "not-allowed" : "pointer",
+              boxShadow: "0 4px 15px rgba(0, 184, 148, 0.4)",
+              marginTop: 12
+            }}
+          >
+            {refreshing ? "Оновлення..." : "🔄 Оновити повну назву у всіх товарах"}
+          </button>
         </div>
       </div>
     </div>

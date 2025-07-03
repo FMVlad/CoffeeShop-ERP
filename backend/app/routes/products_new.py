@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
 from app.db_connection import get_db
 import os
 import uuid
@@ -292,7 +292,8 @@ def get_product_attributes(id: int, db=Depends(get_db)):
     return [{"FieldID": row[0], "Value": row[1]} for row in cursor.fetchall()]
 
 @router.post("/products/{id}/attributes")
-def save_product_attributes(id: int, attributes: list, db=Depends(get_db)):
+def save_product_attributes(id: int, attributes: list = Body(...), db=Depends(get_db)):
+    print(f"Отримано додаткові параметри для товару {id}: {attributes}")
     cursor = db.cursor()
     for attr in attributes:
         field_id = attr.get("FieldID")
@@ -305,4 +306,64 @@ def save_product_attributes(id: int, attributes: list, db=Depends(get_db)):
         else:
             cursor.execute("INSERT INTO ProductAttributes (ProductID, FieldID, AttrValue) VALUES (?, ?, ?)", (id, field_id, value))
     db.commit()
-    return {"message": "Додаткові параметри збережено!"} 
+    return {"message": "Додаткові параметри збережено!"}
+
+@router.get("/products/{id}/fullname")
+def get_product_fullname(id: int, db=Depends(get_db)):
+    cursor = db.cursor()
+    # 1. Підтягуємо товар
+    cursor.execute("SELECT * FROM Products WHERE ID = ?", (id,))
+    product = cursor.fetchone()
+    if not product:
+        raise HTTPException(status_code=404, detail="Товар не знайдено")
+    product_columns = [col[0] for col in cursor.description]
+    product_dict = dict(zip(product_columns, product))
+    # 2. Підтягуємо додаткові параметри
+    cursor.execute("SELECT FieldID, AttrValue FROM ProductAttributes WHERE ProductID = ?", (id,))
+    attr_dict = {row[0]: row[1] for row in cursor.fetchall()}
+    # 3. Підтягуємо правила формування назви
+    cursor.execute("SELECT SqlName, DisplayOrder, IsIncluded, FieldID FROM ProductFullNameFields WHERE IsIncluded = 1 ORDER BY DisplayOrder")
+    rules = cursor.fetchall()
+    # 4. Підтягуємо всі додаткові поля для мапи FieldID → SqlName
+    cursor.execute("SELECT ID, SqlName FROM ProductCardTemplateFields")
+    field_map = {row[0]: row[1] for row in cursor.fetchall()}
+    # 5. Формуємо повну назву
+    parts = []
+    for rule in rules:
+        sql_name, _, _, field_id = rule
+        value = None
+        if sql_name in product_dict:
+            value = product_dict[sql_name]
+            # Якщо це ManufacturerID — підтягуємо назву виробника
+            if sql_name.lower() == "manufacturerid" and value:
+                cursor.execute("SELECT Name, Country FROM Manufacturers WHERE ID = ?", (value,))
+                man = cursor.fetchone()
+                if man:
+                    value = f"{man[0]} ({man[1]})" if man[1] else man[0]
+        elif field_id and field_id in attr_dict:
+            value = attr_dict[field_id]
+        elif field_id and field_id in field_map:
+            value = ''
+        if value:
+            parts.append(str(value))
+    fullname = ' '.join(parts)
+    return {"FullName": fullname}
+
+@router.post("/products/refresh-fullnames")
+def refresh_fullnames(db=Depends(get_db)):
+    cursor = db.cursor()
+    # Підтягуємо всі товари
+    cursor.execute("SELECT ID FROM Products")
+    product_ids = [row[0] for row in cursor.fetchall()]
+    updated = 0
+    for pid in product_ids:
+        # Генеруємо повну назву для кожного товару
+        fullname = get_product_fullname(pid, db)["FullName"]
+        # Оновлюємо поле FullName у Products (якщо таке є)
+        try:
+            cursor.execute("UPDATE Products SET FullName = ? WHERE ID = ?", (fullname, pid))
+            updated += 1
+        except Exception as e:
+            print(f"⚠️ Не вдалося оновити FullName для товару {pid}: {e}")
+    db.commit()
+    return {"message": f"Оновлено повну назву у {updated} товарів!"} 

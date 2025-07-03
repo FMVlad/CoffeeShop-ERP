@@ -163,21 +163,32 @@ export default function ProductCard({
   const handleSave = async () => {
     setSaving(true);
     try {
-      console.log('💾 Зберігаємо товар:', fields);
-      
+      // Визначаємо стандартні поля (які є у templateFields з IsStandard)
+      const standardFieldNames = templateFields.filter(f => f.IsStandard).map(f => f.SqlName);
+      const standardData = {};
+      Object.keys(fields).forEach(key => {
+        if (standardFieldNames.includes(key)) {
+          standardData[key] = fields[key];
+        }
+      });
+      // Додаткові поля — тільки ті, що у attributeValues
+      const additionalData = attributeValues.map(attr => ({
+        FieldID: attr.FieldID,
+        Value: attr.Value
+      }));
+
       if (isEditMode) {
-        // Для існуючого товару - звичайне оновлення
+        // Оновлення стандартних полів
         const response = await fetch(`http://localhost:8000/api/products/${productId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fields)
+          body: JSON.stringify(standardData)
         });
-
         if (response.ok) {
           const result = await response.json();
-          // Зберігаємо додаткові параметри
-          if (attributeValues.length > 0) {
-            await api.saveProductAttributes(result.id, attributeValues);
+          // Оновлення додаткових полів
+          if (additionalData.length > 0) {
+            await api.saveProductAttributes(productId, additionalData);
           }
           onSave(result);
           alert('✅ Товар оновлено!');
@@ -187,54 +198,17 @@ export default function ProductCard({
           alert('❌ Помилка збереження');
         }
       } else {
-        // Для нового товару - спочатку створюємо БЕЗ фото
-        const fieldsWithoutPhoto = { ...fields };
-        delete fieldsWithoutPhoto.Photo; // Прибираємо фото
-        
+        // Створення нового товару
         const response = await fetch('http://localhost:8000/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fieldsWithoutPhoto)
+          body: JSON.stringify(standardData)
         });
-
         if (response.ok) {
           const result = await response.json();
-          console.log('✅ Товар створено з ID:', result.id);
-          
-          // Якщо є фото - завантажуємо його з правильною назвою
-          if (photoPreview) {
-            console.log('🔄 Завантажуємо фото для нового товару ID:', result.id);
-            
-            try {
-              // Завантажуємо тимчасове фото
-              const tempPhotoResponse = await fetch(photoPreview);
-              const tempPhotoBlob = await tempPhotoResponse.blob();
-              
-              // Створюємо File об'єкт
-              const tempPhotoFile = new File([tempPhotoBlob], 'photo.jpg', { type: 'image/jpeg' });
-              
-              // Завантажуємо фото з правильною назвою
-              const formData = new FormData();
-              formData.append('file', tempPhotoFile);
-              
-              const photoUploadResponse = await fetch(`http://localhost:8000/api/products/${result.id}/upload-photo`, {
-                method: 'POST',
-                body: formData
-              });
-              
-              if (photoUploadResponse.ok) {
-                const photoResult = await photoUploadResponse.json();
-                console.log('✅ Фото завантажено з правильною назвою:', photoResult.filename);
-              }
-            } catch (photoError) {
-              console.error('⚠️ Помилка завантаження фото:', photoError);
-              // Не блокуємо збереження товару через помилку фото
-            }
-          }
-          
-          // Зберігаємо додаткові параметри
-          if (attributeValues.length > 0) {
-            await api.saveProductAttributes(result.id, attributeValues);
+          // Додаткові поля
+          if (additionalData.length > 0) {
+            await api.saveProductAttributes(result.id, additionalData);
           }
           onSave(result);
           alert('✅ Товар створено!');
@@ -290,16 +264,14 @@ export default function ProductCard({
     }
 
     if (SqlName === "ManufacturerID" || SqlName === "Manufacturer" || SqlName.toLowerCase().includes("manufacturer") || SqlName.toLowerCase().includes("виробник")) {
-      console.log('🏭 Рендеримо поле виробника:', SqlName, field);
+      const manufacturer = manufacturers.find(man => man.ID === Number(fields[SqlName]));
+      const displayValue = manufacturer
+        ? `${manufacturer.ManufacturerName}${manufacturer.Country ? " (" + manufacturer.Country + ")" : ""}`
+        : "";
+
       return (
         <div key={SqlName} style={{ marginBottom: 16 }}>
-          <label style={{ 
-            fontWeight: 600, 
-            display: "block", 
-            marginBottom: 8, 
-            fontSize: 14,
-            color: "#333"
-          }}>
+          <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
             {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
           </label>
           <select
@@ -317,12 +289,14 @@ export default function ProductCard({
           >
             <option value="">Оберіть виробника</option>
             {manufacturers.map(man => (
-              <option key={man.ID} value={man.ID}>{man.ManufacturerName}</option>
+              <option key={man.ID} value={man.ID}>
+                {man.ManufacturerName}{man.Country ? " (" + man.Country + ")" : ""}
+              </option>
             ))}
           </select>
-          {manufacturers.length === 0 && (
-            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-              Немає виробників. Додайте їх у розділі "Виробники"
+          {manufacturer && (
+            <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
+              {displayValue}
             </div>
           )}
         </div>

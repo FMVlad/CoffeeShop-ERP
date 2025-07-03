@@ -57,12 +57,12 @@ export const api = {
     fetch(`${API_BASE}/product-card-template-fields/${id}`, { method: "DELETE" }).then(r => r.json()),
 
   getProductFullNameFields: () => fetch(`${API_BASE}/product-full-name-fields`).then(r => r.json()),
-saveProductFullNameFields: (fields) =>
-  fetch(`${API_BASE}/product-full-name-fields`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fields)
-  }).then(r => r.json()),
+  saveProductFullNameFields: (fields) =>
+    fetch(`${API_BASE}/product-full-name-fields`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields)
+    }).then(r => r.json()),
 
 
   // --- Шаблони повної назви товару (ProductNameRules) ---
@@ -264,5 +264,7 @@ saveProductFullNameFields: (fields) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(attributes)
   }).then(r => r.json()),
+
+  getProductFullName: (productId) => fetch(`${API_BASE}/products/${productId}/fullname`).then(r => r.json()),
 
 };
