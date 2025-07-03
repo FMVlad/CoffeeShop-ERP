@@ -16,6 +16,7 @@ export default function ProductCard({
   const [saving, setSaving] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attributeValues, setAttributeValues] = useState([]);
+  const [fullName, setFullName] = useState("");
 
   const isEditMode = productId !== null;
 
@@ -72,6 +73,16 @@ export default function ProductCard({
 
     loadData();
   }, [templateId, productId, isEditMode]);
+
+  useEffect(() => {
+    if (productId) {
+      fetch(`http://localhost:8000/api/products/${productId}/fullname`)
+        .then(r => r.json())
+        .then(data => setFullName(data.FullName || ""));
+    } else {
+      setFullName("");
+    }
+  }, [productId]);
 
   const handleChange = (sqlName, value) => {
     setFields(prev => ({ ...prev, [sqlName]: value }));
@@ -363,27 +374,22 @@ export default function ProductCard({
 
   return (
     <div style={{
-      maxWidth: 800,
-      margin: "20px auto",
-      background: "white",
-      borderRadius: 16,
-      boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-      overflow: "hidden"
+      maxWidth: 900,
+      margin: "40px auto",
+      background: "#fff",
+      borderRadius: 20,
+      boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
+      overflow: "hidden",
+      padding: 0
     }}>
       {/* Заголовок */}
-      <div style={{
-        background: "#f8f9fa",
-        padding: "20px 24px",
-        borderBottom: "1px solid #e9ecef"
-      }}>
-        <h2 style={{
-          margin: 0,
-          fontSize: 24,
-          fontWeight: 600,
-          color: "#333"
-        }}>
-          Деталі товару
-        </h2>
+      <div style={{ background: "#f7ede2", color: "#6d4c2b", padding: "28px 40px", textAlign: "center" }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>🛒 Деталі товару</h1>
+        {fullName && (
+          <div style={{ marginTop: 12, fontSize: 20, fontWeight: 700, color: "#c4282d", textShadow: "0 1px 2px #fff8" }}>
+            {fullName}
+          </div>
+        )}
       </div>
 
       {/* Вкладки */}
