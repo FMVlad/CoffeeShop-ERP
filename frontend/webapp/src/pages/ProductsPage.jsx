@@ -62,6 +62,14 @@ export default function ProductsPage() {
     }
   };
 
+  const handleDeleteProduct = async (product) => {
+    // TODO: додати перевірку використання у замовленнях, якщо потрібно
+    if (window.confirm('Видалити цей товар?')) {
+      await api.deleteProduct(product.ID);
+      loadData();
+    }
+  };
+
   // Показ ProductCard
   if (showProductCard) {
     return (
@@ -180,7 +188,11 @@ export default function ProductsPage() {
                   overflow: "hidden",
                   boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
                   transition: "all 0.3s",
-                  cursor: "pointer"
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  height: 380
                 }}
               >
                 {/* Фото товару */}
@@ -213,7 +225,7 @@ export default function ProductsPage() {
                 </div>
 
                 {/* Інформація про товар */}
-                <div style={{ padding: "20px" }}>
+                <div style={{ padding: "20px", flex: 1 }}>
                   <h3 style={{
                     fontSize: 18,
                     fontWeight: 700,
@@ -270,15 +282,17 @@ export default function ProductsPage() {
                       </span>
                     </div>
                   </div>
+                </div>
 
+                <div style={{ display: "flex", gap: 12, marginTop: "auto", justifyContent: "center", padding: 20 }}>
                   <button
                     onClick={() => {
                       setEditingProductId(product.ID);
                       setShowProductCard(true);
                     }}
                     style={{
-                      width: "100%",
-                      background: "linear-gradient(135deg, #74b9ff 0%, #0984e3 100%)",
+                      flex: 1,
+                      background: "#3498db",
                       color: "white",
                       border: "none",
                       borderRadius: 10,
@@ -287,14 +301,32 @@ export default function ProductsPage() {
                       fontSize: 14,
                       cursor: "pointer",
                       transition: "all 0.3s",
-                      boxShadow: "0 4px 15px rgba(116, 185, 255, 0.3)"
+                      boxShadow: "0 4px 15px rgba(52, 152, 219, 0.2)"
                     }}
                   >
                     ✏️ Редагувати
                   </button>
+                  <button
+                    onClick={() => handleDeleteProduct(product)}
+                    style={{
+                      flex: 1,
+                      background: "#e74c3c",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "12px",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      transition: "all 0.3s",
+                      boxShadow: "0 4px 15px rgba(231, 76, 60, 0.2)"
+                    }}
+                  >
+                    🗑️ Видалити
+                  </button>
                 </div>
               </div>
-          ))}
+            ))}
           </div>
         )}
       </div>

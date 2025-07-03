@@ -117,6 +117,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => r.json()),
+  deleteProduct: (id) => fetch(`${API_BASE}/products/${id}`, { method: "DELETE" }).then(r => r.json()),
 
   // --- СИСТЕМНІ НАЛАШТУВАННЯ ---
   getSystemParameters: () => fetch(`${API_BASE}/system-parameters`).then(r => r.json()),
