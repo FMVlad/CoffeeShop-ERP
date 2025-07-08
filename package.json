@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "axios": "^1.10.0",
+    "react-barcode": "^1.6.1",
     "react-toastify": "^11.0.5"
   }
 }

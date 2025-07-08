@@ -31,28 +31,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# РОЗШИРЕНИЙ CORS - дозволяємо ВСЕ
+# CORS middleware для всіх роутів (можна залишити так на розробку, потім для бойового — обмежити)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Дозволяємо всі домени
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Всі HTTP методи
-    allow_headers=["*"],  # Всі заголовки
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# React build
+# React build (для деплоя фронта)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 build_dir = os.path.join(current_dir, "..", "..", "frontend", "webapp", "build")
 print("Build dir:", build_dir)
 
-# Uploads directory - виправляємо шлях до app/uploads
-uploads_dir = os.path.join(current_dir, "uploads")
+# Uploads directory (ПРАВИЛЬНО — на рівень вище, а не в app/uploads)
+uploads_dir = os.path.join(current_dir, "..", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
 print("Uploads dir:", uploads_dir)
 
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 app.mount("/webapp", StaticFiles(directory=build_dir, html=True), name="webapp")
 
+# API роутери
 app.include_router(menu.router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
 app.include_router(price_categories_router, prefix="/api")
@@ -71,10 +72,9 @@ app.include_router(typical_operations_router, prefix="/api")
 app.include_router(typical_operation_entries_router, prefix="/api")
 app.include_router(product_card_templates_router, prefix="/api")
 app.include_router(product_card_template_fields_router, prefix="/api")
-app.include_router(product_name_rules.router)
+app.include_router(product_name_rules.router, prefix="/api")
 app.include_router(product_full_name_fields_router, prefix="/api")
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to CoffeeBot API!"}
- 

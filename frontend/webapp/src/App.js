@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-// import Sidebar from './components/Sidebar';
-import MainMenu from './pages/MainMenu'; // ДОДАЙ!
+import MainMenu from './pages/MainMenu';
 import CategoriesPage from './pages/CategoriesPage';
 import PriceCategoriesPage from './pages/PriceCategoriesPage';
 import ProductPricesPage from './pages/ProductPricesPage';
@@ -17,8 +16,8 @@ import ChartOfAccountsPage from "./pages/ChartOfAccountsPage";
 import ProductCardTemplatesPage from "./pages/ProductCardTemplatesPage";
 import ProductFullNameFieldsPage from "./pages/ProductNameRulesPage";
 import ProductCardTemplateFields from "./pages/ProductCardTemplateFields";
-import ProductCard from './components/ProductCard';
-// import CatalogProductsPage from './pages/CatalogProductsPage';
+// import ProductCard from './components/ProductCard'; // якщо він тут не використовується — закоментуй
+
 import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
@@ -46,5 +45,5 @@ function App() {
     </BrowserRouter>
   );
 }
-export default App;
 
+export default App;
