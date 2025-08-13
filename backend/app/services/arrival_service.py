@@ -457,6 +457,15 @@ def _resolve_warehouse_id(
     if default_wh is None:
         raise ValueError("Для центру обліку не знайдено доступний склад")
     return default_wh
+
+def _assert_warehouse_valid(conn: pyodbc.Connection, *, center_id: int, warehouse_id: int) -> None:
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM dbo.Warehouses WHERE ID=? AND CenterID=? AND IsActive=1",
+        (int(warehouse_id), int(center_id)),
+    )
+    if cur.fetchone()[0] == 0:
+        raise ValueError(f"Склад ID={warehouse_id} не належить центру ID={center_id} або неактивний")
 def save_document(
     conn: pyodbc.Connection,
     payload: Dict[str, Any],
@@ -484,6 +493,7 @@ def save_document(
         center_id=header.get("CenterID"),
         warehouse_id=header.get("WarehouseID"),
     )
+    _assert_warehouse_valid(conn, center_id=int(header["CenterID"]), warehouse_id=int(header["WarehouseID"]))
 
     # Простa валідація рядків
     items = payload.get("Items") or []

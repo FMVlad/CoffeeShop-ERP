@@ -57,8 +57,11 @@ def create_arrival_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Повертаємо контрольований 400, щоб UI бачив повідомлення від сервера
-        raise HTTPException(status_code=400, detail=str(e))
+        # Якщо це FK або інша БД-помилка, конвертуємо у 400 з human-readable detail
+        msg = str(e)
+        if "FK_Parties_Warehouses" in msg:
+            raise HTTPException(status_code=400, detail="Некоректний склад: перевірте налаштування центр/склад")
+        raise HTTPException(status_code=400, detail=msg)
 
 
 # ---------------------------
