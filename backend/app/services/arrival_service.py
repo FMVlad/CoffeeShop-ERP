@@ -451,7 +451,35 @@ def save_document(
 def delete_document(conn: pyodbc.Connection, doc_id: int) -> None:
     # мінімальна перевірка: не видаляти проведені (за потреби)
     cur = conn.cursor()
+    # 1) проводки
     cur.execute(f"DELETE FROM {T_POST} WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
+    # 2) податки
+    cur.execute("DELETE FROM dbo.DocumentTaxes WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
+    # 3) пов'язані партії, рухи, залишки, собівартість
+    cur.execute("SELECT ID, ProductID, WarehouseID, Quantity FROM dbo.Parties WHERE Comment=?", (f"Arrival {doc_id}",))
+    parties = cur.fetchall()
+    for p in parties:
+        party_id = p.ID
+        product_id = p.ProductID
+        warehouse_id = p.WarehouseID
+        qty_created = float(p.Quantity or 0)
+        # рухи
+        cur.execute("DELETE FROM dbo.PartyMovements WHERE PartyID=?", (party_id,))
+        # відкотити залишок
+        inventory.upsert_stock_balance(
+            conn,
+            product_id=product_id,
+            warehouse_id=warehouse_id,
+            delta_qty=-qty_created,
+            parent_id=None,
+            comment=f"ARRIVAL DELETE #{doc_id}",
+            user_id=None,
+        )
+        # собівартість
+        cur.execute("DELETE FROM dbo.CostCalculations WHERE PartyID=?", (party_id,))
+        # партія
+        cur.execute("DELETE FROM dbo.Parties WHERE ID=?", (party_id,))
+    # 4) рядки документа та заголовок
     cur.execute(f"DELETE FROM {T_ITM} WHERE DocID=?", (doc_id,))
     cur.execute(f"DELETE FROM {T_ARR} WHERE ID=?", (doc_id,))
     conn.commit()
