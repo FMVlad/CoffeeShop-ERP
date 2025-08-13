@@ -462,19 +462,29 @@ def save_document(
     else:
         doc_id = _insert_header(conn, header)
 
-    # рядки
-    for r in items:
-        r["UserID"] = payload.get("UserID")
-    _replace_items(conn, doc_id, items)
+    try:
+        # рядки
+        for r in items:
+            r["UserID"] = payload.get("UserID")
+        _replace_items(conn, doc_id, items)
 
-    # інвентарна фаза
-    _perform_inventory_phase(
-        conn,
-        doc_id=doc_id,
-        header=header,
-        items=items,
-        user_id=payload.get("UserID"),
-    )
+        # інвентарна фаза
+        _perform_inventory_phase(
+            conn,
+            doc_id=doc_id,
+            header=header,
+            items=items,
+            user_id=payload.get("UserID"),
+        )
+    except Exception as e:
+        # При помилці під час створення — прибираємо неповний документ
+        if not editing_id:
+            try:
+                delete_document(conn, doc_id)
+            except Exception:
+                pass
+        # Пробуємо повертати контрольовану помилку
+        raise ValueError(str(e))
 
     return get_document(conn, doc_id)
 

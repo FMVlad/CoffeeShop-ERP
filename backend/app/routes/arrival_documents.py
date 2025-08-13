@@ -57,7 +57,8 @@ def create_arrival_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Повертаємо контрольований 400, щоб UI бачив повідомлення від сервера
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------
@@ -78,7 +79,7 @@ def update_arrival_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------
