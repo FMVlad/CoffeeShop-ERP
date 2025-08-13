@@ -428,6 +428,35 @@ def _get_default_warehouse_for_center(conn: pyodbc.Connection, center_id: int | 
     )
     row = cur.fetchone()
     return int(row[0]) if row else None
+
+def _resolve_warehouse_id(
+    conn: pyodbc.Connection,
+    *,
+    center_id: Optional[int],
+    warehouse_id: Optional[int | str],
+) -> int:
+    """Validate or pick a warehouse for the given center. Returns ID or raises ValueError."""
+    if not center_id:
+        raise ValueError("Вкажіть центр обліку")
+    # If provided, verify it exists and belongs to the center
+    if warehouse_id not in (None, "", 0, "0"):
+        try:
+            wid = int(warehouse_id)  # normalize
+        except Exception:
+            raise ValueError("Некоректний склад")
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM dbo.Warehouses WHERE ID=? AND CenterID=? AND IsActive=1",
+            (wid, int(center_id)),
+        )
+        if cur.fetchone()[0]:
+            return wid
+        # fallback to default if the passed ID is not valid for this center
+    # Pick default for center
+    default_wh = _get_default_warehouse_for_center(conn, int(center_id))
+    if default_wh is None:
+        raise ValueError("Для центру обліку не знайдено доступний склад")
+    return default_wh
 def save_document(
     conn: pyodbc.Connection,
     payload: Dict[str, Any],
@@ -448,13 +477,12 @@ def save_document(
         raise ValueError("Вкажіть дату документа")
     if not header.get("CenterID"):
         raise ValueError("Вкажіть центр обліку")
-    if not header.get("WarehouseID"):
-        # fallback: беремо основний склад центра
-        default_wh = _get_default_warehouse_for_center(conn, header.get("CenterID"))
-        if default_wh is not None:
-            header["WarehouseID"] = default_wh
-        else:
-            raise ValueError("Для центру обліку не знайдено доступний склад")
+    # Resolve/validate warehouse against DB (handles missing/invalid)
+    header["WarehouseID"] = _resolve_warehouse_id(
+        conn,
+        center_id=header.get("CenterID"),
+        warehouse_id=header.get("WarehouseID"),
+    )
 
     # Простa валідація рядків
     items = payload.get("Items") or []
