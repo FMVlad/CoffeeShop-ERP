@@ -412,6 +412,19 @@ def save_document(
     header = dict(payload)
     header["Number"] = _ensure_number(conn, payload.get("Number", ""), payload["Date"])
 
+    # Простa валідація введення цін у рядках
+    items = payload.get("Items") or []
+    for idx, it in enumerate(items, start=1):
+        price_val = it.get("Price")
+        if price_val is None or (isinstance(price_val, str) and not price_val.strip()):
+            raise ValueError(f"Рядок {idx}: вкажіть ціну")
+        try:
+            price_num = float(price_val)
+        except Exception:
+            raise ValueError(f"Рядок {idx}: некоректна ціна")
+        if price_num < 0:
+            raise ValueError(f"Рядок {idx}: ціна не може бути від’ємною")
+
     if editing_id:
         _update_header(conn, editing_id, header)
         doc_id = editing_id
@@ -419,7 +432,6 @@ def save_document(
         doc_id = _insert_header(conn, header)
 
     # рядки
-    items = payload.get("Items") or []
     for r in items:
         r["UserID"] = payload.get("UserID")
     _replace_items(conn, doc_id, items)
