@@ -427,7 +427,12 @@ def _get_default_warehouse_for_center(conn: pyodbc.Connection, center_id: int | 
         (center_id,),
     )
     row = cur.fetchone()
-    return int(row[0]) if row else None
+    wid = int(row[0]) if row else None
+    try:
+        print(f"[ARRIVAL] default warehouse for center {center_id} -> {wid}")
+    except Exception:
+        pass
+    return wid
 
 def _resolve_warehouse_id(
     conn: pyodbc.Connection,
@@ -494,6 +499,10 @@ def save_document(
         warehouse_id=header.get("WarehouseID"),
     )
     _assert_warehouse_valid(conn, center_id=int(header["CenterID"]), warehouse_id=int(header["WarehouseID"]))
+    try:
+        print(f"[ARRIVAL] saving doc: CenterID={header['CenterID']} WarehouseID={header['WarehouseID']} Items={len(payload.get('Items') or [])}")
+    except Exception:
+        pass
 
     # Простa валідація рядків
     items = payload.get("Items") or []

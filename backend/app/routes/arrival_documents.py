@@ -60,6 +60,7 @@ def create_arrival_document(
         # Якщо це FK або інша БД-помилка, конвертуємо у 400 з human-readable detail
         msg = str(e)
         if "FK_Parties_Warehouses" in msg:
+            # На цей момент в лоґах повинні бути CenterID/WarehouseID
             raise HTTPException(
                 status_code=400,
                 detail="Некоректний склад: перевірте, що у вибраному центрі є активний головний склад",

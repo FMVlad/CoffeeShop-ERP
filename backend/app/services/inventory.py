@@ -126,9 +126,14 @@ def receipt_item(
         wid = int(warehouse_id)
     except Exception:
         raise ValueError("Некоректний склад (WarehouseID)")
-    cur.execute("SELECT COUNT(*) FROM dbo.Warehouses WHERE ID=?", (wid,))
-    if cur.fetchone()[0] == 0:
+    cur.execute("SELECT ID, CenterID, IsActive FROM dbo.Warehouses WHERE ID=?", (wid,))
+    info = cur.fetchone()
+    if not info:
         raise ValueError(f"Склад з ID={wid} не знайдено")
+    try:
+        print(f"[INVENTORY] receipt_item -> warehouse: ID={info.ID} CenterID={info.CenterID} IsActive={info.IsActive}")
+    except Exception:
+        pass
     try:
         party_id = create_party(
             conn,
