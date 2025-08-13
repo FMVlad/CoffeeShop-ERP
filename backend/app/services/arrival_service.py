@@ -478,6 +478,7 @@ def save_document(
     if not header.get("CenterID"):
         raise ValueError("Вкажіть центр обліку")
     # Resolve/validate warehouse against DB (handles missing/invalid)
+    # нормалізуємо до int та гарантуємо валідність/належність центру
     header["WarehouseID"] = _resolve_warehouse_id(
         conn,
         center_id=header.get("CenterID"),
