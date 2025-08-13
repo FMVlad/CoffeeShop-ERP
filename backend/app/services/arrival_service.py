@@ -107,8 +107,22 @@ def get_document(conn: pyodbc.Connection, doc_id: int) -> Dict[str, Any]:
 
     doc = _row_to_doc_head(head)
 
-    cur.execute(f"SELECT * FROM {T_ITM} WHERE DocID=? ORDER BY ID", (doc_id,))
-    items = [_row_to_item(r) for r in cur.fetchall()]
+    cur.execute(
+        f"""
+        SELECT i.*, p.Name as ProductName, p.FullName as ProductFullName
+        FROM {T_ITM} i
+        LEFT JOIN dbo.Products p ON p.ID = i.ProductID
+        WHERE i.DocID=?
+        ORDER BY i.ID
+        """,
+        (doc_id,),
+    )
+    items = []
+    for r in cur.fetchall():
+        it = _row_to_item(r)
+        it["ProductName"] = getattr(r, "ProductName", None) or ""
+        it["ProductFullName"] = getattr(r, "ProductFullName", None) or it["ProductName"]
+        items.append(it)
     doc["Items"] = items
 
     # Фетчимо поточні проводки (для вкладки «Бухоблік»)
@@ -412,9 +426,26 @@ def save_document(
     header = dict(payload)
     header["Number"] = _ensure_number(conn, payload.get("Number", ""), payload["Date"])
 
-    # Простa валідація введення цін у рядках
+    # Валідація шапки
+    if not header.get("Date"):
+        raise ValueError("Вкажіть дату документа")
+    if not header.get("CenterID"):
+        raise ValueError("Вкажіть центр обліку/склад")
+
+    # Простa валідація рядків
     items = payload.get("Items") or []
+    if not items:
+        raise ValueError("Додайте хоча б один рядок")
     for idx, it in enumerate(items, start=1):
+        if not it.get("ProductID"):
+            raise ValueError(f"Рядок {idx}: не вказано товар")
+        qty_val = it.get("Quantity")
+        try:
+            qty_num = float(qty_val)
+        except Exception:
+            raise ValueError(f"Рядок {idx}: некоректна кількість")
+        if qty_num <= 0:
+            raise ValueError(f"Рядок {idx}: кількість має бути > 0")
         price_val = it.get("Price")
         if price_val is None or (isinstance(price_val, str) and not price_val.strip()):
             raise ValueError(f"Рядок {idx}: вкажіть ціну")
