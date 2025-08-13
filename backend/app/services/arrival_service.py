@@ -411,6 +411,23 @@ def _perform_inventory_phase(
 # ---------------------------
 # Public API
 # ---------------------------
+def _get_default_warehouse_for_center(conn: pyodbc.Connection, center_id: int | None) -> Optional[int]:
+    if not center_id:
+        return None
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT TOP 1 ID
+        FROM dbo.Warehouses
+        WHERE CenterID = ? AND IsActive = 1
+        ORDER BY CASE WHEN Type='main' THEN 0 ELSE 1 END,
+                 CASE WHEN ParentID IS NULL THEN 0 ELSE 1 END,
+                 ID
+        """,
+        (center_id,),
+    )
+    row = cur.fetchone()
+    return int(row[0]) if row else None
 def save_document(
     conn: pyodbc.Connection,
     payload: Dict[str, Any],
@@ -432,7 +449,12 @@ def save_document(
     if not header.get("CenterID"):
         raise ValueError("Вкажіть центр обліку")
     if not header.get("WarehouseID"):
-        raise ValueError("Вкажіть склад")
+        # fallback: беремо основний склад центра
+        default_wh = _get_default_warehouse_for_center(conn, header.get("CenterID"))
+        if default_wh is not None:
+            header["WarehouseID"] = default_wh
+        else:
+            raise ValueError("Для центру обліку не знайдено доступний склад")
 
     # Простa валідація рядків
     items = payload.get("Items") or []
