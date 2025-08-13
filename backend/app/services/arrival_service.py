@@ -420,8 +420,8 @@ def _get_default_warehouse_for_center(conn: pyodbc.Connection, center_id: int | 
         SELECT TOP 1 ID
         FROM dbo.Warehouses
         WHERE CenterID = ? AND IsActive = 1
-        ORDER BY CASE WHEN Type='main' THEN 0 ELSE 1 END,
-                 CASE WHEN ParentID IS NULL THEN 0 ELSE 1 END,
+        ORDER BY CASE WHEN ParentID IS NULL THEN 0 ELSE 1 END,
+                 CASE WHEN Type='main' THEN 0 ELSE 1 END,
                  ID
         """,
         (center_id,),
