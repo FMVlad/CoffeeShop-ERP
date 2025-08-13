@@ -11,7 +11,6 @@ export default function ArrivalDocumentsPage() {
   const [companies, setCompanies] = useState([]);
   const [centers, setCenters] = useState([]);
   const [typicalOps, setTypicalOps] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // фільтри списку
@@ -83,25 +82,7 @@ export default function ArrivalDocumentsPage() {
     };
   }, []);
 
-  // підвантаження складів при виборі центру
-  useEffect(() => {
-    const cid = doc.CenterID;
-    if (!cid) {
-      setWarehouses([]);
-      setDoc((d) => ({ ...d, WarehouseID: "" }));
-      return;
-    }
-    (async () => {
-      try {
-        const rows = await api.getWarehouses(cid);
-        setWarehouses(Array.isArray(rows) ? rows : []);
-        // якщо не вибрано склад — встановимо перший активний
-        setDoc((d) => ({ ...d, WarehouseID: d.WarehouseID || rows?.[0]?.ID || "" }));
-      } catch (e) {
-        setWarehouses([]);
-      }
-    })();
-  }, [doc.CenterID]);
+  // прибрали ручний вибір складу — бекенд обере головний за центром
 
   // ф-ція підвантаження списку документів (щоб тригерити після save)
   const fetchDocs = useCallback(async (filts) => {
@@ -143,7 +124,6 @@ export default function ArrivalDocumentsPage() {
         CurrencyID: doc.CurrencyID || null,
         CompanyID: doc.CompanyID || null,
         CenterID: doc.CenterID || null,
-        WarehouseID: doc.WarehouseID || null,
         TypicalOperationID: doc.TypicalOperationID || null,
         TotalExtraCosts: +doc.TotalExtraCosts || 0,
         TotalAmount: doc.Items.reduce(
@@ -345,8 +325,7 @@ export default function ArrivalDocumentsPage() {
     doc.Items.length > 0 &&
     String(doc.SupplierID || "").length > 0 &&
     String(doc.CompanyID || "").length > 0 &&
-    String(doc.CenterID || "").length > 0 &&
-    String(doc.WarehouseID || "").length > 0;
+    String(doc.CenterID || "").length > 0;
 
   return (
     <div className="p-4">
@@ -503,22 +482,7 @@ export default function ArrivalDocumentsPage() {
               </select>
             </div>
 
-            <div>
-              <label className="text-sm block mb-1">Склад</label>
-              <select
-                className="border rounded p-2 w-full"
-                value={doc.WarehouseID || ""}
-                onChange={(e) => setDoc({ ...doc, WarehouseID: e.target.value })}
-                disabled={!doc.CenterID}
-              >
-                <option value="">— оберіть —</option>
-                {warehouses.map((w) => (
-                  <option key={w.ID} value={w.ID}>
-                    {w.Name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Вибір складу прибрано: бекенд автоматично обере головний по центру */}
 
             <div>
               <label className="text-sm block mb-1">Підприємець / Компанія</label>
