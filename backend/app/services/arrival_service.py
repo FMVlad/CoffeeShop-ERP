@@ -315,7 +315,7 @@ def _perform_inventory_phase(
             conn,
             document_id=doc_id,
             document_type="ARRIVAL",
-            warehouse_id=header["CenterID"],  # у твоїй схемі «центр = головний склад центру обліку»
+            warehouse_id=header["WarehouseID"],
             supplier_id=header.get("SupplierID"),
             company_id=header.get("CompanyID"),
             date=header["Date"],
@@ -430,7 +430,9 @@ def save_document(
     if not header.get("Date"):
         raise ValueError("Вкажіть дату документа")
     if not header.get("CenterID"):
-        raise ValueError("Вкажіть центр обліку/склад")
+        raise ValueError("Вкажіть центр обліку")
+    if not header.get("WarehouseID"):
+        raise ValueError("Вкажіть склад")
 
     # Простa валідація рядків
     items = payload.get("Items") or []
