@@ -129,18 +129,22 @@ def receipt_item(
     cur.execute("SELECT COUNT(*) FROM dbo.Warehouses WHERE ID=?", (wid,))
     if cur.fetchone()[0] == 0:
         raise ValueError(f"Склад з ID={wid} не знайдено")
-    party_id = create_party(
-        conn,
-        product_id=product_id,
-        warehouse_id=wid,
-        quantity=quantity,
-        purchase_price=unit_cost,
-        supplier_id=supplier_id,
-        company_id=company_id,
-        date_received=date,
-        comment=comment,
-        user_id=user_id,
-    )
+    try:
+        party_id = create_party(
+            conn,
+            product_id=product_id,
+            warehouse_id=wid,
+            quantity=quantity,
+            purchase_price=unit_cost,
+            supplier_id=supplier_id,
+            company_id=company_id,
+            date_received=date,
+            comment=comment,
+            user_id=user_id,
+        )
+    except Exception as e:
+        # Допоміжне повідомлення для розслідування FK помилок
+        raise ValueError(f"Не вдалося створити партію: склад ID={wid}, продукт ID={product_id}. {str(e)}")
     add_party_movement(
         conn,
         party_id=party_id,
@@ -148,7 +152,7 @@ def receipt_item(
         document_type=document_type,
         movement_type="in",
         quantity=quantity,
-        warehouse_id=warehouse_id,
+        warehouse_id=wid,
         comment=comment,
         user_id=user_id,
         date=date,

@@ -60,7 +60,10 @@ def create_arrival_document(
         # Якщо це FK або інша БД-помилка, конвертуємо у 400 з human-readable detail
         msg = str(e)
         if "FK_Parties_Warehouses" in msg:
-            raise HTTPException(status_code=400, detail="Некоректний склад: перевірте налаштування центр/склад")
+            raise HTTPException(
+                status_code=400,
+                detail="Некоректний склад: перевірте, що у вибраному центрі є активний головний склад",
+            )
         raise HTTPException(status_code=400, detail=msg)
 
 
