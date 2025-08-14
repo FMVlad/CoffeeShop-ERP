@@ -308,6 +308,7 @@ def _perform_inventory_phase(
             percent=vat_percent,
         )
         unit_net = parts["net"]
+        unit_gross = parts["gross"]
         vat_total += float(parts["vat"]) * qty_val
         net_total += float(unit_net) * qty_val
 
@@ -316,13 +317,14 @@ def _perform_inventory_phase(
             document_id=doc_id,
             document_type="ARRIVAL",
             warehouse_id=header["WarehouseID"],
+            expected_center_id=int(header.get("CenterID")) if header.get("CenterID") is not None else None,
             supplier_id=header.get("SupplierID"),
             company_id=header.get("CompanyID"),
             date=header["Date"],
             user_id=user_id,
             product_id=r["ProductID"],
             quantity=qty_val,
-            unit_cost=unit_net,
+            unit_cost=unit_gross,
             comment=f"Arrival {doc_id}",
         )
         party_ids.append(pid)
@@ -556,7 +558,9 @@ def save_document(
             except Exception:
                 pass
         # Пробуємо повертати контрольовану помилку
-        raise ValueError(str(e))
+        raise ValueError(
+            f"CenterID={header.get('CenterID')} WarehouseID={header.get('WarehouseID')}: {str(e)}"
+        )
 
     return get_document(conn, doc_id)
 

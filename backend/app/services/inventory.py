@@ -104,6 +104,7 @@ def receipt_item(
     document_id: int,
     document_type: str,
     warehouse_id: int,
+    expected_center_id: int | None = None,
     supplier_id: int | None,
     company_id: int | None,
     date,
@@ -130,6 +131,10 @@ def receipt_item(
     info = cur.fetchone()
     if not info:
         raise ValueError(f"Склад з ID={wid} не знайдено")
+    if expected_center_id is not None and int(info.CenterID) != int(expected_center_id):
+        raise ValueError(
+            f"Склад ID={wid} належить центру ID={info.CenterID}, але в документі CenterID={expected_center_id}"
+        )
     try:
         print(f"[INVENTORY] receipt_item -> warehouse: ID={info.ID} CenterID={info.CenterID} IsActive={info.IsActive}")
     except Exception:
