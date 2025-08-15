@@ -15,6 +15,21 @@ export const setOnUnauthorized = (fn) => {
   onUnauthorized = fn;
 };
 
+// --- Діагностика помилок API для зручного копіювання в чат ---
+let lastApiDiagText = "";
+export const getLastApiDiag = () => lastApiDiagText;
+export const copyLastApiDiag = async () => {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(lastApiDiagText || "");
+    }
+  } catch {}
+};
+if (typeof window !== "undefined") {
+  // Швидкий доступ з консолі: window.copyLastApiDiag()
+  window.copyLastApiDiag = copyLastApiDiag;
+}
+
 // --- Хелпер для побудови query (підтримка масивів) ---
 function buildQuery(q) {
   if (!q || !Object.keys(q).length) return "";
@@ -39,6 +54,8 @@ async function fetchJSON(
   );
 
   const qs = buildQuery(query);
+  const url = `${API_BASE}${path}${qs}`;
+  const requestBody = data != null ? JSON.stringify(data) : undefined;
 
   const token = tokenGetter ? tokenGetter() : null;
   const h = { Accept: "application/json", ...headers };
@@ -47,14 +64,25 @@ async function fetchJSON(
 
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}${qs}`, {
+    res = await fetch(url, {
       method,
       headers: h,
-      body: data != null ? JSON.stringify(data) : undefined,
+      body: requestBody,
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(t);
+    const diag = [
+      "API ERROR (network)",
+      `URL: ${url}`,
+      `Method: ${method}`,
+      `Request headers: ${safeStringify(h)}`,
+      `Request body: ${requestBody || "<none>"}`,
+      `Message: ${e?.message || "Network error"}`,
+    ].join("\n");
+    lastApiDiagText = diag;
+    if (typeof window !== "undefined") window.__lastApiDiagText = diag;
+    try { if (typeof navigator !== "undefined" && navigator.clipboard) await navigator.clipboard.writeText(diag); } catch {}
     throw new Error(e?.message || "Network error");
   } finally {
     clearTimeout(t);
@@ -81,15 +109,37 @@ async function fetchJSON(
     const msg =
       (payload && typeof payload === "object" && (payload.detail || payload.message)) ||
       (typeof payload === "string" ? payload : `HTTP ${res.status}`);
+    const diag = [
+      "API ERROR",
+      `URL: ${url}`,
+      `Method: ${method}`,
+      `Status: ${res.status}`,
+      `Request headers: ${safeStringify(h)}`,
+      `Request body: ${requestBody || "<none>"}`,
+      `Response: ${safeStringify(payload)}`,
+    ].join("\n");
+    lastApiDiagText = diag;
+    if (typeof window !== "undefined") window.__lastApiDiagText = diag;
     // Debug log with full context to help diagnose 400s
     console.error("[API ERROR]", { path, method, status: res.status, msg, payload });
+    try { if (typeof navigator !== "undefined" && navigator.clipboard) await navigator.clipboard.writeText(diag); } catch {}
     const err = new Error(msg);
     err.status = res.status;
     err.details = payload;
+    err.diagText = diag;
     throw err;
   }
 
   return payload;
+}
+
+function safeStringify(value) {
+  try {
+    if (typeof value === "string") return value;
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 // Сирий запит (для 404 та FormData)
@@ -541,6 +591,16 @@ export const cancelArrivalDocPostings = (id) =>
 
 // --- Глобальний експорт ---
 export const api = {
+  // Глобальні методи для ручних викликів
+  async get(path, query) { return fetchJSON(path, { method: "GET", query }); },
+  async post(path, query, data) { return fetchJSON(path, { method: "POST", query, data }); },
+
+  // Сервісні задачі (планувальник)
+  getServiceTasks: () => fetchJSON("/service-tasks"),
+  getServiceTask: (key) => fetchJSON(`/service-tasks/${key}`),
+  upsertServiceTask: (key, data) => fetchJSON(`/service-tasks/${key}`, { method: "POST", data }),
+  runServiceTaskNow: (key) => fetchJSON(`/service-tasks/${key}/run-now`, { method: "POST" }),
+
   // Категорії
   getCategories,
   addCategory,

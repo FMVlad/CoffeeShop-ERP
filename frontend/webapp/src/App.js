@@ -29,6 +29,7 @@ import SuppliersPage from "./pages/SuppliersPage";
 // НОВЕ: документи
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import ArrivalDocumentsPage from "./pages/ArrivalDocumentsPage.jsx";
+import AdminServicePage from "./pages/AdminServicePage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -125,6 +126,7 @@ function AppRoutes() {
                   {/* Документи */}
                   <Route path="/docs" element={<DocumentsPage />} />
                   <Route path="/docs/arrivals" element={<ArrivalDocumentsPage />} />
+                  <Route path="/admin" element={<AdminServicePage />} />
 
                   {/* можна додати інші документи тут пізніше */}
                 </Routes>

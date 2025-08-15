@@ -443,6 +443,11 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
 
             # VAT logic
             price_to_save = price_input if prices_include_vat else _gross_price(price_input, vat_rate)
+            # Net for party (we store gross in Parties.PurchasePrice; compute net to fill NetPurchasePrice when available)
+            try:
+                net_for_party = (price_to_save / (Decimal("1") + vat_rate / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except Exception:
+                net_for_party = price_input
 
             print(
                 f"[ITEM] #{idx} product={product_id} qty={qty} price_in={price_input} vat%={vat_rate} price_save={price_to_save}"
@@ -461,26 +466,69 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
 
             total_gross += (qty * price_to_save)
 
-            # Create party (always save gross price into Parties.PurchasePrice)
-            # Create party (include audit columns if schema allows)
+            # Create party (always save gross price into Parties.PurchasePrice). If extended columns exist — fill them.
             try:
-                cursor.execute(
-                    (
-                        "INSERT INTO Parties (ProductID, WarehouseID, SupplierID, Quantity, PurchasePrice, DateReceived, Status, CreatedAt, CreatedBy, CompanyID) "
-                        "OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?, ?, 'available', GETDATE(), ?, NULL)"
-                    ),
-                    (
+                if (_table_has_column(db, "Parties", "RemainingQty") or _table_has_column(db, "Parties", "NetPurchasePrice") or _table_has_column(db, "Parties", "VatRate") or _table_has_column(db, "Parties", "IsClosed")):
+                    # Build dynamic column list for Parties insert (audit columns if present)
+                    party_cols = [
+                        "ProductID", "WarehouseID", "SupplierID", "Quantity", "PurchasePrice", "DateReceived", "Status"
+                    ]
+                    party_vals = [
                         product_id,
                         resolved_warehouse_id,
                         supplier_id,
                         float(qty),
                         float(price_to_save),
                         date_val,
-                        user_id,
-                    ),
-                )
+                        'available'
+                    ]
+                    if _table_has_column(db, "Parties", "RemainingQty"):
+                        party_cols.append("RemainingQty")
+                        party_vals.append(float(qty))
+                    if _table_has_column(db, "Parties", "NetPurchasePrice"):
+                        party_cols.append("NetPurchasePrice")
+                        party_vals.append(float(net_for_party))
+                    if _table_has_column(db, "Parties", "VatRate"):
+                        party_cols.append("VatRate")
+                        party_vals.append(float(vat_rate))
+                    if _table_has_column(db, "Parties", "IsClosed"):
+                        party_cols.append("IsClosed")
+                        party_vals.append(0)
+                    # optional audit
+                    if _table_has_column(db, "Parties", "CreatedAt"):
+                        party_cols.append("CreatedAt")
+                        party_vals.append(datetime.now())
+                    if _table_has_column(db, "Parties", "CreatedBy"):
+                        party_cols.append("CreatedBy")
+                        party_vals.append(user_id)
+                    if _table_has_column(db, "Parties", "CompanyID"):
+                        party_cols.append("CompanyID")
+                        party_vals.append(None)
+
+                    placeholders = ", ".join(["?" for _ in party_cols])
+                    col_list = ", ".join(party_cols)
+                    cursor.execute(
+                        f"INSERT INTO Parties ({col_list}) OUTPUT INSERTED.ID VALUES ({placeholders})",
+                        tuple(party_vals),
+                    )
+                else:
+                    # Minimal guaranteed column set
+                    cursor.execute(
+                        (
+                            "INSERT INTO Parties (ProductID, WarehouseID, SupplierID, Quantity, PurchasePrice, DateReceived, Status) "
+                            "OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?, ?, 'available')"
+                        ),
+                        (
+                            product_id,
+                            resolved_warehouse_id,
+                            supplier_id,
+                            float(qty),
+                            float(price_to_save),
+                            date_val,
+                        ),
+                    )
             except Exception:
-                # Fallback to minimal column set
+                # Absolute fallback with audit columns
                 cursor.execute(
                     (
                         "INSERT INTO Parties (ProductID, WarehouseID, SupplierID, Quantity, PurchasePrice, DateReceived, Status) "
