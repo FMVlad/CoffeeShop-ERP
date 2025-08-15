@@ -1,7 +1,20 @@
-// src/components/TaxRatesTab.jsx
-
 import React, { useEffect, useState } from "react";
 import { api } from '../api';
+
+// --- Єдина допоміжна функція для побудови ієрархічного списку рахунків з сортуванням по AccountCode ---
+function getIndentedAccounts(accounts, parentId = null, level = 0, excludeId = null) {
+  let result = [];
+  accounts
+    .filter(a => a.ParentID === parentId && a.ID !== excludeId)
+    .sort((a, b) =>
+      String(a.AccountCode).localeCompare(String(b.AccountCode), 'uk', { numeric: true })
+    )
+    .forEach(a => {
+      result.push({ ...a, _level: level });
+      result = result.concat(getIndentedAccounts(accounts, a.ID, level + 1, excludeId));
+    });
+  return result;
+}
 
 export default function TaxRatesTab() {
   const [taxRates, setTaxRates] = useState([]);
@@ -11,6 +24,11 @@ export default function TaxRatesTab() {
   const [currencies, setCurrencies] = useState([]);
   const [editingTax, setEditingTax] = useState(null);
   const [showTaxForm, setShowTaxForm] = useState(false);
+
+  // Для додавання типу податку (довідник)
+  const [showTaxDictForm, setShowTaxDictForm] = useState(false);
+  const [newTaxDict, setNewTaxDict] = useState({ Name: "", TaxRate: "" });
+
   const emptyTaxRate = {
     AccountID: "",
     TaxID: "",
@@ -36,7 +54,15 @@ export default function TaxRatesTab() {
     ]).finally(() => setTaxLoading(false));
   };
 
-  // --- CRUD --- //
+  // --- Довідник податків (типи) ---
+  const handleTaxDictSubmit = async () => {
+    await api.addTax(newTaxDict);
+    setShowTaxDictForm(false);
+    setNewTaxDict({ Name: "", TaxRate: "" });
+    api.getTaxes().then(setTaxes); // Оновити список податків
+  };
+
+  // --- CRUD ставки податку ---
   const handleTaxFormChange = (key, value) => {
     if (editingTax) {
       setEditingTax({ ...editingTax, [key]: value });
@@ -76,39 +102,89 @@ export default function TaxRatesTab() {
 
   return (
     <div>
-      <button onClick={handleTaxAdd} style={addBtnStyle}>+ Додати ставку</button>
+      {/* --- Кнопка ДОДАТИ ПОДАТОК (довідник) --- */}
+      <button
+        onClick={() => setShowTaxDictForm(true)}
+        className="bg-blue-700 text-white px-6 py-2 rounded-lg text-lg font-bold mb-3 shadow hover:bg-blue-800 transition-all mr-4"
+      >
+        + Додати податок
+      </button>
+      {/* --- Форма додавання типу податку --- */}
+      {showTaxDictForm && (
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-8 max-w-xl mx-auto">
+          <h3 className="mb-4 font-bold text-xl">Додати податок</h3>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="font-medium block mb-1">Назва податку:</label>
+              <input
+                value={newTaxDict.Name}
+                onChange={e => setNewTaxDict({ ...newTaxDict, Name: e.target.value })}
+                className="w-full p-2 rounded border border-gray-300 text-base"
+              />
+            </div>
+            <div>
+              <label className="font-medium block mb-1">Ставка:</label>
+              <input
+                value={newTaxDict.TaxRate}
+                onChange={e => setNewTaxDict({ ...newTaxDict, TaxRate: e.target.value })}
+                type="number"
+                className="w-full p-2 rounded border border-gray-300 text-base"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            <button
+              onClick={handleTaxDictSubmit}
+              className="bg-green-700 text-white rounded px-8 py-3 font-semibold text-base mr-4 hover:bg-green-800 transition-all"
+            >Додати</button>
+            <button
+              onClick={() => setShowTaxDictForm(false)}
+              className="bg-gray-500 text-white rounded px-8 py-3 font-semibold text-base hover:bg-gray-700 transition-all"
+            >Відміна</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- Кнопка додати ставку --- */}
+      <button
+        onClick={handleTaxAdd}
+        className="bg-green-700 text-white px-6 py-2 rounded-lg text-lg font-bold mb-3 shadow hover:bg-green-800 transition-all"
+      >
+        + Додати ставку
+      </button>
+
+      {/* --- Форма додавання/редагування ставки податку --- */}
       {(showTaxForm || editingTax) && (
-        <div style={{
-          background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001',
-          padding: 32, marginBottom: 32, maxWidth: 600
-        }}>
-          <h3 style={{ marginBottom: 18, fontWeight: 700 }}>
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-8 max-w-xl mx-auto">
+          <h3 className="mb-4 font-bold text-xl">
             {editingTax ? 'Редагувати ставку податку' : 'Додати ставку податку'}
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="flex flex-col gap-4">
             <div>
-              <label style={{ fontWeight: 500 }}>Рахунок:</label>
+              <label className="font-medium block mb-1">Рахунок:</label>
               <select
                 value={(editingTax ? editingTax.AccountID : newTax.AccountID) || ""}
                 onChange={e => handleTaxFormChange('AccountID', e.target.value)}
-                style={inputStyle}
+                className="w-full p-2 rounded border border-gray-300 text-base"
               >
                 <option value="">Оберіть рахунок</option>
-                {accounts.map(acc => (
+                {getIndentedAccounts(accounts).map(acc => (
                   <option key={acc.ID} value={acc.ID}>
-                    {acc.Name} ({acc.AccountCode})
+                    {acc._level > 0 ? "— ".repeat(acc._level) + "▶ " : ""}
+                    {acc.AccountCode ? `${acc.AccountCode} — ` : ""}
+                    {acc.Name}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label style={{ fontWeight: 500 }}>Податок:</label>
+              <label className="font-medium block mb-1">Податок:</label>
               <select
                 value={(editingTax ? editingTax.TaxID : newTax.TaxID) || ""}
                 onChange={e => {
                   const selectedTaxId = e.target.value;
                   // Автоматично підтягуємо ставку
-                  const foundTax = taxes.find(t => t.ID == selectedTaxId);
+                  const foundTax = taxes.find(t => t.ID === selectedTaxId);
                   if (!editingTax && foundTax) {
                     setNewTax(nt => ({
                       ...nt,
@@ -125,7 +201,7 @@ export default function TaxRatesTab() {
                     handleTaxFormChange('TaxID', selectedTaxId);
                   }
                 }}
-                style={inputStyle}
+                className="w-full p-2 rounded border border-gray-300 text-base"
               >
                 <option value="">Оберіть податок</option>
                 {taxes.map(t => (
@@ -136,32 +212,32 @@ export default function TaxRatesTab() {
               </select>
             </div>
             <div>
-              <label style={{ fontWeight: 500 }}>Ставка:</label>
+              <label className="font-medium block mb-1">Ставка:</label>
               <input
                 value={(editingTax ? editingTax.Rate : newTax.Rate) || ""}
                 onChange={e => handleTaxFormChange('Rate', e.target.value)}
-                style={inputStyle}
+                className="w-full p-2 rounded border border-gray-300 text-base"
                 type="number"
               />
             </div>
             <div>
-              <label>
+              <label className="inline-flex items-center">
                 <input
                   type="checkbox"
                   checked={!!(editingTax ? editingTax.IsFixed : newTax.IsFixed)}
                   onChange={e => handleTaxFormChange('IsFixed', e.target.checked)}
-                  style={{ marginRight: 8 }}
+                  className="w-5 h-5 mr-2"
                 />
                 Фіксована сума
               </label>
             </div>
             {(editingTax?.IsFixed || newTax.IsFixed) && (
               <div>
-                <label style={{ fontWeight: 500 }}>Валюта:</label>
+                <label className="font-medium block mb-1">Валюта:</label>
                 <select
                   value={(editingTax ? editingTax.CurrencyID : newTax.CurrencyID) || ""}
                   onChange={e => handleTaxFormChange('CurrencyID', e.target.value)}
-                  style={inputStyle}
+                  className="w-full p-2 rounded border border-gray-300 text-base"
                 >
                   <option value="">Оберіть валюту</option>
                   {currencies.map(cur => (
@@ -170,52 +246,48 @@ export default function TaxRatesTab() {
                 </select>
               </div>
             )}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontWeight: 500 }}>Дата початку:</label>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="font-medium block mb-1">Дата початку:</label>
                 <input value={(editingTax ? editingTax.DateFrom : newTax.DateFrom) || ""}
                   onChange={e => handleTaxFormChange('DateFrom', e.target.value)}
-                  style={inputStyle} type="date" />
+                  className="w-full p-2 rounded border border-gray-300 text-base"
+                  type="date" />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontWeight: 500 }}>Дата завершення:</label>
+              <div className="flex-1">
+                <label className="font-medium block mb-1">Дата завершення:</label>
                 <input value={(editingTax ? editingTax.DateTo : newTax.DateTo) || ""}
                   onChange={e => handleTaxFormChange('DateTo', e.target.value)}
-                  style={inputStyle} type="date" />
+                  className="w-full p-2 rounded border border-gray-300 text-base"
+                  type="date" />
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <div className="flex justify-end mt-3">
             <button onClick={handleTaxSubmit}
-              style={formBtnStyle}>
+              className="bg-red-700 text-white rounded px-8 py-3 font-semibold text-base mr-4 hover:bg-red-800 transition-all">
               {editingTax ? 'Зберегти' : 'Додати'}
             </button>
             <button onClick={() => { setEditingTax(null); setShowTaxForm(false); }}
-              style={cancelBtnStyle}>
+              className="bg-gray-500 text-white rounded px-8 py-3 font-semibold text-base hover:bg-gray-700 transition-all">
               Відміна
             </button>
           </div>
         </div>
       )}
+
+      {/* --- Таблиця ставок --- */}
       {taxLoading ? <div>Завантаження...</div> :
-        <table style={{
-          width: "100%",
-          background: "#fff",
-          borderRadius: 14,
-          borderCollapse: "separate",
-          borderSpacing: 0,
-          marginTop: 18,
-          border: "2px solid #000"
-        }}>
+        <table className="w-full bg-white rounded-xl border-separate border-spacing-0 mt-5 border-2 border-black shadow">
           <thead>
             <tr>
-              <th style={headerCellStyle}>Рахунок</th>
-              <th style={headerCellStyle}>Податок</th>
-              <th style={headerCellStyle}>Ставка</th>
-              <th style={headerCellStyle}>Фіксована</th>
-              <th style={headerCellStyle}>Валюта</th>
-              <th style={headerCellStyle}>Період дії</th>
-              <th style={headerCellStyle}>Дії</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Рахунок</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Податок</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Ставка</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Фіксована</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Валюта</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-left">Період дії</th>
+              <th className="bg-[#e6d7fa] text-[#22105a] font-bold text-lg p-4 border-2 border-black text-center">Дії</th>
             </tr>
           </thead>
           <tbody>
@@ -225,18 +297,20 @@ export default function TaxRatesTab() {
               const cur = currencies.find(c => c.ID === tax.CurrencyID);
               return (
                 <tr key={tax.ID}>
-                  <td style={cellStyle}>{acc ? `${acc.Name} (${acc.AccountCode})` : tax.AccountID}</td>
-                  <td style={cellStyle}>{taxObj ? taxObj.Name : tax.TaxID}</td>
-                  <td style={cellStyle}>{tax.Rate}{tax.IsFixed ? (cur ? ` ${cur.Name}` : " ₴") : "%"}</td>
-                  <td style={cellStyle}>{tax.IsFixed ? "Так" : "Ні"}</td>
-                  <td style={cellStyle}>{cur ? cur.Name : (tax.IsFixed ? "₴" : "")}</td>
-                  <td style={cellStyle}>
+                  <td className="border-2 border-black py-3 px-4">{acc ? `${acc.Name} (${acc.AccountCode})` : tax.AccountID}</td>
+                  <td className="border-2 border-black py-3 px-4">{taxObj ? taxObj.Name : tax.TaxID}</td>
+                  <td className="border-2 border-black py-3 px-4">{tax.Rate}{tax.IsFixed ? (cur ? ` ${cur.Name}` : " ₴") : "%"}</td>
+                  <td className="border-2 border-black py-3 px-4">{tax.IsFixed ? "Так" : "Ні"}</td>
+                  <td className="border-2 border-black py-3 px-4">{cur ? cur.Name : (tax.IsFixed ? "₴" : "")}</td>
+                  <td className="border-2 border-black py-3 px-4">
                     {tax.DateFrom ? new Date(tax.DateFrom).toLocaleDateString() : ""}
                     {tax.DateTo ? ` — ${new Date(tax.DateTo).toLocaleDateString()}` : ""}
                   </td>
-                  <td style={{ ...cellStyle, textAlign: "center" }}>
-                    <button onClick={() => handleTaxEdit(tax)} style={editBtnStyle}>✏️</button>
-                    <button onClick={() => handleTaxDelete(tax.ID)} style={deleteBtnStyle}>🗑️</button>
+                  <td className="border-2 border-black py-3 px-4 text-center">
+                    <button onClick={() => handleTaxEdit(tax)}
+                      className="bg-yellow-200 border-2 border-yellow-400 rounded-md px-3 py-2 font-bold text-xl mr-2 hover:bg-yellow-300 transition-all">✏️</button>
+                    <button onClick={() => handleTaxDelete(tax.ID)}
+                      className="bg-red-100 border-2 border-red-400 rounded-md px-3 py-2 font-bold text-xl hover:bg-red-200 transition-all">🗑️</button>
                   </td>
                 </tr>
               );
@@ -247,56 +321,3 @@ export default function TaxRatesTab() {
     </div>
   );
 }
-
-// --- СТИЛІ --- //
-const headerCellStyle = {
-  background: "#e6d7fa",
-  color: "#22105a",
-  fontWeight: 700,
-  fontSize: 17,
-  padding: "14px 18px",
-  border: "2px solid #000",
-  textAlign: "left"
-};
-const cellStyle = {
-  padding: "12px 18px",
-  border: "2px solid #000",
-  fontSize: 15,
-  color: "#22105a",
-  background: "#fff"
-};
-const inputStyle = {
-  width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 16
-};
-const addBtnStyle = {
-  background: "#208f41", color: "#fff", padding: "10px 28px",
-  borderRadius: 10, fontSize: 18, border: "none", fontWeight: 700, cursor: "pointer",
-  marginBottom: 12, boxShadow: "0 2px 8px #0001"
-};
-const editBtnStyle = {
-  background: "#fff8c5",
-  border: "2px solid #c0b31c",
-  borderRadius: 8,
-  color: "#856800",
-  fontWeight: 700,
-  padding: "6px 11px",
-  marginRight: 8,
-  fontSize: 19,
-  cursor: "pointer"
-};
-const deleteBtnStyle = {
-  background: "#ffe3e3",
-  border: "2px solid #d64040",
-  borderRadius: 8,
-  color: "#d64040",
-  fontWeight: 700,
-  padding: "6px 11px",
-  fontSize: 19,
-  cursor: "pointer"
-};
-const formBtnStyle = {
-  background: "#c4282d", color: "#fff", border: "none", borderRadius: 8, padding: "12px 32px", fontWeight: 600, fontSize: 16
-};
-const cancelBtnStyle = {
-  background: "#6c757d", color: "#fff", border: "none", borderRadius: 8, padding: "12px 32px", fontWeight: 600, fontSize: 16, marginLeft: 12
-};

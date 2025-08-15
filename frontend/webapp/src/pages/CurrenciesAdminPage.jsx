@@ -117,7 +117,7 @@ export default function CurrenciesAdminPage() {
                   onChange={e => setNewCurrency({...newCurrency, CurrencyCode: e.target.value.toUpperCase()})} />
             <input value={newCurrency.Name} placeholder="Назва" style={{width: 130, padding: 10, fontSize:17}}
                   onChange={e => setNewCurrency({...newCurrency, Name: e.target.value})} />
-            <input value={newCurrency.Symbol} placeholder="Символ" style={{width: 70, padding: 10, fontSize:17}}
+            <input value={newCurrency.Symbol} placeholder="Символ" style={{width: 110, padding: 10, fontSize:17}}
                   onChange={e => setNewCurrency({...newCurrency, Symbol: e.target.value})} />
             <label style={{marginLeft: 8, fontSize:16}}>
               <input type="checkbox" checked={newCurrency.IsActive} onChange={e => setNewCurrency({...newCurrency, IsActive: e.target.checked})}/>

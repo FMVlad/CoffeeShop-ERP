@@ -82,8 +82,6 @@ export default function ArrivalDocumentsPage() {
     };
   }, []);
 
-  // прибрали ручний вибір складу — бекенд обере головний за центром
-
   // ф-ція підвантаження списку документів (щоб тригерити після save)
   const fetchDocs = useCallback(async (filts) => {
     setLoading(true);
@@ -130,6 +128,8 @@ export default function ArrivalDocumentsPage() {
           (s, r) => s + (+r.Quantity || 0) * (+r.Price || 0),
           0
         ),
+        // Temporary explicit warehouse to bypass FK while we diagnose backend
+        WarehouseID: doc.WarehouseID || 31,
         UserID: 1, // TODO: поточний користувач
         Items: doc.Items.map((r) => ({
           ProductID: r.ProductID,
@@ -141,6 +141,11 @@ export default function ArrivalDocumentsPage() {
           QtyInvoiced: r.QtyInvoiced || null,
         })),
       };
+
+      // Debug: show payload and items before sending
+      console.info("[UI] SAVE Arrival payload:", payload);
+      console.log("[UI] SAVE Items:", payload.Items);
+      console.log("[UI] SAVE first item:", payload.Items?.[0]);
       if (editingId) {
         const res = await api.updateArrivalDoc(editingId, payload);
         if (res?.Postings) setDoc((d) => ({ ...d, Postings: res.Postings }));
@@ -175,6 +180,8 @@ export default function ArrivalDocumentsPage() {
       if (res?.Postings) {
         setDoc((d) => ({ ...d, Postings: res.Postings }));
         setTab("accounting");
+        // статус у таблиці оновиться після рефрешу списку
+        fetchDocs(debouncedFilters);
       }
     } catch (e) {
       alert(e?.message || "Помилка проведення");
@@ -182,6 +189,20 @@ export default function ArrivalDocumentsPage() {
       setPosting(false);
     }
   }, [editingId]);
+
+  const cancelPostings = useCallback(async () => {
+    if (!editingId) return;
+    setPosting(true);
+    try {
+      await api.cancelArrivalDocPostings(editingId);
+      setDoc((d) => ({ ...d, Postings: [] }));
+      fetchDocs(debouncedFilters);
+    } catch (e) {
+      alert(e?.message || "Не вдалося скасувати проведення");
+    } finally {
+      setPosting(false);
+    }
+  }, [editingId, fetchDocs, debouncedFilters]);
 
   // гарячі клавіші (поки форма відкрита)
   useEffect(() => {
@@ -212,10 +233,13 @@ export default function ArrivalDocumentsPage() {
     setEditingId(null);
     const defCompany = companies?.[0]?.ID ?? "";
     const defCenter = centers?.[0]?.ID ?? "";
-    const defCurrency = currencies?.[0]?.ID ?? "";
+    const defCurrency = currencies?.find((c) => String(c.IsActive) === "1" || c.IsActive === true)?.ID
+      ?? currencies?.[0]?.ID
+      ?? "";
     const defOp = typicalOps?.[0]?.ID ?? "";
     setDoc({
       ...emptyDoc,
+      Number: "",
       CompanyID: defCompany,
       CenterID: defCenter,
       CurrencyID: defCurrency,
@@ -236,7 +260,6 @@ export default function ArrivalDocumentsPage() {
       CurrencyID: d.CurrencyID || "",
       CompanyID: d.CompanyID || "",
       CenterID: d.CenterID || "",
-      WarehouseID: d.WarehouseID || "",
       TypicalOperationID: d.TypicalOperationID || "",
       PricesIncludeVAT: !!d.PricesIncludeVAT,
       TotalExtraCosts: d.TotalExtraCosts || 0,
@@ -471,7 +494,7 @@ export default function ArrivalDocumentsPage() {
               <select
                 className="border rounded p-2 w-full"
                 value={doc.CenterID}
-                onChange={(e) => setDoc({ ...doc, CenterID: e.target.value, WarehouseID: "" })}
+                onChange={(e) => setDoc({ ...doc, CenterID: e.target.value })}
               >
                 <option value="">— оберіть —</option>
                 {centers.map((c) => (
@@ -481,8 +504,6 @@ export default function ArrivalDocumentsPage() {
                 ))}
               </select>
             </div>
-
-            {/* Вибір складу прибрано: бекенд автоматично обере головний по центру */}
 
             <div>
               <label className="text-sm block mb-1">Підприємець / Компанія</label>
@@ -645,8 +666,7 @@ export default function ArrivalDocumentsPage() {
                             value={r}
                             onSelect={(p) => {
                               const full = p?.ProductName || p?.FullName || p?.Name || "";
-                              const pid = p?.ID ?? p?.ProductID ?? "";
-                              setItem(idx, "ProductID", pid);
+                              setItem(idx, "ProductID", p.ProductID);
                               setItem(idx, "ProductName", full);
                             }}
                           />
@@ -758,14 +778,24 @@ export default function ArrivalDocumentsPage() {
               Разом (позиції): <b>{Number(doc.TotalAmount || 0).toFixed(2)}</b>
             </div>
 
-            <button
-              className="bg-blue-600 text-white px-5 py-2 rounded disabled:opacity-60"
-              onClick={runPostings}
-              disabled={posting || !editingId}
-              title={!editingId ? "Спочатку збережи документ" : undefined}
-            >
-              {posting ? "Проводжу…" : "Провести"}
-            </button>
+            { (doc.Postings || []).length === 0 ? (
+              <button
+                className="bg-blue-600 text-white px-5 py-2 rounded disabled:opacity-60"
+                onClick={runPostings}
+                disabled={posting || !editingId}
+                title={!editingId ? "Спочатку збережи документ" : undefined}
+              >
+                {posting ? "Проводжу…" : "Провести"}
+              </button>
+            ) : (
+              <button
+                className="bg-orange-600 text-white px-5 py-2 rounded disabled:opacity-60"
+                onClick={cancelPostings}
+                disabled={posting || !editingId}
+              >
+                {posting ? "Скасовую…" : "Відмінити проведення"}
+              </button>
+            )}
 
             <button
               className="bg-green-700 text-white px-5 py-2 rounded disabled:opacity-60"
@@ -786,7 +816,7 @@ export default function ArrivalDocumentsPage() {
               disabled={saving || posting}
               title="Esc"
             >
-              Відміна
+              {(doc.Postings || []).length > 0 ? "Закрити" : "Відміна"}
             </button>
           </div>
         </div>

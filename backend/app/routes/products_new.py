@@ -4,6 +4,43 @@ import os
 from PIL import Image
 
 router = APIRouter()
+@router.get("/products/search")
+def search_products(q: str = Query(""), db=Depends(get_db)):
+    s = (q or "").strip()
+    if not s:
+        return []
+    like = f"%{s}%"
+    cursor = db.cursor()
+    cursor.execute(
+        """
+        SELECT TOP 50 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+        FROM Products p
+        WHERE p.Name LIKE ? OR p.FullName LIKE ? OR p.Barcode LIKE ? OR p.DiscountBarcode LIKE ?
+        ORDER BY p.FullName IS NULL, p.FullName, p.Name
+        """,
+        (like, like, like, like),
+    )
+    cols = [c[0] for c in cursor.description]
+    return [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+@router.get("/products/by-barcode/{barcode}")
+def get_product_by_barcode(barcode: str, db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute(
+        """
+        SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+        FROM Products p
+        WHERE p.Barcode = ? OR p.DiscountBarcode = ?
+        """,
+        (barcode, barcode),
+    )
+    row = cursor.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Товар з цим штрихкодом не знайдено")
+    cols = [c[0] for c in cursor.description]
+    return dict(zip(cols, row))
+
 
 def generate_ean13_barcode(db, barcode_prefix):
     cursor = db.cursor()
@@ -37,7 +74,6 @@ def _get_fullname_fields(db):
 
 def _generate_fullname(product_id, db):
     cursor = db.cursor()
-    # 1. Витягуємо дані товару
     cursor.execute("SELECT * FROM Products WHERE ID = ?", (product_id,))
     row = cursor.fetchone()
     if not row:
@@ -81,6 +117,19 @@ def _generate_fullname(product_id, db):
             full_name_parts.append(val)
     return " ".join(full_name_parts).strip()
 
+# === Ось цей шматок для рекурсивного пошуку підкатегорій ===
+def get_all_subcategory_ids(db, parent_id):
+    cursor = db.cursor()
+    ids = set()
+    stack = [parent_id]
+    while stack:
+        cid = stack.pop()
+        ids.add(cid)
+        cursor.execute("SELECT ID FROM Categories WHERE ParentID = ?", (cid,))
+        children = [row[0] for row in cursor.fetchall()]
+        stack.extend(children)
+    return list(ids)
+
 @router.get("/products")
 def get_products(
     search: str = Query(None, description="Пошук по назві або штрихкоду"),
@@ -94,8 +143,10 @@ def get_products(
         query += " AND (Name LIKE ? OR Barcode LIKE ?)"
         params.extend([f"%{search.strip()}%", f"%{search.strip()}%"])
     if category:
-        query += " AND CategoryID = ?"
-        params.append(category)
+        cat_ids = get_all_subcategory_ids(db, category)
+        placeholders = ','.join('?' for _ in cat_ids)
+        query += f" AND CategoryID IN ({placeholders})"
+        params.extend(cat_ids)
     query += " ORDER BY ID DESC"
     cursor.execute(query, params)
     columns = [col[0] for col in cursor.description]

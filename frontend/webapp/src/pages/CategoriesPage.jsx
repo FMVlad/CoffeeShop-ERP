@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // Додаємо
 import { api } from '../api';
 
 const PRODUCT_TYPES = [
@@ -25,6 +26,7 @@ export default function CategoriesPage() {
     ProductCardTemplateID: null,
   });
   const [showForm, setShowForm] = useState(false);
+  const navigate = useNavigate(); // Додаємо
 
   useEffect(() => {
     api.getCategories().then(data => setCategories(Array.isArray(data) ? data : []));
@@ -114,7 +116,7 @@ export default function CategoriesPage() {
             <span style={{fontSize:24,fontWeight:700,color:'#fff',letterSpacing:0.5}}>Категорії товару</span>
           </div>
           <div style={{display:'flex',gap:12}}>
-            <button onClick={() => window.location.assign('/webapp')}
+            <button onClick={() => navigate("/")}
               style={{
                 background:'#e9ecef',color:'#333',border:'none',borderRadius:10,
                 padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'
@@ -146,8 +148,8 @@ export default function CategoriesPage() {
                   <select value={(editing ? editing.ProductType : newCategory.ProductType) || ""}
                     onChange={e => handleFormChange('ProductType', e.target.value)}
                     style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc',fontSize:16}}>
-                    {PRODUCT_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
-                  </select>
+            {PRODUCT_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
+          </select>
                 </div>
               </div>
               <div style={{display:'flex', gap:16}}>
@@ -156,10 +158,10 @@ export default function CategoriesPage() {
                   <select value={(editing ? editing.UnitID : newCategory.UnitID) ?? ""}
                     onChange={e => handleFormChange('UnitID', Number(e.target.value))}
                     style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc',fontSize:16}}>
-                    <option value="">Одиниця виміру</option>
-                    {units.map(u => <option key={u.ID} value={u.ID}>{u.UnitName} ({u.ShortName})</option>)}
-                  </select>
-                </div>
+            <option value="">Одиниця виміру</option>
+            {units.map(u => <option key={u.ID} value={u.ID}>{u.UnitName} ({u.ShortName})</option>)}
+          </select>
+        </div>
                 <div style={{flex:1}}>
                   <label style={{fontWeight:500}}>Шаблон картки:</label>
                   <select value={(editing ? editing.ProductCardTemplateID : newCategory.ProductCardTemplateID) ?? ""}
@@ -176,11 +178,11 @@ export default function CategoriesPage() {
                   <select value={(editing ? editing.ParentID : newCategory.ParentID) ?? ""}
                     onChange={e => handleFormChange('ParentID', e.target.value ? Number(e.target.value) : null)}
                     style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc',fontSize:16}}>
-                    <option value="">Без батьківської категорії</option>
+            <option value="">Без батьківської категорії</option>
                     {mainCategories.map(cat =>
-                      <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
-                    )}
-                  </select>
+              <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
+            )}
+          </select>
                 </div>
                 <div style={{flex:1}}>
                   <label style={{fontWeight:500}}>Код категорії:</label>
@@ -210,7 +212,7 @@ export default function CategoriesPage() {
                 Відміна
               </button>
             </div>
-          </div>
+        </div>
         )}
 
         {/* Таблиця категорій/підкатегорій */}

@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+import os
+
+# ====== ROUTERS ======
 from app.routes import menu
 from app.routes.categories import router as categories_router
 from app.routes.price_categories import router as price_categories_router
@@ -22,38 +24,43 @@ from app.routes.product_card_templates import router as product_card_templates_r
 from app.routes.product_card_template_fields import router as product_card_template_fields_router
 from app.routes import product_name_rules
 from app.routes.product_full_name_fields import router as product_full_name_fields_router
-
-import os
+from app.routes.center_companies import router as center_companies_router
+from app.routes.cashboxes_router import router as cashboxes_router
+from app.routes.centers_of_accounting_router import router as centers_of_accounting_router
+from app.routes.warehouses_router import router as warehouses_router
+from app.routes import users
+from app.routes.employees import router as employees_router
+from app.routes.roles import router as roles_router
+from app.routes.suppliers_router import router as suppliers_router
+from app.routes.auth import router as auth_router
+from app.routes import arrival_documents
 
 app = FastAPI(
-    title="CoffeeBot API",
-    description="API для управління меню кав'ярні",
+    title="VYSHNIA API",
+    description="API для управління підприємством",
     version="1.0.0"
 )
 
-# CORS middleware для всіх роутів (можна залишити так на розробку, потім для бойового — обмежити)
+# ===== CORS (dev) =====
+# Для локальної розробки простіше дозволити все. Коли підеш у прод — звузь до конкретних origin-ів.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],              # <-- було ["http://localhost:3000"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# React build (для деплоя фронта)
+# ==== Static directories ====
 current_dir = os.path.dirname(os.path.abspath(__file__))
 build_dir = os.path.join(current_dir, "..", "..", "frontend", "webapp", "build")
-print("Build dir:", build_dir)
-
-# Uploads directory (ПРАВИЛЬНО — на рівень вище, а не в app/uploads)
 uploads_dir = os.path.join(current_dir, "..", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
-print("Uploads dir:", uploads_dir)
 
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 app.mount("/webapp", StaticFiles(directory=build_dir, html=True), name="webapp")
 
-# API роутери
+# ===== API ROUTERS =====
 app.include_router(menu.router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
 app.include_router(price_categories_router, prefix="/api")
@@ -74,7 +81,17 @@ app.include_router(product_card_templates_router, prefix="/api")
 app.include_router(product_card_template_fields_router, prefix="/api")
 app.include_router(product_name_rules.router, prefix="/api")
 app.include_router(product_full_name_fields_router, prefix="/api")
+app.include_router(center_companies_router, prefix="/api")
+app.include_router(cashboxes_router, prefix="/api")
+app.include_router(centers_of_accounting_router, prefix="/api")
+app.include_router(warehouses_router, prefix="/api")
+app.include_router(users.router, prefix="/api")
+app.include_router(employees_router, prefix="/api")
+app.include_router(roles_router, prefix="/api")
+app.include_router(suppliers_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(arrival_documents.router, prefix="/api")
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to CoffeeBot API!"}
+    return {"message": "Welcome to VYSHNIA API!"}

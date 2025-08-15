@@ -4,107 +4,102 @@ import { api } from '../api';
 
 export default function ProductNameRulesPage() {
   const navigate = useNavigate();
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState(null);
+
   const [allFields, setAllFields] = useState([]);
   const [selectedFields, setSelectedFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // 1. Завантажуємо шаблони карток
   useEffect(() => {
-    loadAllData();
+    api.getProductCardTemplates().then(data => {
+      setTemplates(data);
+      // Автовибір першого шаблону (або останнього з localStorage)
+      const savedId = Number(localStorage.getItem('product_fullname_template_id'));
+      if (data.length) {
+        setTemplateId(savedId && data.some(t => t.ID === savedId) ? savedId : data[0].ID);
+      }
+    });
   }, []);
 
-  const loadAllData = async () => {
+  // 2. Завантажуємо дані по вибраному шаблону
+  useEffect(() => {
+    if (templateId) {
+      localStorage.setItem('product_fullname_template_id', templateId);
+      loadAllData(templateId);
+    }
+  }, [templateId]);
+
+  const loadAllData = async (tid) => {
+    setLoading(true);
     try {
-      // Завантажуємо всі поля з шаблону (templateId=3, щоб включити "Розмір")
-      const fieldsResponse = await fetch("http://localhost:8000/api/product-card-template-fields?template_id=3");
-      const fieldsData = await fieldsResponse.json();
-      
-      // Завантажуємо поточні правила формування назви
-      try {
-        const rulesResponse = await fetch("http://localhost:8000/api/product-full-name-fields");
-        const rulesData = await rulesResponse.json();
-        
-        // Створюємо список вибраних полів з порядком
-        const currentlySelected = rulesData
-          .filter(rule => rule.IsEnabled)
-          .sort((a, b) => a.DisplayOrder - b.DisplayOrder)
-          .map(rule => rule.SqlName);
-        
-        setSelectedFields(currentlySelected);
-      } catch (error) {
-        // Якщо API не працює, починаємо з порожнього списку
-        setSelectedFields([]);
-      }
-      
+      const fieldsData = await api.getProductCardTemplateFields(tid);
+      const rulesData = await api.getProductFullNameFields(tid);
+
+      // Формуємо список вибраних полів
+      const currentlySelected = (rulesData || [])
+        .filter(rule => rule.IsIncluded)
+        .sort((a, b) => a.DisplayOrder - b.DisplayOrder)
+        .map(rule => rule.SqlName);
+
       setAllFields(fieldsData);
-      setLoading(false);
+      setSelectedFields(currentlySelected);
     } catch (error) {
-      console.error("Помилка завантаження:", error);
+      setAllFields([]);
+      setSelectedFields([]);
+    } finally {
       setLoading(false);
     }
   };
 
+  // --- Тогли поля для формування назви
   const handleFieldToggle = (sqlName) => {
-    if (selectedFields.includes(sqlName)) {
-      setSelectedFields(prev => prev.filter(f => f !== sqlName));
-    } else {
-      setSelectedFields(prev => [...prev, sqlName]);
-    }
+    setSelectedFields(prev =>
+      prev.includes(sqlName)
+        ? prev.filter(f => f !== sqlName)
+        : [...prev, sqlName]
+    );
   };
 
+  // --- Переміщення поля вгору/вниз
   const moveField = (index, direction) => {
     const newSelected = [...selectedFields];
     const newIndex = index + direction;
-    
     if (newIndex >= 0 && newIndex < newSelected.length) {
       [newSelected[index], newSelected[newIndex]] = [newSelected[newIndex], newSelected[index]];
       setSelectedFields(newSelected);
     }
   };
 
+  // --- Збереження
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Створюємо правила для збереження
-      const rulesToSave = allFields.map((field) => ({
+      const rulesToSave = allFields.map(field => ({
         SqlName: field.SqlName,
-        IsEnabled: selectedFields.includes(field.SqlName),
-        DisplayOrder: selectedFields.indexOf(field.SqlName) !== -1 ? selectedFields.indexOf(field.SqlName) : 999
+        DisplayName: field.DisplayName,
+        IsIncluded: selectedFields.includes(field.SqlName),
+        DisplayOrder: selectedFields.includes(field.SqlName)
+          ? selectedFields.indexOf(field.SqlName)
+          : 999,
+        FieldID: field.FieldID || null
       }));
-
-      console.log("📤 Відправляємо правила:", rulesToSave);
-      console.log("🎯 Обрані поля:", selectedFields);
-
-      const response = await fetch("http://localhost:8000/api/product-full-name-fields", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rulesToSave)
-      });
-
-      console.log("📡 Відповідь сервера:", response.status, response.statusText);
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("✅ Результат:", result);
-        alert("✅ Правила збережено!");
-        loadAllData();
-      } else {
-        const errorText = await response.text();
-        console.error("❌ Помилка сервера:", errorText);
-        alert(`❌ Помилка збереження: ${response.status}`);
-      }
+      await api.saveProductFullNameFields(templateId, rulesToSave);
+      alert("✅ Правила збережено!");
+      loadAllData(templateId);
     } catch (error) {
-      console.error("❌ Помилка збереження:", error);
       alert(`❌ Помилка збереження: ${error.message}`);
     } finally {
     setSaving(false);
     }
   };
 
+  // --- Попередній перегляд
   const generatePreview = () => {
-    if (selectedFields.length === 0) return "Оберіть поля для формування назви";
-    
+    if (!selectedFields.length) return "Оберіть поля для формування назви";
     return selectedFields
       .map(sqlName => {
         const field = allFields.find(f => f.SqlName === sqlName);
@@ -113,11 +108,11 @@ export default function ProductNameRulesPage() {
       .join(" / ");
   };
 
+  // --- Оновлення повних імен для всіх товарів (по шаблону)
   const handleRefreshFullnames = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch('http://localhost:8000/api/products/refresh-fullnames', { method: 'POST' });
-      const result = await response.json();
+      const result = await api.refreshProductFullNames(templateId);
       alert(result.message || 'Оновлено!');
     } catch (error) {
       alert('Помилка оновлення: ' + error.message);
@@ -126,19 +121,20 @@ export default function ProductNameRulesPage() {
     }
   };
 
+  // --- Вивід
   if (loading) {
     return (
-      <div style={{ 
-        minHeight: "100vh", 
+      <div style={{
+        minHeight: "100vh",
         background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center"
       }}>
-        <div style={{ 
-          background: "white", 
-          borderRadius: 16, 
-          padding: 40, 
+        <div style={{
+          background: "white",
+          borderRadius: 16,
+          padding: 40,
           textAlign: "center",
           boxShadow: "0 10px 30px rgba(0,0,0,0.2)"
         }}>
@@ -150,9 +146,34 @@ export default function ProductNameRulesPage() {
   }
 
   return (
-    <div style={{background:'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',minHeight:'100vh',paddingTop:32}}>
+    <div style={{ background: 'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)', minHeight: '100vh', paddingTop: 32 }}>
       <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-        {/* Шапка */}
+        {/* --- Вибір шаблону --- */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ marginRight: 8, fontWeight: 600 }}>Шаблон картки:</label>
+         <select
+  value={templateId || ""}
+  onChange={e => setTemplateId(Number(e.target.value))}
+  style={{
+    minWidth: 240,      // або більше, якщо треба ще ширше
+    padding: '10px 14px',
+    borderRadius: 8,
+    border: '2px solid #6c757d',
+    fontSize: 16,
+    background: '#f8f9fa',
+    fontWeight: 600,
+    color: '#22105a',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    marginRight: 14,
+  }}
+>
+  {templates.map(tpl =>
+    <option value={tpl.ID} key={tpl.ID}>{tpl.Name || tpl.ID}</option>
+  )}
+</select>
+        </div>
+
+        {/* --- Шапка --- */}
         <div style={{
           background: "white",
           borderRadius: 16,
@@ -164,9 +185,9 @@ export default function ProductNameRulesPage() {
           alignItems: "center"
         }}>
           <div>
-            <h1 style={{ 
-              margin: 0, 
-              color: "#333", 
+            <h1 style={{
+              margin: 0,
+              color: "#333",
               fontSize: 28,
               display: "flex",
               alignItems: "center",
@@ -175,10 +196,10 @@ export default function ProductNameRulesPage() {
               🏷️ Формування назви товару
             </h1>
             <p style={{ margin: "8px 0 0 0", color: "#666", fontSize: 16 }}>
-              Налаштуйте які поля входитимуть у повну назву товару та їх порядок
+              Налаштуйте які поля входитимуть у повну назву товару та їх порядок для кожного шаблону
             </p>
           </div>
-          
+
           <button
             onClick={() => navigate("/")}
             style={{
@@ -199,7 +220,7 @@ export default function ProductNameRulesPage() {
           </button>
         </div>
 
-        {/* Превью результату */}
+        {/* --- Превью результату --- */}
         <div style={{
           background: "white",
           borderRadius: 16,
@@ -207,8 +228,8 @@ export default function ProductNameRulesPage() {
           marginBottom: 20,
           boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
         }}>
-          <h3 style={{ 
-            margin: "0 0 16px 0", 
+          <h3 style={{
+            margin: "0 0 16px 0",
             color: "#b85450",
             display: "flex",
             alignItems: "center",
@@ -217,7 +238,7 @@ export default function ProductNameRulesPage() {
           }}>
             👁️ Попередній перегляд назви
           </h3>
-          
+
           <div style={{
             background: "#f8f9fa",
             border: "2px solid #e9ecef",
@@ -233,6 +254,7 @@ export default function ProductNameRulesPage() {
           </div>
         </div>
 
+        {/* --- Доступні та обрані поля --- */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           {/* Доступні поля */}
           <div style={{
@@ -241,8 +263,8 @@ export default function ProductNameRulesPage() {
             padding: 24,
             boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
           }}>
-            <h3 style={{ 
-              margin: "0 0 20px 0", 
+            <h3 style={{
+              margin: "0 0 20px 0",
               color: "#007bff",
               display: "flex",
               alignItems: "center",
@@ -251,7 +273,6 @@ export default function ProductNameRulesPage() {
             }}>
               📋 Доступні поля
             </h3>
-            
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
               {allFields.map(field => (
                 <div
@@ -287,8 +308,8 @@ export default function ProductNameRulesPage() {
             padding: 24,
             boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
           }}>
-            <h3 style={{ 
-              margin: "0 0 20px 0", 
+            <h3 style={{
+              margin: "0 0 20px 0",
               color: "#28a745",
               display: "flex",
               alignItems: "center",
@@ -297,7 +318,6 @@ export default function ProductNameRulesPage() {
             }}>
               🎯 Обрані поля ({selectedFields.length})
             </h3>
-            
             {selectedFields.length === 0 ? (
               <div style={{
                 textAlign: "center",
@@ -314,7 +334,6 @@ export default function ProductNameRulesPage() {
                 {selectedFields.map((sqlName, index) => {
                   const field = allFields.find(f => f.SqlName === sqlName);
                   if (!field) return null;
-                  
                   return (
                     <div
                       key={sqlName}
@@ -337,7 +356,6 @@ export default function ProductNameRulesPage() {
                           {field.SqlName}
                         </div>
                       </div>
-                      
                       <div style={{ display: "flex", gap: 4 }}>
                         <button
                           onClick={() => moveField(index, -1)}
@@ -392,7 +410,7 @@ export default function ProductNameRulesPage() {
           </div>
         </div>
 
-        {/* Кнопки збереження */}
+        {/* --- Кнопки збереження --- */}
         <div style={{
           background: "white",
           borderRadius: 16,
@@ -418,9 +436,8 @@ export default function ProductNameRulesPage() {
           >
             ❌ Скасувати
           </button>
-          
-          <button
-            onClick={handleSave}
+      <button
+        onClick={handleSave}
             disabled={saving || selectedFields.length === 0}
             style={{
               background: saving || selectedFields.length === 0 ? "#e9ecef" : "#28a745",
@@ -437,7 +454,7 @@ export default function ProductNameRulesPage() {
           </button>
         </div>
 
-        {/* Підказка */}
+        {/* --- Підказка --- */}
         <div style={{
           background: "rgba(255,255,255,0.9)",
           borderRadius: 16,
@@ -450,16 +467,16 @@ export default function ProductNameRulesPage() {
           </h4>
           <div style={{ color: "#0056b3", fontSize: 14, lineHeight: 1.6 }}>
             <p style={{ margin: "0 0 8px 0" }}>
-              <strong>1.</strong> Клікайте на поля зліва щоб додати їх до формування назви
+              <strong>1.</strong> Обирай шаблон картки згори, тоді формуй правила.
             </p>
             <p style={{ margin: "0 0 8px 0" }}>
-              <strong>2.</strong> Змінюйте порядок стрілочками ⬆️⬇️ справа
+              <strong>2.</strong> Клікай на поля зліва — додаватимуться справа!
             </p>
             <p style={{ margin: "0 0 8px 0" }}>
-              <strong>3.</strong> Результат відображається у "Попередньому перегляді"
+              <strong>3.</strong> Змінюй порядок — стрілочки тобі на допомогу.
             </p>
             <p style={{ margin: 0 }}>
-              <strong>4.</strong> Натисніть "Зберегти" щоб застосувати зміни
+              <strong>4.</strong> Не забудь зберегти та оновити повні імена для всіх товарів!
             </p>
           </div>
         </div>
@@ -482,7 +499,7 @@ export default function ProductNameRulesPage() {
             }}
           >
             {refreshing ? "Оновлення..." : "🔄 Оновити повну назву у всіх товарах"}
-          </button>
+      </button>
         </div>
       </div>
     </div>

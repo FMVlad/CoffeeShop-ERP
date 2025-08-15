@@ -1,5 +1,24 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from '../api';
+
+// --- Ієрархія для селектора категорій ---
+function buildCategoryTree(categories, parentId = null) {
+  return categories
+    .filter(cat => String(cat.ParentID) === String(parentId))
+    .map(cat => ({
+      ...cat,
+      children: buildCategoryTree(categories, cat.ID),
+    }));
+}
+function renderCategoryOptions(tree, level = 0) {
+  return tree.flatMap(cat => [
+    <option key={cat.ID} value={cat.ID}>
+      {Array(level).fill(' ').join('')}
+      {level > 0 ? '▶ ' : ''}{cat.CategoryName}
+    </option>,
+    ...renderCategoryOptions(cat.children, level + 1)
+  ]);
+}
 
 export default function ProductCard({
   templateId = null,
@@ -98,11 +117,9 @@ export default function ProductCard({
   useEffect(() => {
     if (!templateFields.length) return;
     let timeout = setTimeout(async () => {
-      // Отримаємо поточну категорію
       const currentCategory = fields.CategoryID || (categories[0]?.ID || null);
       if (!currentCategory) return;
 
-      // Отримати правило формування (rule) з ProductNameRules
       let ruleObj = null;
       try {
         const rules = await api.getProductNameRules();
@@ -113,7 +130,6 @@ export default function ProductCard({
         return;
       }
 
-      // Формуємо values-об'єкт для rule
       const values = {};
       templateFields.forEach(f => {
         if (f.IsStandard) values[f.SqlName] = fields[f.SqlName] ?? "";
@@ -123,7 +139,6 @@ export default function ProductCard({
         if (fieldMeta) values[fieldMeta.SqlName] = a.Value;
       });
 
-      // Відправляємо на бекенд для генерації
       try {
         const resp = await api.generateProductFullName({
           rule: ruleObj.Rule,
@@ -133,13 +148,13 @@ export default function ProductCard({
       } catch {
         setFullName("");
       }
-    }, 300); // debounce 300мс
+    }, 300);
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line
   }, [fields, attributeValues, templateFields]);
 
-  // --- Категорія змінює шаблон і поля ---
+  // --- Категорія змінює шаблон і поля, але НЕ витирає значення якщо є ---
   const handleCategoryChange = async (categoryId) => {
     handleChange("CategoryID", categoryId);
     const selectedCat = categories.find(c => String(c.ID) === String(categoryId));
@@ -149,13 +164,21 @@ export default function ProductCard({
     const tFields = await api.getProductCardTemplateFields(templateIdToUse);
     setTemplateFields(tFields);
 
-    const newFields = {};
-    tFields.forEach(f => {
-      if (f.SqlName === "CategoryID") newFields[f.SqlName] = categoryId;
-      else newFields[f.SqlName] = "";
+    // Основні (стандартні) поля
+    setFields(prevFields => {
+      const newFields = {};
+      tFields.forEach(f => {
+        if (f.SqlName === "CategoryID") newFields[f.SqlName] = categoryId;
+        else newFields[f.SqlName] = prevFields[f.SqlName] ?? "";
+      });
+      return newFields;
     });
-    setFields(newFields);
-    setAttributeValues([]);
+
+    // Додаткові поля (атрибути)
+    setAttributeValues(prevAttrs => {
+      const allowedFieldIDs = tFields.filter(f => !f.IsStandard).map(f => f.ID);
+      return prevAttrs.filter(a => allowedFieldIDs.includes(a.FieldID));
+    });
   };
 
   // --- Для стандартних полів (Products) ---
@@ -210,13 +233,10 @@ export default function ProductCard({
         standardData[f.SqlName] = value;
       });
 
-      // --- Додаткові атрибути ---
       const additionalData = attributeValues.map(attr => ({
         FieldID: attr.FieldID,
         Value: attr.Value
       }));
-
-      // --- НЕ формуємо FullName тут! ---
 
       let response;
       if (isEditMode) {
@@ -246,6 +266,9 @@ export default function ProductCard({
     const { SqlName, DisplayName, FieldType, IsRequired, ID: FieldID, IsStandard } = field;
 
     if (SqlName === "CategoryID") {
+      // --- Ієрархічний селектор категорій ---
+      const tree = buildCategoryTree(categories);
+
       return (
         <div key={SqlName} style={{ marginBottom: 16 }}>
           <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
@@ -254,12 +277,13 @@ export default function ProductCard({
           <select
             value={fields[SqlName] || ""}
             onChange={e => handleCategoryChange(e.target.value)}
-            style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, background: "white", boxSizing: "border-box" }}
+            style={{
+              width: "100%", padding: "12px", borderRadius: 8,
+              border: "1px solid #ddd", fontSize: 14, background: "white", boxSizing: "border-box"
+            }}
           >
             <option value="">Оберіть категорію</option>
-            {categories.map(cat => (
-              <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
-            ))}
+            {renderCategoryOptions(tree)}
           </select>
         </div>
       );
@@ -413,7 +437,7 @@ export default function ProductCard({
       <div style={{ padding: "24px" }}>
         {activeTab === "details" && (
           <div style={{ display: "flex", gap: 24 }}>
-            <div style={{ flex: "0 0 200px" }}>
+                       <div style={{ flex: "0 0 200px" }}>
               <div style={{ marginBottom: 12, fontWeight: 600, fontSize: 14 }}>Фото</div>
               {getPhotoUrl() ? (
                 <div style={{ position: "relative" }}>
@@ -540,3 +564,4 @@ export default function ProductCard({
     </div>
   );
 }
+

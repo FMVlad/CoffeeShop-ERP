@@ -1,61 +1,95 @@
-import React, { useEffect, useState } from "react";
-import { useUser } from "../UserContext";
+import React, { createContext, useContext, useState, useEffect } from "react";
 
-export default function StatusBar() {
-  const { user, employee, role, centers, centerId, setCenterId } = useUser();
-  const [dateTime, setDateTime] = useState(new Date());
+const UserContext = createContext();
+
+export function UserProvider({ children }) {
+  // --- Ініціалізація зі сховища (sessionStorage) ---
+  const [user, setUser] = useState(() => {
+    const u = sessionStorage.getItem("user");
+    return u ? JSON.parse(u) : null;
+  });
+
+  const [employee, setEmployee] = useState(() => {
+    const e = sessionStorage.getItem("employee");
+    return e ? JSON.parse(e) : null;
+  });
+
+  const [centersRoles, setCentersRoles] = useState(() => {
+    const c = sessionStorage.getItem("centersRoles");
+    return c ? JSON.parse(c) : [];
+  });
+
+  const [centerId, setCenterId] = useState(() => {
+    const id = sessionStorage.getItem("centerId");
+    return id || "";
+  });
+
+  // --- Синхронізація зі сховищем ---
+  useEffect(() => {
+    if (user) sessionStorage.setItem("user", JSON.stringify(user));
+    else sessionStorage.removeItem("user");
+  }, [user]);
 
   useEffect(() => {
-    const timer = setInterval(() => setDateTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (employee) sessionStorage.setItem("employee", JSON.stringify(employee));
+    else sessionStorage.removeItem("employee");
+  }, [employee]);
 
-  const days = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "Пʼятниця", "Субота"];
-  const formattedDate = dateTime.toLocaleDateString();
-  const formattedTime = dateTime.toLocaleTimeString();
-  const dayOfWeek = days[dateTime.getDay()];
+  useEffect(() => {
+    if (centersRoles && centersRoles.length)
+      sessionStorage.setItem("centersRoles", JSON.stringify(centersRoles));
+    else sessionStorage.removeItem("centersRoles");
+  }, [centersRoles]);
+
+  useEffect(() => {
+    if (centerId) sessionStorage.setItem("centerId", centerId);
+    else sessionStorage.removeItem("centerId");
+  }, [centerId]);
+
+  // --- Функції ---
+  const login = (userObj) => setUser(userObj);
+
+  const selectEmployee = (employeeObj, centers, preferId) => {
+    setEmployee(employeeObj);
+    setCentersRoles(centers || []);
+    if (centers && centers.length) {
+      const found = centers.find(c => String(c.CenterID) === String(preferId));
+      setCenterId(found ? found.CenterID : centers[0].CenterID);
+    } else {
+      setCenterId("");
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+    setEmployee(null);
+    setCentersRoles([]);
+    setCenterId("");
+    // Повне очищення sessionStorage (тільки наші ключі!)
+    sessionStorage.removeItem("user");
+    sessionStorage.removeItem("employee");
+    sessionStorage.removeItem("centersRoles");
+    sessionStorage.removeItem("centerId");
+  };
 
   return (
-    <div style={{
-      background: "#faf6f0",
-      borderBottom: "2px solid #ebd9b3",
-      fontSize: 18,
-      padding: "7px 24px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between"
+    <UserContext.Provider value={{
+      user,
+      login,
+      logout,
+      employee,
+      setEmployee,
+      selectEmployee,
+      centersRoles,
+      setCentersRoles,
+      centerId,
+      setCenterId,
     }}>
-      <div>
-        <b>{formattedDate} {formattedTime}</b> ({dayOfWeek})
-      </div>
-      <div>
-        {user && <span style={{marginRight:18}}><b>{user.username}</b> (користувач)</span>}
-        {employee && <span style={{marginRight:18}}><b>{employee.LastName} {employee.FirstName}</b> (співробітник)</span>}
-        {role && <span style={{marginRight:18}}>Роль: <b>{role}</b></span>}
-        {/* Ось це — перемикач центру обліку */}
-        {centers && centers.length > 1 ? (
-          <select
-            value={centerId || ""}
-            onChange={e => setCenterId(e.target.value)}
-            style={{
-              fontSize: 17,
-              padding: "4px 10px",
-              borderRadius: 7,
-              border: "1px solid #bdbdbd",
-              marginLeft: 16,
-              background: "#fff",
-              minWidth: 130
-            }}
-          >
-            <option value="">— Центр обліку —</option>
-            {centers.map(c => (
-              <option key={c.ID} value={c.ID}>{c.Name}</option>
-            ))}
-          </select>
-        ) : centers && centers.length === 1 ? (
-          <span style={{marginLeft: 12, color: "#8e630e"}}>Центр обліку: <b>{centers[0].Name}</b></span>
-        ) : null}
-      </div>
-    </div>
+      {children}
+    </UserContext.Provider>
   );
+}
+
+export function useUser() {
+  return useContext(UserContext);
 }

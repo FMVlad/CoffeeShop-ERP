@@ -4,7 +4,6 @@ import ProductCard from '../components/ProductCard';
 import Barcode from 'react-barcode';
 import { useNavigate } from 'react-router-dom';
 
-// Красивий градієнт для шапки
 const headerStyle = {
   background: 'linear-gradient(90deg,#7c6aea 0%,#a798f6 70%,#b7862b 100%)',
   borderRadius: '20px',
@@ -19,6 +18,18 @@ const headerStyle = {
   position: 'relative',
 };
 
+// ——— утиліта для ієрархії
+function getIndentedCategories(categories, parentId = null, level = 0) {
+  let result = [];
+  categories
+    .filter(c => String(c.ParentID) === String(parentId))
+    .forEach(c => {
+      result.push({ ...c, _level: level });
+      result = result.concat(getIndentedCategories(categories, c.ID, level + 1));
+    });
+  return result;
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -30,12 +41,10 @@ export default function ProductsPage() {
   const searchInputRef = useRef(null);
   const navigate = useNavigate();
 
-  // ---- Завантаження категорій ----
   useEffect(() => {
     api.getCategories().then(cats => setCategories(cats || []));
   }, []);
 
-  // ---- Головна логіка завантаження ----
   useEffect(() => {
     loadData();
     // eslint-disable-next-line
@@ -44,9 +53,7 @@ export default function ProductsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // --- ГОЛОВНА ЗМІНА — використовуй api.getProducts!
       const productsData = await api.getProducts(search, category);
-      // --- Додавання FullName ---
       const productsWithFullName = await Promise.all(
         (Array.isArray(productsData) ? productsData : []).map(async (prod) => {
           try {
@@ -65,7 +72,6 @@ export default function ProductsPage() {
     }
   };
 
-  // --- Видалення товару ---
   const handleDeleteProduct = async (product) => {
     if (window.confirm('Видалити цей товар?')) {
       await api.deleteProduct(product.ID);
@@ -73,7 +79,6 @@ export default function ProductsPage() {
     }
   };
 
-  // --- Відмальовка форми редагування ---
   if (showProductCard) {
     return (
       <div style={{ marginLeft: 240, padding: 20 }}>
@@ -93,9 +98,8 @@ export default function ProductsPage() {
     );
   }
 
-  // --- Основна сторінка ---
   return (
-        <div style={{
+    <div style={{
       background: 'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',
       minHeight: '100vh', width: '100vw', padding: '32px 0'
     }}>
@@ -148,10 +152,13 @@ export default function ProductsPage() {
             style={{ flex: 1, padding: 12, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
           >
             <option value="">Усі категорії</option>
-            {categories.map(cat => (
-              <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
-            ))}
-          </select>
+            {getIndentedCategories(categories).map(cat => (
+              <option key={cat.ID} value={cat.ID}>
+                {cat._level > 0 ? "— ".repeat(cat._level) + "▶ " : ""}
+                {cat.CategoryName}
+              </option>
+          ))}
+        </select>
           <button
             onClick={() => { setSearch(''); setCategory(''); }}
             style={{
@@ -166,7 +173,7 @@ export default function ProductsPage() {
             textAlign: "center", color: "#636e72", fontSize: 22, padding: 100
           }}>
             Завантаження...
-          </div>
+      </div>
         ) : (
           <div style={{
             display: "grid",
@@ -195,15 +202,15 @@ export default function ProductsPage() {
                       <img
                         src={`http://localhost:8000/api/preview/${product.Photo}`}
                         alt={product.Name}
-                        style={{
+                      style={{
                           width: "100%",
                           height: "100%",
                           objectFit: "contain",
                           borderRadius: 12,
                           background: "#f8f9fa"
                         }}
-                      />
-                    ) : (
+                    />
+                  ) : (
                       <div style={{
                         width: "100%",
                         height: "100%",
@@ -273,7 +280,7 @@ export default function ProductsPage() {
                     >
                       ✏️ Редагувати
                     </button>
-                    <button
+                  <button
                       onClick={() => handleDeleteProduct(product)}
                       style={{
                         flex: 1,
@@ -288,7 +295,7 @@ export default function ProductsPage() {
                       }}
                     >
                       🗑️ Видалити
-                    </button>
+                  </button>
                   </div>
                 </div>
               )

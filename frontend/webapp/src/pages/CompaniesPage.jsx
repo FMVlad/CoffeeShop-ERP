@@ -1,154 +1,122 @@
 import React, { useEffect, useState } from "react";
-import { api } from '../api'
+import { api } from '../api';
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [accounts, setAccounts] = useState([]);
-  const [newCompany, setNewCompany] = useState({
-    Name: "", ShortName: "", EDRPOU: "", INN: "", Address: "", RegistrationInfo: "", TaxInfo: "", MainAccountID: ""
-  });
-  const [editingCompany, setEditingCompany] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyCompany());
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
-    api.getCompanies().then(setCompanies);
+    refresh();
     api.getSettlementAccounts().then(setAccounts);
   }, []);
 
-  const addCompany = async () => {
-    if (!newCompany.Name) return;
-    await api.addCompany(newCompany);
-    setNewCompany({ Name: '', ShortName: '', EDRPOU: '', INN: '', Address: '', RegistrationInfo: '', TaxInfo: '', MainAccountID: '' });
+  function refresh() {
     api.getCompanies().then(setCompanies);
-  };
+  }
 
-  const saveEditCompany = async () => {
-    if (!editingCompany) return;
-    await api.updateCompany(editingCompany);
-    setEditingCompany(null);
-    api.getCompanies().then(setCompanies);
-  };
+  function emptyCompany() {
+    return {
+      Name: "", ShortName: "", EDRPOU: "", IPN: "", Address: "", RegistrationInfo: "", TaxInfo: "", MainAccountID: ""
+    };
+  }
 
-  const deleteCompany = async (id) => {
-    await api.deleteCompany(id);
-    api.getCompanies().then(setCompanies);
-  };
+  function handleAddClick() {
+    setForm(emptyCompany());
+    setEditingId(null);
+    setShowForm(true);
+  }
+
+  function handleEditClick(company) {
+    setForm({ ...company });
+    setEditingId(company.ID);
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!form.Name) return;
+    if (editingId) {
+      await api.updateCompany({ ...form, ID: editingId });
+    } else {
+      await api.addCompany(form);
+    }
+    setShowForm(false);
+    setEditingId(null);
+    refresh();
+  }
+
+  async function handleDelete(id) {
+    if (window.confirm("Видалити підприємство?")) {
+      await api.deleteCompany(id);
+      refresh();
+    }
+  }
+
+  function handleCloseForm() {
+    setShowForm(false);
+    setEditingId(null);
+  }
 
   return (
-    <div style={{ marginLeft: 280, padding: 32 }}>
-      <h2>Підприємства</h2>
-      {editingCompany ? (
-        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 32, marginBottom: 32, maxWidth: 600 }}>
-          <h3 style={{marginBottom: 18, fontWeight: 700}}>Редагувати підприємство</h3>
-          <div style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>Скорочено:</label>
-                <input value={editingCompany.ShortName} onChange={e=>setEditingCompany({...editingCompany,ShortName:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Назва:</label>
-                <input value={editingCompany.Name} onChange={e=>setEditingCompany({...editingCompany,Name:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-            </div>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>ЄДРПОУ:</label>
-                <input value={editingCompany.EDRPOU} onChange={e=>setEditingCompany({...editingCompany,EDRPOU:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>ІПН:</label>
-                <input value={editingCompany.IPN} onChange={e=>setEditingCompany({...editingCompany,IPN:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-            </div>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Адреса:</label>
-                <input value={editingCompany.Address} onChange={e=>setEditingCompany({...editingCompany,Address:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Розрахунковий рахунок:</label>
-                <select value={editingCompany.MainAccountID} onChange={e=>setEditingCompany({...editingCompany,MainAccountID:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}>
-                  <option value="">— Розрахункові —</option>
-                  {accounts.map(acc => (
-                    <option key={acc.ID} value={acc.ID}>{acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
-              <button onClick={saveEditCompany} style={{background:'#c4282d',color:'#fff',border:'none',borderRadius:8,padding:'12px 32px',fontWeight:600,fontSize:16}}>Зберегти</button>
-              <button onClick={()=>setEditingCompany(null)} style={{background:'#6c757d',color:'#fff',border:'none',borderRadius:8,padding:'12px 32px',fontWeight:600,fontSize:16,marginLeft:12}}>Відміна</button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 32, marginBottom: 32, maxWidth: 600 }}>
-          <h3 style={{marginBottom: 18, fontWeight: 700}}>Додати підприємство</h3>
-          <div style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>Скорочено:</label>
-                <input value={newCompany.ShortName} onChange={e=>setNewCompany({...newCompany,ShortName:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Назва:</label>
-                <input value={newCompany.Name} onChange={e=>setNewCompany({...newCompany,Name:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-            </div>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>ЄДРПОУ:</label>
-                <input value={newCompany.EDRPOU} onChange={e=>setNewCompany({...newCompany,EDRPOU:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:1}}>
-                <label style={{fontWeight:500}}>ІПН:</label>
-                <input value={newCompany.IPN} onChange={e=>setNewCompany({...newCompany,IPN:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-            </div>
-            <div style={{display:'flex', gap:16}}>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Адреса:</label>
-                <input value={newCompany.Address} onChange={e=>setNewCompany({...newCompany,Address:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}/>
-              </div>
-              <div style={{flex:2}}>
-                <label style={{fontWeight:500}}>Розрахунковий рахунок:</label>
-                <select value={newCompany.MainAccountID} onChange={e=>setNewCompany({...newCompany,MainAccountID:e.target.value})} style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}>
-                  <option value="">— Розрахункові —</option>
-                  {accounts.map(acc => (
-                    <option key={acc.ID} value={acc.ID}>{acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div style={{display:'flex', justifyContent:'flex-end', marginTop:12}}>
-              <button onClick={addCompany} style={{background:'#c4282d',color:'#fff',border:'none',borderRadius:8,padding:'12px 32px',fontWeight:600,fontSize:16}}>Додати</button>
-            </div>
+    <div style={{ maxWidth: 1100, margin: "50px auto", padding: 0 }}>
+      <h2 style={{
+        marginBottom: 18, fontWeight: 800, fontSize: 34, letterSpacing: ".01em"
+      }}>Підприємства</h2>
+
+      <button
+        style={addBtnStyle}
+        onClick={handleAddClick}
+      >
+        + Додати підприємство
+      </button>
+
+      {/* --- ФОРМА ДОДАВАННЯ/РЕДАГУВАННЯ --- */}
+      {showForm && (
+        <div style={modalCardStyle}>
+          <h3 style={{ marginBottom: 18, fontWeight: 700 }}>
+            {editingId ? "Редагувати підприємство" : "Додати підприємство"}
+          </h3>
+          <CompanyForm
+            form={form}
+            setForm={setForm}
+            accounts={accounts}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <button onClick={handleSave} style={saveBtnStyle}>
+              {editingId ? "Зберегти" : "Додати"}
+            </button>
+            <button onClick={handleCloseForm} style={cancelBtnStyle}>Відміна</button>
           </div>
         </div>
       )}
-      <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 24, marginTop: 0 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e0c9a0', background: '#fff', marginTop: 12 }}>
+
+      <div style={tableWrapStyle}>
+        <table style={tableStyle}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #e0c9a0' }}>
-              <th style={{ textAlign: 'left', padding: '8px 0', borderRight: '1px solid #e0c9a0' }}>Назва</th>
-              <th style={{ textAlign: 'left', borderRight: '1px solid #e0c9a0' }}>ЄДРПОУ</th>
-              <th style={{ textAlign: 'left', borderRight: '1px solid #e0c9a0' }}>ІПН</th>
-              <th style={{ textAlign: 'left', borderRight: '1px solid #e0c9a0' }}>Адреса</th>
-              <th style={{ textAlign: 'left', borderRight: '1px solid #e0c9a0' }}>Рахунок</th>
-              <th style={{ textAlign: 'left' }}>Дії</th>
+            <tr>
+              <th style={headerCellStyle}>Назва</th>
+              <th style={headerCellStyle}>ЄДРПОУ</th>
+              <th style={headerCellStyle}>ІПН</th>
+              <th style={headerCellStyle}>Адреса</th>
+              <th style={headerCellStyle}>Рахунок</th>
+              <th style={{ ...headerCellStyle, textAlign: 'center', minWidth: 110 }}>Дії</th>
             </tr>
           </thead>
           <tbody>
             {companies.map(c =>
-              <tr key={c.ID}>
-                <td>{c.Name}</td>
-                <td>{c.EDRPOU}</td>
-                <td>{c.INN}</td>
-                <td>{c.Address}</td>
-                <td>{accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}</td>
-                <td>
-                  <button onClick={()=>setEditingCompany(c)} style={{marginRight:8}}>✏️</button>
-                  <button onClick={()=>deleteCompany(c.ID)} style={{marginRight:8}}>🗑️</button>
+              <tr key={c.ID} style={rowStyle}>
+                <td style={cellStyle}>{c.Name}</td>
+                <td style={cellStyle}>{c.EDRPOU}</td>
+                <td style={cellStyle}>{c.IPN}</td>
+                <td style={cellStyle}>{c.Address}</td>
+                <td style={cellStyle}>
+                  {accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}
+                </td>
+                <td style={{ ...cellStyle, textAlign: "center" }}>
+                  <button onClick={() => handleEditClick(c)} style={editBtnStyle} title="Редагувати">✏️</button>
+                  <button onClick={() => handleDelete(c.ID)} style={deleteBtnStyle} title="Видалити">🗑️</button>
                 </td>
               </tr>
             )}
@@ -158,3 +126,188 @@ export default function CompaniesPage() {
     </div>
   );
 }
+
+// --- FORM FIELDS --- //
+function CompanyForm({ form, setForm, accounts }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Скорочено:</label>
+          <input
+            value={form.ShortName}
+            onChange={e => setForm(f => ({ ...f, ShortName: e.target.value }))}
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 2 }}>
+          <label style={labelStyle}>Назва:</label>
+          <input
+            value={form.Name}
+            onChange={e => setForm(f => ({ ...f, Name: e.target.value }))}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>ЄДРПОУ:</label>
+          <input
+            value={form.EDRPOU}
+            onChange={e => setForm(f => ({ ...f, EDRPOU: e.target.value }))}
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>ІПН:</label>
+          <input
+            value={form.IPN}
+            onChange={e => setForm(f => ({ ...f, IPN: e.target.value }))}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ flex: 2 }}>
+          <label style={labelStyle}>Адреса:</label>
+          <input
+            value={form.Address}
+            onChange={e => setForm(f => ({ ...f, Address: e.target.value }))}
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 2 }}>
+          <label style={labelStyle}>Розрахунковий рахунок:</label>
+          <select
+            value={form.MainAccountID || ""}
+            onChange={e => setForm(f => ({ ...f, MainAccountID: e.target.value }))}
+            style={inputStyle}
+          >
+            <option value="">— Розрахункові —</option>
+            {accounts.map(acc => (
+              <option key={acc.ID} value={acc.ID}>
+                {acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- СТИЛІ --- //
+const addBtnStyle = {
+  background: "#208f41",
+  color: "#fff",
+  padding: "12px 32px",
+  borderRadius: 10,
+  fontSize: 18,
+  border: "none",
+  fontWeight: 700,
+  cursor: "pointer",
+  boxShadow: "0 2px 8px #0001",
+  marginBottom: 18
+};
+const tableWrapStyle = {
+  background: '#fff',
+  borderRadius: 18,
+  boxShadow: '0 4px 24px #0001',
+  padding: 0,
+  marginTop: 0,
+  overflow: "hidden",
+  marginBottom: 24,
+};
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'separate',
+  borderSpacing: 0,
+  border: "2px solid #000",
+  background: '#fff',
+  borderRadius: 18,
+  fontFamily: "inherit",
+  overflow: "hidden"
+};
+const headerCellStyle = {
+  textAlign: 'left',
+  fontWeight: 700,
+  fontSize: 16,
+  padding: '16px 14px',
+  background: '#e8d7f7',
+  color: "#1a103a",
+  border: "2px solid #000",
+};
+const cellStyle = {
+  padding: '16px 14px',
+  border: "2px solid #000",
+  background: "#fff",
+  fontSize: 15,
+  color: "#22105a"
+};
+const rowStyle = {
+  background: "#fff"
+};
+const labelStyle = {
+  fontWeight: 500,
+  marginBottom: 3,
+  display: "inline-block"
+};
+const inputStyle = {
+  width: '100%',
+  padding: 11,
+  borderRadius: 9,
+  border: '1px solid #ccc',
+  fontSize: 16,
+  marginTop: 2,
+  marginBottom: 0
+};
+const modalCardStyle = {
+  background: '#fff',
+  borderRadius: 16,
+  boxShadow: '0 4px 24px #0001',
+  padding: 32,
+  marginBottom: 32,
+  maxWidth: 650
+};
+const saveBtnStyle = {
+  background: '#208f41',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  padding: '12px 32px',
+  fontWeight: 600,
+  fontSize: 16,
+  cursor: "pointer"
+};
+const cancelBtnStyle = {
+  background: '#6c757d',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  padding: '12px 32px',
+  fontWeight: 600,
+  fontSize: 16,
+  marginLeft: 12,
+  cursor: "pointer"
+};
+const editBtnStyle = {
+  background: "#fff8c5",
+  border: "2px solid #c0b31c",
+  borderRadius: 8,
+  color: "#856800",
+  fontWeight: 700,
+  padding: "7px 14px",
+  marginRight: 10,
+  fontSize: 20,
+  cursor: "pointer"
+};
+const deleteBtnStyle = {
+  background: "#ffe3e3",
+  border: "2px solid #d64040",
+  borderRadius: 8,
+  color: "#d64040",
+  fontWeight: 700,
+  padding: "7px 14px",
+  fontSize: 20,
+  cursor: "pointer"
+};

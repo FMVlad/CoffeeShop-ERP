@@ -2,107 +2,138 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 
 const mainMenu = [
-  { key: "admin", title: "Адмін", icon: "🏠", route: "/admin" },
+  { key: "admin", title: "Адмін", icon: "🧭", route: "/admin", hint: "Панель адміністратора" },
   {
     key: "dictionaries",
     title: "Довідники",
     icon: "📚",
+    hint: "Категорії, виробники, товари…",
     submenu: [
       { key: "categories", title: "Категорії товару", icon: "📦", route: "/categories" },
       { key: "manufacturers", title: "Виробники", icon: "🏭", route: "/manufacturers" },
+      { key: "suppliers", title: "Постачальники", icon: "🚚", route: "/suppliers" },
       { key: "products", title: "Товари", icon: "🥤", route: "/products" },
-      { key: "units", title: "Валюти та курси", icon: "💴", route: "/currencies" },
+      { key: "currencies", title: "Валюти та курси", icon: "💴", route: "/currencies" },
       { key: "price-categories", title: "Цінові категорії", icon: "💸", route: "/price-categories" },
-      { key: "product-prices", title: "Прайс-листи", icon: "💰", route: "/price-list" },
-      // Додавай нові довідники тут!
+      { key: "price-list", title: "Прайс-листи", icon: "💰", route: "/price-list" },
     ],
   },
-  { key: "docs", title: "Документи", icon: "📑", route: "/docs" },
-  { key: "fin", title: "Фінанси", icon: "💰", route: "/finances" },
-  { key: "stock", title: "Товари та залишки", icon: "📦", route: "/stock" },
-  { key: "marketing", title: "Маркетинг і клієнти", icon: "🎯", route: "/marketing" },
+  { key: "docs", title: "Документи", icon: "📑", route: "/docs", hint: "Прибуткові, видаткові…" },
+  { key: "fin", title: "Фінанси", icon: "💰", route: "/finances", hint: "Розрахункові рахунки, каси" },
+  { key: "stock", title: "Склади", icon: "🏬", route: "/stock", hint: "Залишки, переміщення" },
+  { key: "marketing", title: "Маркетинг", icon: "🎯", route: "/marketing", hint: "Акції, ціни" },
   {
     key: "settings",
     title: "Налаштування",
     icon: "⚙️",
+    hint: "Параметри системи",
     submenu: [
       { key: "system-parameters", title: "Системні параметри", icon: "🛠️", route: "/system-parameters" },
       { key: "programm-parameters", title: "Програмні параметри", icon: "🧩", route: "/programm-parameters" },
-            // Додавай інші налаштування тут!
     ],
   },
-  { key: "help", title: "Допомога", icon: "❓", route: "/help" },
+  { key: "help", title: "Допомога", icon: "❓", route: "/help", hint: "Довідка та підтримка" },
 ];
 
-export default function MainMenu() {
+export default function MainMenuCards() {
   const navigate = useNavigate();
-  const [openSubmenu, setOpenSubmenu] = React.useState(null);
+  const [openKey, setOpenKey] = React.useState(null);
 
-  const handleCardClick = (item) => {
-    if (item.submenu) {
-      setOpenSubmenu(item.key === openSubmenu ? null : item.key);
-    } else if (item.route) {
-      navigate(item.route);
-    }
+  const onCardActivate = (item) => {
+    if (item.submenu) setOpenKey(openKey === item.key ? null : item.key);
+    else if (item.route) navigate(item.route);
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-tr from-coffee-50 via-white to-coffee-100">
-      {/* Горизонтальна панель з кнопками */}
-      <div className="flex flex-wrap justify-center gap-6 p-4 shadow-md bg-white z-10">
+    <div className="min-h-screen bg-gradient-to-tr from-coffee-50 via-white to-coffee-100 flex flex-col">
+      {/* Контент */}
+      <div className="max-w-7xl mx-auto px-4 py-8 w-full">
+        <h1 className="text-2xl md:text-3xl font-semibold text-coffee-800 mb-6">Головне меню</h1>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {mainMenu.map((item) => (
-          <div key={item.key} className="relative">
-            <button
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-lg shadow bg-white hover:bg-rose-50 border border-coffee-100 transition"
-              onClick={() => handleCardClick(item)}
+            <article
+              key={item.key}
+              tabIndex={0}
+              role="button"
+              aria-haspopup={item.submenu ? "true" : undefined}
+              aria-expanded={openKey === item.key}
+              onClick={() => onCardActivate(item)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onCardActivate(item)}
+              className={[
+                "group relative rounded-2xl border border-coffee-100 bg-white shadow-sm",
+                "hover:shadow-lg hover:-translate-y-0.5 transition-all",
+                "focus:outline-none focus:ring-2 focus:ring-rose-300",
+                openKey === item.key ? "ring-1 ring-rose-300" : "",
+              ].join(" ")}
             >
-              <span className="text-2xl">{item.icon}</span>
-              <span>{item.title}</span>
-              {item.submenu && (
-                <span className="ml-2 text-coffee-500 text-lg pointer-events-none">▼</span>
+              <div className="p-5 flex items-start gap-4">
+                <div className="text-3xl leading-none select-none">{item.icon}</div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-semibold text-coffee-900 truncate">{item.title}</h2>
+                  {item.hint && <p className="text-sm text-coffee-500 mt-1 line-clamp-2">{item.hint}</p>}
+                </div>
+                {item.submenu && <div className="ml-2 text-coffee-400 group-hover:text-coffee-600">▾</div>}
+              </div>
+
+              {!item.submenu && (
+                <div className="px-5 pb-5">
+                  <button className="w-full rounded-xl border border-coffee-200 py-2 text-sm text-coffee-700 hover:bg-coffee-50">
+                    Перейти
+                  </button>
+                </div>
               )}
-            </button>
-            {/* Випадаюче підменю для Довідники або Налаштування */}
-            {item.submenu && openSubmenu === item.key && (
-              <div className="absolute left-0 right-0 mt-2 bg-white border border-coffee-200 rounded-xl shadow-xl z-20">
-                <div className="flex flex-col divide-y">
+
+              {item.submenu && openKey === item.key && (
+                <div className="px-5 pb-5">
+                  <div className="grid grid-cols-1 gap-2">
                   {item.submenu.map((sub) => (
                     <button
                       key={sub.key}
-                      className="flex items-center gap-3 py-3 px-6 text-left hover:bg-coffee-50 transition"
-                      onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                         navigate(sub.route);
-                        setOpenSubmenu(null);
+                          setOpenKey(null);
                       }}
+                        className="flex items-center gap-3 rounded-xl border border-coffee-200 px-4 py-2 text-left hover:bg-coffee-50"
                     >
-                      <span className="text-2xl">{sub.icon}</span>
-                      <span className="text-base">{sub.title}</span>
+                        <span className="text-xl">{sub.icon}</span>
+                        <span className="text-sm text-coffee-800">{sub.title}</span>
                     </button>
                   ))}
                 </div>
-                <div className="flex justify-end p-2">
+                  <div className="flex justify-end pt-3">
                   <button
-                    className="text-coffee-500 hover:text-coffee-800 text-sm"
-                    onClick={() => setOpenSubmenu(null)}
+                      className="text-sm text-coffee-500 hover:text-coffee-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenKey(null);
+                      }}
                   >
                     Закрити
                   </button>
                 </div>
               </div>
             )}
+            </article>
+          ))}
           </div>
-        ))}
       </div>
 
-      {/* Центр сторінки — лого */}
-      <div className="flex-grow flex flex-col items-center justify-center">
+      {/* Футер з логотипом — ЗБІЛЬШЕНО */}
+      <footer className="mt-auto border-t border-coffee-100 bg-white/80 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 py-8 flex items-center justify-center gap-4">
         <img
   src="/webapp/logo.png"
-  alt="VISHNIA Logo"
-  className="w-[420px] max-w-full select-none mb-4"
-  style={{ pointerEvents: 'none' }}
-        />
+            alt="VISHNIA"
+            className="h-18 md:h-20 w-auto select-none"
+            draggable="false"
+          />
+          <span className="text-base md:text-lg font-medium text-coffee-700 tracking-wide">
+            VISHNIA
+          </span>
       </div>
+      </footer>
     </div>
   );
 }

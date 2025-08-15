@@ -79,8 +79,10 @@ async function fetchJSON(
 
   if (!res.ok) {
     const msg =
-      (payload && (payload.message || payload.detail || (typeof payload === "string" ? payload : null))) ||
-      `HTTP ${res.status}`;
+      (payload && typeof payload === "object" && (payload.detail || payload.message)) ||
+      (typeof payload === "string" ? payload : `HTTP ${res.status}`);
+    // Debug log with full context to help diagnose 400s
+    console.error("[API ERROR]", { path, method, status: res.status, msg, payload });
     const err = new Error(msg);
     err.status = res.status;
     err.details = payload;
@@ -133,7 +135,7 @@ export const loginUser = async (data) => {
   return await response.json();
 };
 
-// --- Категорії ---
+  // --- Категорії ---
 export const getCategories = () => fetchJSON("/categories");
 export const addCategory = (data) =>
   fetchJSON("/categories", { method: "POST", data });
@@ -304,7 +306,7 @@ export const getTypicalOperationEntries = (operationId) =>
   fetchJSON(`/typical-operations/${operationId}/entries`);
 export const saveTypicalOperationEntries = (operationId, entries) =>
   fetchJSON(`/typical-operations/${operationId}/entries`, {
-    method: "POST",
+      method: "POST",
     data: entries,
   });
 
@@ -332,7 +334,7 @@ export const uploadProductPhoto = async (productId, file) => {
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const resp = await fetchRaw(`/products/${productId}/upload-photo`, {
-    method: "POST",
+      method: "POST",
     body: formData,
     headers,
   });
@@ -533,6 +535,10 @@ export const deleteArrivalDocItem = (docId, itemId) =>
  export const postArrivalDocPostings = (id) =>
   fetchJSON(`/arrival-documents/${id}/postings`, { method: 'POST' });
 
+// Скасувати проведення прибуткової
+export const cancelArrivalDocPostings = (id) =>
+  fetchJSON(`/arrival-documents/${id}/postings`, { method: 'DELETE' });
+
 // --- Глобальний експорт ---
 export const api = {
   // Категорії
@@ -692,5 +698,6 @@ export const api = {
   updateArrivalDocItem,
   deleteArrivalDocItem,
   postArrivalDocPostings,
+  cancelArrivalDocPostings,
 
 };
