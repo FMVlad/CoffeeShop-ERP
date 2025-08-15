@@ -29,7 +29,10 @@ import SuppliersPage from "./pages/SuppliersPage";
 // НОВЕ: документи
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import ArrivalDocumentsPage from "./pages/ArrivalDocumentsPage.jsx";
+import AdminLayout from "./pages/AdminLayout.jsx";
 import AdminServicePage from "./pages/AdminServicePage.jsx";
+import AdminSystemParameters from "./pages/AdminSystemParameters.jsx";
+import AdminBackupPage from "./pages/AdminBackupPage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -126,7 +129,11 @@ function AppRoutes() {
                   {/* Документи */}
                   <Route path="/docs" element={<DocumentsPage />} />
                   <Route path="/docs/arrivals" element={<ArrivalDocumentsPage />} />
-                  <Route path="/admin" element={<AdminServicePage />} />
+                  <Route path="/admin" element={<AdminLayout />} >
+                    <Route index element={<AdminServicePage />} />
+                    <Route path="system" element={<AdminSystemParameters />} />
+                    <Route path="backup" element={<AdminBackupPage />} />
+                  </Route>
 
                   {/* можна додати інші документи тут пізніше */}
                 </Routes>

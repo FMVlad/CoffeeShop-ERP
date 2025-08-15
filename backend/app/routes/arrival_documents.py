@@ -303,6 +303,30 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         ),
         (doc_id,),
     )
+    # Load postings if exist
+    postings: list[dict[str, Any]] = []
+    try:
+        rows = _fetch_all(
+            db,
+            (
+                "SELECT DebitAccountID, CreditAccountID, Amount, Comment FROM DocumentPostings "
+                "WHERE DocumentID = ? AND (DocumentType='Arrival' OR DocumentType='ARRIVAL') "
+                "ORDER BY PostingDate, ID"
+            ),
+            (doc_id,),
+        )
+        line_no = 1
+        for r in rows:
+            postings.append({
+                "LineNo": line_no,
+                "DebitAccount": r[0],
+                "CreditAccount": r[1],
+                "Amount": float(r[2] or 0),
+                "Comment": r[3] or "",
+            })
+            line_no += 1
+    except Exception:
+        postings = []
     result = {
         "ID": int(head[0]),
         "Number": head[1],
@@ -331,6 +355,7 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             }
             for r in items
         ],
+        "Postings": postings,
     }
     return result
 
