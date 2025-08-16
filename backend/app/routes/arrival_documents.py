@@ -703,7 +703,22 @@ def update_arrival_document(doc_id: int, payload: Dict[str, Any], db: pyodbc.Con
 def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     cursor = db.cursor()
     try:
-        # rollback balances first
+        # First collect product/warehouse pairs for potential cleanup
+        try:
+            cursor.execute(
+                (
+                    "SELECT p.ProductID, pm.WarehouseID, COUNT(*) AS Cnt "
+                    "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
+                    "WHERE pm.DocumentType='Arrival' AND pm.DocumentID = ? "
+                    "GROUP BY p.ProductID, pm.WarehouseID"
+                ),
+                (doc_id,),
+            )
+            pairs = [(int(r[0]), int(r[1])) for r in cursor.fetchall() or []]
+        except Exception:
+            pairs = []
+
+        # rollback balances first (decrement quantities that were added by this document)
         _rollback_balances_for_document(db, doc_id)
         # Remove postings first
         try:
@@ -715,8 +730,39 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
             cursor.execute("DELETE FROM PartyMovements WHERE DocumentType = 'Arrival' AND DocumentID = ?", (doc_id,))
         except Exception:
             pass
+        # Remove Parties created for this document if they have no other movements left
+        try:
+            cursor.execute(
+                (
+                    "DELETE FROM Parties WHERE ID IN ("
+                    "  SELECT DISTINCT pm.PartyID FROM PartyMovements pm WHERE pm.DocumentType='Arrival' AND pm.DocumentID=?"
+                    ") AND NOT EXISTS (SELECT 1 FROM PartyMovements x WHERE x.PartyID = Parties.ID)"
+                ),
+                (doc_id,),
+            )
+        except Exception:
+            pass
         cursor.execute("DELETE FROM ArrivalDocumentItems WHERE DocID = ?", (doc_id,))
         cursor.execute("DELETE FROM ArrivalDocuments WHERE ID = ?", (doc_id,))
+
+        # Cleanup StockBalances rows that became zero and have no related movements anymore
+        try:
+            for prod_id, wh_id in pairs:
+                try:
+                    cursor.execute(
+                        (
+                            "DELETE FROM StockBalances WHERE ProductID=? AND WarehouseID=? AND (Quantity IS NULL OR Quantity<=0) "
+                            "AND NOT EXISTS ("
+                            "  SELECT 1 FROM PartyMovements pm JOIN Parties p ON p.ID=pm.PartyID "
+                            "  WHERE p.ProductID=? AND pm.WarehouseID=?"
+                            ")"
+                        ),
+                        (prod_id, wh_id, prod_id, wh_id),
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
         db.commit()
         return {"ok": True}
     except Exception as e:
