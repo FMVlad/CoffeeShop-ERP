@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React from "react";
+import { useNavigate, useLocation, Outlet } from "react-router-dom";
 
 const menu = [
   { key: "arrivals", label: "Прибуткові накладні", route: "/purchases/arrivals" },
@@ -60,14 +60,13 @@ export default function PurchasesPage() {
       </nav>
 
       <main style={{ flex: 1, padding: 24 }}>
-        {/* Контент сторінок віддаємо маршрутам App.js */}
         <div style={{
           background: "#fff",
           borderRadius: 16,
           boxShadow: "0 4px 24px #0001",
           padding: 20
         }}>
-          Виберіть пункт зліва.
+          <Outlet />
         </div>
       </main>
     </div>

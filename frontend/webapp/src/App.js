@@ -119,11 +119,13 @@ function AppRoutes() {
                   {/* Нові розділи-стаби (поки заглушки) */}
                   <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
                   {/* Закупівлі: підрозділи */}
-                  <Route path="/purchases" element={<PurchasesPage />} />
-                  <Route path="/purchases/arrivals" element={<Navigate to="/docs/arrivals" replace />} />
-                  <Route path="/purchases/orders" element={<div style={{padding:20}}>Замовлення постачальнику — у розробці</div>} />
-                  <Route path="/purchases/returns" element={<div style={{padding:20}}>Повернення постачальнику — у розробці</div>} />
-                  <Route path="/purchases/register" element={<div style={{padding:20}}>Реєстр прибуткових накладних — у розробці</div>} />
+                  <Route path="/purchases" element={<PurchasesPage />} >
+                    <Route index element={<Navigate to="/purchases/arrivals" replace />} />
+                    <Route path="arrivals" element={<Navigate to="/docs/arrivals" replace />} />
+                    <Route path="orders" element={<div>Замовлення постачальнику — у розробці</div>} />
+                    <Route path="returns" element={<div>Повернення постачальнику — у розробці</div>} />
+                    <Route path="register" element={<div>Реєстр прибуткових накладних — у розробці</div>} />
+                  </Route>
                   <Route path="/finance" element={<div style={{padding:20}}>Фінанси — у розробці</div>} />
                   <Route path="/accounting" element={<div style={{padding:20}}>Бухоблік — у розробці</div>} />
                   <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
