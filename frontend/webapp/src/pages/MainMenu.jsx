@@ -3,21 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 const mainMenu = [
   { key: "admin", title: "Адмін", icon: "🧭", route: "/admin", hint: "Панель адміністратора" },
-  {
-    key: "dictionaries",
-    title: "Довідники",
-    icon: "📚",
-    hint: "Категорії, виробники, товари…",
-    submenu: [
-      { key: "categories", title: "Категорії товару", icon: "📦", route: "/categories" },
-      { key: "manufacturers", title: "Виробники", icon: "🏭", route: "/manufacturers" },
-      { key: "suppliers", title: "Постачальники", icon: "🚚", route: "/suppliers" },
-      { key: "products", title: "Товари", icon: "🥤", route: "/products" },
-      { key: "currencies", title: "Валюти та курси", icon: "💴", route: "/currencies" },
-      { key: "price-categories", title: "Цінові категорії", icon: "💸", route: "/price-categories" },
-      { key: "price-list", title: "Прайс-листи", icon: "💰", route: "/price-list" },
-    ],
-  },
+  { key: "dictionaries", title: "Довідники", icon: "📚", route: "/dictionaries", hint: "Категорії, виробники, товари…" },
   { key: "docs", title: "Документи", icon: "📑", route: "/docs", hint: "Видаткові, переміщення…" },
   { key: "sales", title: "Продажі", icon: "🧾", route: "/sales", hint: "Чеки, замовлення" },
   { key: "purchases", title: "Закупівлі", icon: "🛒", route: "/purchases", hint: "Накладні, замовлення, повернення" },
