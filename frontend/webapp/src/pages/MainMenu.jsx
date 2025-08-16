@@ -18,7 +18,7 @@ const mainMenu = [
       { key: "price-list", title: "Прайс-листи", icon: "💰", route: "/price-list" },
     ],
   },
-  { key: "docs", title: "Документи", icon: "📑", route: "/docs", hint: "Прибуткові, видаткові…" },
+  { key: "docs", title: "Документи", icon: "📑", route: "/docs", hint: "Видаткові, переміщення…" },
   { key: "sales", title: "Продажі", icon: "🧾", route: "/sales", hint: "Чеки, замовлення" },
   { key: "purchases", title: "Закупівлі", icon: "🛒", route: "/purchases", hint: "Накладні, замовлення, повернення" },
   { key: "stock", title: "Склади", icon: "🏬", route: "/stock", hint: "Залишки, переміщення" },
