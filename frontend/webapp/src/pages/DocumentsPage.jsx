@@ -10,7 +10,6 @@ import ArrivalDocumentsPage from "./ArrivalDocumentsPage.jsx";
 // import InventoryDocumentsPage from "./InventoryDocumentsPage.jsx";
 
 const menu = [
-  { key: "arrivals", label: "Прибуткові накладні" },
   { key: "issues",   label: "Видаткові накладні" },
   { key: "moves",    label: "Переміщення" },
   { key: "inventory",label: "Інвентаризації" },
@@ -18,7 +17,7 @@ const menu = [
 ];
 
 export default function DocumentsPage() {
-  const [section, setSection] = useState("arrivals");
+  const [section, setSection] = useState("issues");
   const navigate = useNavigate();
 
   return (

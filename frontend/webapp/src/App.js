@@ -27,6 +27,7 @@ import SuppliersPage from "./pages/SuppliersPage";
 
 // НОВЕ: документи
 import DocumentsPage from "./pages/DocumentsPage.jsx";
+import PurchasesPage from "./pages/PurchasesPage.jsx";
 import ArrivalDocumentsPage from "./pages/ArrivalDocumentsPage.jsx";
 import AdminLayout from "./pages/AdminLayout.jsx";
 import AdminServicePage from "./pages/AdminServicePage.jsx";
@@ -118,7 +119,7 @@ function AppRoutes() {
                   {/* Нові розділи-стаби (поки заглушки) */}
                   <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
                   {/* Закупівлі: підрозділи */}
-                  <Route path="/purchases" element={<div style={{padding:20}}>Закупівлі — виберіть підрозділ</div>} />
+                  <Route path="/purchases" element={<PurchasesPage />} />
                   <Route path="/purchases/arrivals" element={<Navigate to="/docs/arrivals" replace />} />
                   <Route path="/purchases/orders" element={<div style={{padding:20}}>Замовлення постачальнику — у розробці</div>} />
                   <Route path="/purchases/returns" element={<div style={{padding:20}}>Повернення постачальнику — у розробці</div>} />
