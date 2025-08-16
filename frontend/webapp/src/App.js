@@ -34,6 +34,7 @@ import AdminServicePage from "./pages/AdminServicePage.jsx";
 import AdminSystemParameters from "./pages/AdminSystemParameters.jsx";
 import AdminBackupPage from "./pages/AdminBackupPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
+import AccountingPage from "./pages/AccountingPage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -128,7 +129,13 @@ function AppRoutes() {
                     <Route path="register" element={<div>Реєстр прибуткових накладних — у розробці</div>} />
                   </Route>
                   <Route path="/finance" element={<div style={{padding:20}}>Фінанси — у розробці</div>} />
-                  <Route path="/accounting" element={<div style={{padding:20}}>Бухоблік — у розробці</div>} />
+                  <Route path="/accounting" element={<AccountingPage />}>
+                    <Route index element={<div>Проводки та журнали — у розробці</div>} />
+                    <Route path="postings" element={<div>Проводки та журнали — у розробці</div>} />
+                    <Route path="osv" element={<div>Оборотно-сальдова відомість — у розробці</div>} />
+                    <Route path="vat" element={<div>ПДВ — у розробці</div>} />
+                    <Route path="chart" element={<ChartOfAccountsPage />} />
+                  </Route>
                   <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
                   <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
                   <Route path="/directions" element={<div style={{padding:20}}>Напрями діяльності — у розробці</div>} />
