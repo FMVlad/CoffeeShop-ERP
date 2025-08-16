@@ -7,6 +7,7 @@ const menu = [
   { key: "balances", label: "Залишки (каси/рахунки)", route: "/finance/balances" },
   { key: "payments", label: "Платежі / Виписки", route: "/finance/payments" },
   { key: "reports", label: "Звіти по фінансах", route: "/finance/reports" },
+  { key: "currencies", label: "Валюти та курси", route: "/finance/currencies" },
 ];
 
 export default function FinancePage() {

@@ -6,7 +6,6 @@ const menu = [
   { key: "manufacturers", label: "Виробники", route: "/dictionaries/manufacturers" },
   { key: "suppliers", label: "Постачальники", route: "/dictionaries/suppliers" },
   { key: "products", label: "Товари", route: "/dictionaries/products" },
-  { key: "currencies", label: "Валюти та курси", route: "/dictionaries/currencies" },
 ];
 
 export default function DictionariesPage() {

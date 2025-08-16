@@ -125,7 +125,7 @@ function AppRoutes() {
                   <Route path="/products" element={<Navigate to="/dictionaries/products" replace />} />
                   <Route path="/manufacturers" element={<Navigate to="/dictionaries/manufacturers" replace />} />
                   <Route path="/suppliers" element={<Navigate to="/dictionaries/suppliers" replace />} />
-                  <Route path="/currencies" element={<Navigate to="/dictionaries/currencies" replace />} />
+                  <Route path="/currencies" element={<Navigate to="/finance/currencies" replace />} />
                   {/* Перенесено до Складів */}
                   <Route path="/price-categories" element={<Navigate to="/stock/price-categories" replace />} />
                   <Route path="/product-prices" element={<Navigate to="/stock/revaluation" replace />} />
@@ -152,6 +152,7 @@ function AppRoutes() {
                     <Route path="balances" element={<div>Залишки по касах/рахунках — у розробці</div>} />
                     <Route path="payments" element={<div>Платежі / Виписки — у розробці</div>} />
                     <Route path="reports" element={<div>Звіти по фінансах — у розробці</div>} />
+                    <Route path="currencies" element={<CurrenciesAdminPage />} />
                   </Route>
                   <Route path="/accounting" element={<AccountingPage />}>
                     <Route index element={<div>Проводки та журнали — у розробці</div>} />
