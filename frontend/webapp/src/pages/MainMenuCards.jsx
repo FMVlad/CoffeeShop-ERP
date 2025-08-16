@@ -29,7 +29,6 @@ const mainMenu = [
     icon: "⚙️",
     hint: "Параметри системи",
     submenu: [
-      { key: "system-parameters", title: "Системні параметри", icon: "🛠️", route: "/system-parameters" },
       { key: "programm-parameters", title: "Програмні параметри", icon: "🧩", route: "/programm-parameters" },
     ],
   },

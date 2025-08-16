@@ -11,7 +11,6 @@ import ProductPricesPage from './pages/ProductPricesPage';
 import PriceListPage from './pages/PriceListPage';
 import ProductsPage from './pages/ProductsPage';
 
-import SystemParametersPage from './pages/SystemParametersPage';
 import ProgrammParametersPage from './pages/ProgrammParametersPage';
 
 import ManufacturersPage from './pages/ManufacturersPage';
@@ -117,7 +116,7 @@ function AppRoutes() {
                   <Route path="/currencies" element={<CurrenciesAdminPage />} />
 
                   {/* Налаштування */}
-                  <Route path="/system-parameters" element={<SystemParametersPage />} />
+                  <Route path="/system-parameters" element={<Navigate to="/admin/system" replace />} />
                   <Route path="/programm-parameters" element={<ProgrammParametersPage />} />
                   <Route path="/companies" element={<CompaniesPage />} />
                   <Route path="/chart-of-accounts" element={<ChartOfAccountsPage />} />

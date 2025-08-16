@@ -9,7 +9,7 @@ export default function Sidebar() {
         <li style={{marginBottom: 16}}><Link to="/price-categories">Категорії цін</Link></li>
         <li style={{marginBottom: 16}}><Link to="/products">Товари</Link></li>
         <li><Link to="/price-list">Прайс-лист</Link></li>
-        <li><Link to="/system-parameters">Системні налаштування</Link></li>
+        {/* Сторінка системних параметрів перенесена в адмін-панель */}
       </ul>
     </nav>
   );

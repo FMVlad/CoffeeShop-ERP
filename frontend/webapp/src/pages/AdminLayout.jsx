@@ -1,57 +1,85 @@
 import React from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const tabs = [
-    { to: "/admin", label: "Сервіс", end: true },
-    { to: "/admin/system", label: "Системні параметри" },
-    { to: "/admin/backup", label: "Бекап БД" },
+  const section = location.pathname.startsWith("/admin/system")
+    ? "system"
+    : location.pathname.startsWith("/admin/backup")
+    ? "backup"
+    : "service";
+
+  const menu = [
+    { key: "service", label: "Сервіс", to: "/admin" },
+    { key: "system", label: "Системні параметри", to: "/admin/system" },
+    { key: "backup", label: "Бекап БД", to: "/admin/backup" },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-tr from-coffee-50 via-white to-coffee-100">
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl md:text-2xl font-semibold text-coffee-800">Адміністративна панель</h1>
-          <button
-            onClick={() => navigate("/")}
-            className="rounded-lg border border-coffee-200 px-3 py-2 text-sm text-coffee-700 hover:bg-coffee-50"
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        background: "linear-gradient(120deg,#decba4 0%,#a77b5a 100%)",
+      }}
+    >
+      {/* Ліва панель у стилі Програмних параметрів */}
+      <nav
+        style={{
+          width: 220,
+          background: "#f7e7d3",
+          padding: "32px 12px 32px 20px",
+          borderRight: "2px solid #cebba2",
+        }}
+      >
+        <div
+          onClick={() => navigate("/")}
+          style={{
+            fontWeight: "bold",
+            fontSize: 20,
+            color: "#a64b1a",
+            marginBottom: 32,
+            cursor: "pointer",
+          }}
+        >
+          ← Головна
+        </div>
+        {menu.map((m) => (
+          <div
+            key={m.key}
+            onClick={() => navigate(m.to)}
+            style={{
+              background: section === m.key ? "#fff" : "none",
+              color: section === m.key ? "#a64b1a" : "#333",
+              fontWeight: section === m.key ? "bold" : "normal",
+              fontSize: 17,
+              borderRadius: 8,
+              marginBottom: 6,
+              padding: "10px 14px",
+              cursor: "pointer",
+              transition: "background .12s",
+            }}
           >
-            ← На головну
-          </button>
-        </div>
+            {m.label}
+          </div>
+        ))}
+      </nav>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Sidebar */}
-          <aside className="md:col-span-1">
-            <nav className="bg-white rounded-2xl shadow border border-coffee-100 p-2">
-              {tabs.map((t) => (
-                <NavLink
-                  key={t.to}
-                  to={t.to}
-                  end={t.end}
-                  className={({ isActive }) => [
-                    "flex items-center gap-2 rounded-xl px-4 py-2 mb-1 text-sm",
-                    isActive ? "bg-coffee-600 text-white" : "text-coffee-800 hover:bg-coffee-50",
-                  ].join(" ")}
-                >
-                  {t.label}
-                </NavLink>
-              ))}
-            </nav>
-          </aside>
-
-          {/* Content */}
-          <main className="md:col-span-3">
-            <div className="bg-white rounded-2xl shadow border border-coffee-100 p-4 md:p-6">
-              <Outlet />
-            </div>
-          </main>
+      {/* Контентна частина */}
+      <main style={{ flex: 1, padding: 40 }}>
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 18,
+            boxShadow: "0 4px 32px #0001",
+            padding: 24,
+          }}
+        >
+          <Outlet />
         </div>
-      </div>
+      </main>
     </div>
   );
 }
