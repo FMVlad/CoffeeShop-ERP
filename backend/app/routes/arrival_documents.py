@@ -96,27 +96,46 @@ def _rollback_balances_for_document(db: pyodbc.Connection, doc_id: int) -> None:
     """
     cursor = db.cursor()
     # Sum quantities by product and warehouse via Parties join
-    cursor.execute(
-        (
-            "SELECT p.ProductID, pm.WarehouseID, SUM(pm.Quantity) AS Qty "
-            "FROM PartyMovements pm "
-            "JOIN Parties p ON p.ID = pm.PartyID "
-            "WHERE pm.DocumentType = 'Arrival' AND pm.DocumentID = ? "
-            "GROUP BY p.ProductID, pm.WarehouseID"
-        ),
-        (doc_id,),
-    )
-    rows = cursor.fetchall() or []
-    for prod_id, wh_id, qty in rows:
-        try:
-            # decrement existing balance
-            cursor.execute(
-                "UPDATE StockBalances SET Quantity = Quantity - ?, UpdatedAt = GETDATE() WHERE ProductID = ? AND WarehouseID = ?",
-                (float(qty or 0), int(prod_id), int(wh_id)),
-            )
-        except Exception:
-            # If no row exists yet, insert negative — optional; safer to skip
-            pass
+    has_sb_company = _table_has_column(db, "StockBalances", "CompanyID")
+    # Aggregate qty; include CompanyID when available
+    if has_sb_company and _table_has_column(db, "Parties", "CompanyID"):
+        cursor.execute(
+            (
+                "SELECT p.ProductID, pm.WarehouseID, p.CompanyID, SUM(pm.Quantity) AS Qty "
+                "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
+                "WHERE pm.DocumentType = 'Arrival' AND pm.DocumentID = ? "
+                "GROUP BY p.ProductID, pm.WarehouseID, p.CompanyID"
+            ),
+            (doc_id,),
+        )
+        rows = cursor.fetchall() or []
+        for prod_id, wh_id, comp_id, qty in rows:
+            try:
+                cursor.execute(
+                    "UPDATE StockBalances SET Quantity = Quantity - ?, UpdatedAt = GETDATE() WHERE ProductID = ? AND WarehouseID = ? AND CompanyID = ?",
+                    (float(qty or 0), int(prod_id), int(wh_id), int(comp_id) if comp_id is not None else None),
+                )
+            except Exception:
+                pass
+    else:
+        cursor.execute(
+            (
+                "SELECT p.ProductID, pm.WarehouseID, SUM(pm.Quantity) AS Qty "
+                "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
+                "WHERE pm.DocumentType = 'Arrival' AND pm.DocumentID = ? "
+                "GROUP BY p.ProductID, pm.WarehouseID"
+            ),
+            (doc_id,),
+        )
+        rows = cursor.fetchall() or []
+        for prod_id, wh_id, qty in rows:
+            try:
+                cursor.execute(
+                    "UPDATE StockBalances SET Quantity = Quantity - ?, UpdatedAt = GETDATE() WHERE ProductID = ? AND WarehouseID = ?",
+                    (float(qty or 0), int(prod_id), int(wh_id)),
+                )
+            except Exception:
+                pass
     # Delete cost calculations linked to parties of this document
     try:
         cursor.execute(
@@ -585,14 +604,33 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
                 except Exception:
                     pass
 
-            # Movement
-            cursor.execute(
-                (
-                    "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) "
-                    "VALUES (?, 'receipt', ?, ?, ?, 'Arrival', ?)"
-                ),
-                (party_id, float(qty), date_val, doc_id, resolved_warehouse_id),
-            )
+            # Movement (with optional CompanyID)
+            has_pm_company = _table_has_column(db, "PartyMovements", "CompanyID")
+            if has_pm_company:
+                try:
+                    cursor.execute(
+                        (
+                            "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID, CompanyID) "
+                            "VALUES (?, 'receipt', ?, ?, ?, 'Arrival', ?, ?)"
+                        ),
+                        (party_id, float(qty), date_val, doc_id, resolved_warehouse_id, company_id),
+                    )
+                except Exception:
+                    cursor.execute(
+                        (
+                            "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) "
+                            "VALUES (?, 'receipt', ?, ?, ?, 'Arrival', ?)"
+                        ),
+                        (party_id, float(qty), date_val, doc_id, resolved_warehouse_id),
+                    )
+            else:
+                cursor.execute(
+                    (
+                        "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) "
+                        "VALUES (?, 'receipt', ?, ?, ?, 'Arrival', ?)"
+                    ),
+                    (party_id, float(qty), date_val, doc_id, resolved_warehouse_id),
+                )
 
             # Cost calculation (store gross purchase price as calculated cost)
             cursor.execute(
@@ -603,26 +641,48 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
                 (product_id, party_id, float(price_to_save), date_val, user_id),
             )
 
-            # Stock balances
+            # Stock balances (with optional CompanyID)
             try:
-                cursor.execute(
-                    "SELECT ID FROM StockBalances WHERE ProductID=? AND WarehouseID=?",
-                    (product_id, resolved_warehouse_id),
-                )
-                sb = cursor.fetchone()
-                if sb:
+                has_sb_company = _table_has_column(db, "StockBalances", "CompanyID")
+                if has_sb_company:
                     cursor.execute(
-                        "UPDATE StockBalances SET Quantity = Quantity + ?, UpdatedAt = GETDATE(), UpdatedBy = ? WHERE ID = ?",
-                        (float(qty), user_id, sb[0]),
+                        "SELECT ID FROM StockBalances WHERE ProductID=? AND WarehouseID=? AND CompanyID=?",
+                        (product_id, resolved_warehouse_id, company_id),
                     )
                 else:
                     cursor.execute(
-                        (
-                            "INSERT INTO StockBalances (ProductID, WarehouseID, Quantity, UpdatedAt, UpdatedBy, Comment) "
-                            "VALUES (?, ?, ?, GETDATE(), ?, 'arrival')"
-                        ),
-                        (product_id, resolved_warehouse_id, float(qty), user_id),
+                        "SELECT ID FROM StockBalances WHERE ProductID=? AND WarehouseID=?",
+                        (product_id, resolved_warehouse_id),
                     )
+                sb = cursor.fetchone()
+                if sb:
+                    if has_sb_company:
+                        cursor.execute(
+                            "UPDATE StockBalances SET Quantity = Quantity + ?, UpdatedAt = GETDATE(), UpdatedBy = ? WHERE ID = ?",
+                            (float(qty), user_id, sb[0]),
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE StockBalances SET Quantity = Quantity + ?, UpdatedAt = GETDATE(), UpdatedBy = ? WHERE ID = ?",
+                            (float(qty), user_id, sb[0]),
+                        )
+                else:
+                    if has_sb_company:
+                        cursor.execute(
+                            (
+                                "INSERT INTO StockBalances (ProductID, WarehouseID, CompanyID, Quantity, UpdatedAt, UpdatedBy, Comment) "
+                                "VALUES (?, ?, ?, ?, GETDATE(), ?, 'arrival')"
+                            ),
+                            (product_id, resolved_warehouse_id, company_id, float(qty), user_id),
+                        )
+                    else:
+                        cursor.execute(
+                            (
+                                "INSERT INTO StockBalances (ProductID, WarehouseID, Quantity, UpdatedAt, UpdatedBy, Comment) "
+                                "VALUES (?, ?, ?, GETDATE(), ?, 'arrival')"
+                            ),
+                            (product_id, resolved_warehouse_id, float(qty), user_id),
+                        )
             except Exception:
                 # If balances table or columns differ, skip silently to not break save
                 pass
