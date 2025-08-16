@@ -373,6 +373,7 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
 
     prices_include_vat = bool(header.get("PricesIncludeVAT", False))
     supplier_id = header.get("SupplierID")
+    company_id = header.get("CompanyID")
     date_val = header.get("Date")
 
     print(
@@ -403,6 +404,10 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if _table_has_column(db, "ArrivalDocuments", "CurrencyID") and currency_id is not None:
                 cols.append("CurrencyID")
                 params.append(currency_id)
+            # Company
+            if _table_has_column(db, "ArrivalDocuments", "CompanyID"):
+                cols.append("CompanyID")
+                params.append(company_id)
             # Typical operation
             if _table_has_column(db, "ArrivalDocuments", "TypicalOperationID"):
                 cols.append("TypicalOperationID")
@@ -435,6 +440,8 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
                 update_cols.append(("CurrencyID", header.get("CurrencyID") or _get_default_currency_id(db)))
             if _table_has_column(db, "ArrivalDocuments", "TypicalOperationID"):
                 update_cols.append(("TypicalOperationID", header.get("TypicalOperationID")))
+            if _table_has_column(db, "ArrivalDocuments", "CompanyID"):
+                update_cols.append(("CompanyID", company_id))
 
             set_sql = ", ".join([f"{col} = ?" for col, _ in update_cols])
             values = [val for _, val in update_cols] + [doc_id]
@@ -528,7 +535,7 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
                         party_vals.append(user_id)
                     if _table_has_column(db, "Parties", "CompanyID"):
                         party_cols.append("CompanyID")
-                        party_vals.append(None)
+                        party_vals.append(company_id)
 
                     placeholders = ", ".join(["?" for _ in party_cols])
                     col_list = ", ".join(party_cols)
