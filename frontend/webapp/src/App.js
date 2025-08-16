@@ -9,6 +9,7 @@ import CategoriesPage from './pages/CategoriesPage';
 import PriceCategoriesPage from './pages/PriceCategoriesPage';
 import ProductPricesPage from './pages/ProductPricesPage';
 import PriceListPage from './pages/PriceListPage';
+import StockPage from './pages/StockPage.jsx';
 import ProductsPage from './pages/ProductsPage';
 
 import ProgrammParametersPage from './pages/ProgrammParametersPage';
@@ -110,9 +111,10 @@ function AppRoutes() {
 
                   {/* Довідники */}
                   <Route path="/categories" element={<CategoriesPage />} />
-                  <Route path="/price-categories" element={<PriceCategoriesPage />} />
-                  <Route path="/product-prices" element={<ProductPricesPage />} />
-                  <Route path="/price-list" element={<PriceListPage />} />
+                  {/* Перенесено до Складів */}
+                  <Route path="/price-categories" element={<Navigate to="/stock/price-categories" replace />} />
+                  <Route path="/product-prices" element={<Navigate to="/stock/revaluation" replace />} />
+                  <Route path="/price-list" element={<Navigate to="/stock/price-list" replace />} />
                   <Route path="/products" element={<ProductsPage />} />
                   <Route path="/manufacturers" element={<ManufacturersPage />} />
                   <Route path="/suppliers" element={<SuppliersPage />} />
@@ -138,6 +140,14 @@ function AppRoutes() {
                   </Route>
                   <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
                   <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
+                  {/* Склади з лівим меню */}
+                  <Route path="/stock" element={<StockPage />}>
+                    <Route index element={<div>Стан складу — у розробці</div>} />
+                    <Route path="state" element={<div>Стан складу — у розробці</div>} />
+                    <Route path="price-categories" element={<PriceCategoriesPage />} />
+                    <Route path="price-list" element={<PriceListPage />} />
+                    <Route path="revaluation" element={<ProductPricesPage />} />
+                  </Route>
                   <Route path="/directions" element={<div style={{padding:20}}>Напрями діяльності — у розробці</div>} />
                   <Route path="/marketing" element={<MarketingPage />}>
                     <Route index element={<div>Клієнти — у розробці</div>} />
