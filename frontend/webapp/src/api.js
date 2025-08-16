@@ -61,6 +61,7 @@ async function fetchJSON(
   const h = { Accept: "application/json", ...headers };
   if (data != null && !h["Content-Type"]) h["Content-Type"] = "application/json";
   if (token && !h.Authorization) h.Authorization = `Bearer ${token}`;
+  // Не прив’язуємо компанію глобально у запитах — визначається бекендом по даних документа
 
   let res;
   try {
@@ -155,6 +156,7 @@ async function fetchRaw(path, options = {}) {
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
   if (token && !headers.has("Authorization"))
     headers.set("Authorization", `Bearer ${token}`);
+  // Не додаємо X-Company-ID глобально
 
   let res;
   try {

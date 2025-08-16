@@ -40,6 +40,7 @@ import DictionariesPage from "./pages/DictionariesPage.jsx";
 import FinancePage from "./pages/FinancePage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
+// companyId більше не передаємо глобально з UI
 import StatusBar from "./components/StatusBar";
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -66,8 +67,10 @@ function RequireEmployee({ children }) {
 // --- Layout із StatusBar ---
 function AppLayout({ children }) {
   const location = useLocation();
-  const { employee, centersRoles, centerId, setCenterId } = useUser();
+  const { employee, centersRoles, centerId, setCenterId, companyId } = useUser();
   const hideBar = location.pathname === "/login" || location.pathname === "/employee-select";
+
+  // Компанію не фіксуємо глобально в UI — визначаємо на бекенді по партіях/документах
 
   return (
     <div className="app-layout">

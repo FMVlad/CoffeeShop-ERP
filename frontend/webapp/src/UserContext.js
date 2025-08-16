@@ -24,6 +24,16 @@ export function UserProvider({ children }) {
     return id || "";
   });
 
+  // Компанії / Company scope
+  const [companies, setCompanies] = useState(() => {
+    const v = sessionStorage.getItem("companies");
+    return v ? JSON.parse(v) : [];
+  });
+  const [companyId, setCompanyId] = useState(() => {
+    const v = sessionStorage.getItem("companyId");
+    return v || null;
+  });
+
   // --- Синхронізація зі сховищем ---
   useEffect(() => {
     if (user) sessionStorage.setItem("user", JSON.stringify(user));
@@ -46,6 +56,16 @@ export function UserProvider({ children }) {
     else sessionStorage.removeItem("centerId");
   }, [centerId]);
 
+  useEffect(() => {
+    if (companies && companies.length)
+      sessionStorage.setItem("companies", JSON.stringify(companies));
+    else sessionStorage.removeItem("companies");
+  }, [companies]);
+  useEffect(() => {
+    if (companyId) sessionStorage.setItem("companyId", companyId);
+    else sessionStorage.removeItem("companyId");
+  }, [companyId]);
+
   // --- Функції ---
   const login = (userObj) => setUser(userObj);
 
@@ -58,6 +78,9 @@ export function UserProvider({ children }) {
     } else {
       setCenterId("");
     }
+    // компанії очистимо — нехай підтягнуться окремим запитом після логіну
+    setCompanies([]);
+    setCompanyId(null);
   };
 
   const logout = () => {
@@ -70,6 +93,8 @@ export function UserProvider({ children }) {
     sessionStorage.removeItem("employee");
     sessionStorage.removeItem("centersRoles");
     sessionStorage.removeItem("centerId");
+    sessionStorage.removeItem("companies");
+    sessionStorage.removeItem("companyId");
   };
 
   return (
@@ -84,6 +109,10 @@ export function UserProvider({ children }) {
       setCentersRoles,
       centerId,
       setCenterId,
+      companies,
+      setCompanies,
+      companyId,
+      setCompanyId,
     }}>
       {children}
     </UserContext.Provider>
