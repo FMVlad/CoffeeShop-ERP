@@ -858,6 +858,8 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     line_no = 1
     on_date = str(doc.get("Date"))[:10]
     currency_id = doc.get("CurrencyID")
+    company_id = doc.get("CompanyID")
+    has_company_col = _table_has_column(db, "DocumentPostings", "CompanyID")
 
     def resolve_amount(amt_type: Optional[str], debit_acc: Optional[int], credit_acc: Optional[int]) -> Decimal:
         t = (amt_type or "").strip().lower()
@@ -890,35 +892,62 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         amount = resolve_amount(r[3], r[1], r[2])
         inserted = False
         try:
-            cursor.execute(
-                (
-                    "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CreatedAt, CreatedBy, Comment) "
-                    "VALUES (?, 'Arrival', ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
-                ),
-                (doc_id, on_date, r[1], r[2], float(amount), currency_id, 1, r[4]),
-            )
+            if has_company_col:
+                cursor.execute(
+                    (
+                        "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CompanyID, CreatedAt, CreatedBy, Comment) "
+                        "VALUES (?, 'Arrival', ?, ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
+                    ),
+                    (doc_id, on_date, r[1], r[2], float(amount), currency_id, company_id, 1, r[4]),
+                )
+            else:
+                cursor.execute(
+                    (
+                        "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CreatedAt, CreatedBy, Comment) "
+                        "VALUES (?, 'Arrival', ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
+                    ),
+                    (doc_id, on_date, r[1], r[2], float(amount), currency_id, 1, r[4]),
+                )
             inserted = True
         except Exception:
             # Try with lowercase/other spelling of type
             try:
-                cursor.execute(
-                    (
-                        "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CreatedAt, CreatedBy, Comment) "
-                        "VALUES (?, 'ARRIVAL', ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
-                    ),
-                    (doc_id, on_date, r[1], r[2], float(amount), currency_id, 1, r[4]),
-                )
+                if has_company_col:
+                    cursor.execute(
+                        (
+                            "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CompanyID, CreatedAt, CreatedBy, Comment) "
+                            "VALUES (?, 'ARRIVAL', ?, ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
+                        ),
+                        (doc_id, on_date, r[1], r[2], float(amount), currency_id, company_id, 1, r[4]),
+                    )
+                else:
+                    cursor.execute(
+                        (
+                            "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CurrencyID, CreatedAt, CreatedBy, Comment) "
+                            "VALUES (?, 'ARRIVAL', ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
+                        ),
+                        (doc_id, on_date, r[1], r[2], float(amount), currency_id, 1, r[4]),
+                    )
                 inserted = True
             except Exception:
                 # Some schemas might miss CurrencyID/CreatedBy/CreatedAt. Try minimal column set.
                 try:
-                    cursor.execute(
-                        (
-                            "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, Comment) "
-                            "VALUES (?, 'Arrival', ?, ?, ?, ?, ?)"
-                        ),
-                        (doc_id, on_date, r[1], r[2], float(amount), r[4] or ""),
-                    )
+                    if has_company_col:
+                        cursor.execute(
+                            (
+                                "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CompanyID, Comment) "
+                                "VALUES (?, 'Arrival', ?, ?, ?, ?, ?, ?)"
+                            ),
+                            (doc_id, on_date, r[1], r[2], float(amount), company_id, r[4] or ""),
+                        )
+                    else:
+                        cursor.execute(
+                            (
+                                "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, Comment) "
+                                "VALUES (?, 'Arrival', ?, ?, ?, ?, ?)"
+                            ),
+                            (doc_id, on_date, r[1], r[2], float(amount), r[4] or ""),
+                        )
                     inserted = True
                 except Exception:
                     inserted = False
