@@ -115,6 +115,19 @@ function AppRoutes() {
                   <Route path="/suppliers" element={<SuppliersPage />} />
                   <Route path="/currencies" element={<CurrenciesAdminPage />} />
 
+                  {/* Нові розділи-стаби (поки заглушки) */}
+                  <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
+                  <Route path="/purchases" element={<div style={{padding:20}}>Закупівлі — у розробці</div>} />
+                  <Route path="/finance" element={<div style={{padding:20}}>Фінанси — у розробці</div>} />
+                  <Route path="/accounting" element={<div style={{padding:20}}>Бухоблік — у розробці</div>} />
+                  <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
+                  <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
+                  <Route path="/verticals" element={<div style={{padding:20}}>Вертикалі — у розробці</div>} />
+                  <Route path="/marketing/clients" element={<div style={{padding:20}}>Клієнти — у розробці</div>} />
+                  <Route path="/marketing/promotions" element={<div style={{padding:20}}>Акції та знижки — у розробці</div>} />
+                  <Route path="/marketing/loyalty" element={<div style={{padding:20}}>Програма лояльності — у розробці</div>} />
+                  <Route path="/marketing/coupons" element={<div style={{padding:20}}>Сертифікати і купони — у розробці</div>} />
+
                   {/* Налаштування */}
                   <Route path="/system-parameters" element={<Navigate to="/admin/system" replace />} />
                   <Route path="/programm-parameters" element={<ProgrammParametersPage />} />
