@@ -117,12 +117,17 @@ function AppRoutes() {
 
                   {/* Нові розділи-стаби (поки заглушки) */}
                   <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
-                  <Route path="/purchases" element={<div style={{padding:20}}>Закупівлі — у розробці</div>} />
+                  {/* Закупівлі: підрозділи */}
+                  <Route path="/purchases" element={<div style={{padding:20}}>Закупівлі — виберіть підрозділ</div>} />
+                  <Route path="/purchases/arrivals" element={<Navigate to="/docs/arrivals" replace />} />
+                  <Route path="/purchases/orders" element={<div style={{padding:20}}>Замовлення постачальнику — у розробці</div>} />
+                  <Route path="/purchases/returns" element={<div style={{padding:20}}>Повернення постачальнику — у розробці</div>} />
+                  <Route path="/purchases/register" element={<div style={{padding:20}}>Реєстр прибуткових накладних — у розробці</div>} />
                   <Route path="/finance" element={<div style={{padding:20}}>Фінанси — у розробці</div>} />
                   <Route path="/accounting" element={<div style={{padding:20}}>Бухоблік — у розробці</div>} />
                   <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
                   <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
-                  <Route path="/verticals" element={<div style={{padding:20}}>Вертикалі — у розробці</div>} />
+                  <Route path="/directions" element={<div style={{padding:20}}>Напрями діяльності — у розробці</div>} />
                   <Route path="/marketing/clients" element={<div style={{padding:20}}>Клієнти — у розробці</div>} />
                   <Route path="/marketing/promotions" element={<div style={{padding:20}}>Акції та знижки — у розробці</div>} />
                   <Route path="/marketing/loyalty" element={<div style={{padding:20}}>Програма лояльності — у розробці</div>} />

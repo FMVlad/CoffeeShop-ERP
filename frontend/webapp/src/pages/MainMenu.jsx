@@ -20,7 +20,18 @@ const mainMenu = [
   },
   { key: "docs", title: "Документи", icon: "📑", route: "/docs", hint: "Прибуткові, видаткові…" },
   { key: "sales", title: "Продажі", icon: "🧾", route: "/sales", hint: "Чеки, замовлення" },
-  { key: "purchases", title: "Закупівлі", icon: "🛒", route: "/purchases", hint: "Постачальники, накладні" },
+  {
+    key: "purchases",
+    title: "Закупівлі",
+    icon: "🛒",
+    hint: "Накладні, замовлення, повернення",
+    submenu: [
+      { key: "purch-arrivals", title: "Прибуткові накладні", icon: "📥", route: "/purchases/arrivals" },
+      { key: "purch-orders", title: "Замовлення постачальнику", icon: "🧾", route: "/purchases/orders" },
+      { key: "purch-returns", title: "Повернення постачальнику", icon: "♻️", route: "/purchases/returns" },
+      { key: "purch-register", title: "Реєстр прибуткових накладних", icon: "📚", route: "/purchases/register" },
+    ],
+  },
   { key: "stock", title: "Склади", icon: "🏬", route: "/stock", hint: "Залишки, переміщення" },
   { key: "finance", title: "Фінанси", icon: "💰", route: "/finance", hint: "Каси, рахунки, платежі" },
   { key: "accounting", title: "Бухоблік", icon: "📒", route: "/accounting", hint: "Проводки, ОСВ, ПДВ" },
@@ -38,7 +49,7 @@ const mainMenu = [
       { key: "coupons", title: "Сертифікати і купони", icon: "🎟️", route: "/marketing/coupons" },
     ],
   },
-  { key: "verticals", title: "Вертикалі", icon: "🧩", route: "/verticals", hint: "Кав’ярня, виробництво, СТО…" },
+  { key: "directions", title: "Напрями діяльності", icon: "🧩", route: "/directions", hint: "Кав’ярня, виробництво, СТО…" },
   {
     key: "settings",
     title: "Налаштування",
