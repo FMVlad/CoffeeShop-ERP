@@ -33,6 +33,7 @@ import AdminLayout from "./pages/AdminLayout.jsx";
 import AdminServicePage from "./pages/AdminServicePage.jsx";
 import AdminSystemParameters from "./pages/AdminSystemParameters.jsx";
 import AdminBackupPage from "./pages/AdminBackupPage.jsx";
+import MarketingPage from "./pages/MarketingPage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -131,10 +132,13 @@ function AppRoutes() {
                   <Route path="/reports" element={<div style={{padding:20}}>Звіти — у розробці</div>} />
                   <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
                   <Route path="/directions" element={<div style={{padding:20}}>Напрями діяльності — у розробці</div>} />
-                  <Route path="/marketing/clients" element={<div style={{padding:20}}>Клієнти — у розробці</div>} />
-                  <Route path="/marketing/promotions" element={<div style={{padding:20}}>Акції та знижки — у розробці</div>} />
-                  <Route path="/marketing/loyalty" element={<div style={{padding:20}}>Програма лояльності — у розробці</div>} />
-                  <Route path="/marketing/coupons" element={<div style={{padding:20}}>Сертифікати і купони — у розробці</div>} />
+                  <Route path="/marketing" element={<MarketingPage />}>
+                    <Route index element={<div>Клієнти — у розробці</div>} />
+                    <Route path="clients" element={<div>Клієнти — у розробці</div>} />
+                    <Route path="promotions" element={<div>Акції та знижки — у розробці</div>} />
+                    <Route path="loyalty" element={<div>Програма лояльності — у розробці</div>} />
+                    <Route path="coupons" element={<div>Сертифікати і купони — у розробці</div>} />
+                  </Route>
 
                   {/* Налаштування */}
                   <Route path="/system-parameters" element={<Navigate to="/admin/system" replace />} />
