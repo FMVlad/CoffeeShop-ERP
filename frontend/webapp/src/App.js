@@ -120,8 +120,8 @@ function AppRoutes() {
                   <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
                   {/* Закупівлі: підрозділи */}
                   <Route path="/purchases" element={<PurchasesPage />} >
-                    <Route index element={<Navigate to="/purchases/arrivals" replace />} />
-                    <Route path="arrivals" element={<Navigate to="/docs/arrivals" replace />} />
+                    <Route index element={<Navigate to="arrivals" replace />} />
+                    <Route path="arrivals" element={<ArrivalDocumentsPage />} />
                     <Route path="orders" element={<div>Замовлення постачальнику — у розробці</div>} />
                     <Route path="returns" element={<div>Повернення постачальнику — у розробці</div>} />
                     <Route path="register" element={<div>Реєстр прибуткових накладних — у розробці</div>} />
