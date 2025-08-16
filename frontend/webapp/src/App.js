@@ -37,6 +37,7 @@ import AdminBackupPage from "./pages/AdminBackupPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
 import AccountingPage from "./pages/AccountingPage.jsx";
 import DictionariesPage from "./pages/DictionariesPage.jsx";
+import FinancePage from "./pages/FinancePage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -144,7 +145,14 @@ function AppRoutes() {
                     <Route path="returns" element={<div>Повернення постачальнику — у розробці</div>} />
                     <Route path="register" element={<div>Реєстр прибуткових накладних — у розробці</div>} />
                   </Route>
-                  <Route path="/finance" element={<div style={{padding:20}}>Фінанси — у розробці</div>} />
+                  <Route path="/finance" element={<FinancePage />}>
+                    <Route index element={<div>Касові операції — у розробці</div>} />
+                    <Route path="cash-ops" element={<div>Касові операції — у розробці</div>} />
+                    <Route path="noncash" element={<div>Безготівкові платежі — у розробці</div>} />
+                    <Route path="balances" element={<div>Залишки по касах/рахунках — у розробці</div>} />
+                    <Route path="payments" element={<div>Платежі / Виписки — у розробці</div>} />
+                    <Route path="reports" element={<div>Звіти по фінансах — у розробці</div>} />
+                  </Route>
                   <Route path="/accounting" element={<AccountingPage />}>
                     <Route index element={<div>Проводки та журнали — у розробці</div>} />
                     <Route path="postings" element={<div>Проводки та журнали — у розробці</div>} />
