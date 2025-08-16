@@ -26,18 +26,7 @@ const mainMenu = [
   { key: "accounting", title: "Бухоблік", icon: "📒", route: "/accounting", hint: "Проводки, ОСВ, ПДВ" },
   { key: "reports", title: "Звіти", icon: "📈", route: "/reports", hint: "Продажі, запаси, фінанси" },
   { key: "analytics", title: "Аналітика", icon: "📊", route: "/analytics", hint: "KPI, ABC/XYZ" },
-  {
-    key: "marketing",
-    title: "Маркетинг",
-    icon: "🎯",
-    hint: "Клієнти, акції, лояльність",
-    submenu: [
-      { key: "clients", title: "Клієнти", icon: "👥", route: "/marketing/clients" },
-      { key: "promotions", title: "Акції та знижки", icon: "🏷️", route: "/marketing/promotions" },
-      { key: "loyalty", title: "Програма лояльності", icon: "⭐", route: "/marketing/loyalty" },
-      { key: "coupons", title: "Сертифікати і купони", icon: "🎟️", route: "/marketing/coupons" },
-    ],
-  },
+  { key: "marketing", title: "Маркетинг", icon: "🎯", route: "/marketing", hint: "Клієнти, акції, лояльність" },
   { key: "directions", title: "Напрями діяльності", icon: "🧩", route: "/directions", hint: "Кав’ярня, виробництво, СТО…" },
   {
     key: "settings",
