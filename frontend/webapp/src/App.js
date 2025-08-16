@@ -36,6 +36,7 @@ import AdminSystemParameters from "./pages/AdminSystemParameters.jsx";
 import AdminBackupPage from "./pages/AdminBackupPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
 import AccountingPage from "./pages/AccountingPage.jsx";
+import DictionariesPage from "./pages/DictionariesPage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 import StatusBar from "./components/StatusBar";
@@ -109,8 +110,21 @@ function AppRoutes() {
                 <Routes>
                   <Route path="/" element={<MainMenu />} />
 
-                  {/* Довідники */}
-                  <Route path="/categories" element={<CategoriesPage />} />
+                  {/* Довідники з лівим меню */}
+                  <Route path="/dictionaries" element={<DictionariesPage />}>
+                    <Route index element={<CategoriesPage />} />
+                    <Route path="categories" element={<CategoriesPage />} />
+                    <Route path="manufacturers" element={<ManufacturersPage />} />
+                    <Route path="suppliers" element={<SuppliersPage />} />
+                    <Route path="products" element={<ProductsPage />} />
+                    <Route path="currencies" element={<CurrenciesAdminPage />} />
+                  </Route>
+                  {/* редиректи зі старих коротких шляхів */}
+                  <Route path="/categories" element={<Navigate to="/dictionaries/categories" replace />} />
+                  <Route path="/products" element={<Navigate to="/dictionaries/products" replace />} />
+                  <Route path="/manufacturers" element={<Navigate to="/dictionaries/manufacturers" replace />} />
+                  <Route path="/suppliers" element={<Navigate to="/dictionaries/suppliers" replace />} />
+                  <Route path="/currencies" element={<Navigate to="/dictionaries/currencies" replace />} />
                   {/* Перенесено до Складів */}
                   <Route path="/price-categories" element={<Navigate to="/stock/price-categories" replace />} />
                   <Route path="/product-prices" element={<Navigate to="/stock/revaluation" replace />} />
