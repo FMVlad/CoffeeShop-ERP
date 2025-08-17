@@ -3,8 +3,8 @@ import React, { useCallback, useState } from "react";
 import ProductPicker from "../../components/ProductPicker";
 import BarcodeInput from "../../components/BarcodeInput";
 
-export default function ArrivalDocItems({ doc, setDoc }) {
-  const [barcodeFocusBump, setBarcodeFocusBump] = useState(0);
+export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus }) {
+  const [localFocusBump, setLocalFocusBump] = useState(0);
 
   const addRow = useCallback(() => {
     setDoc((d) => ({
@@ -74,7 +74,7 @@ export default function ArrivalDocItems({ doc, setDoc }) {
         <div className="flex-1">
           <label className="text-sm block mb-1">Штрихкод (Enter)</label>
           <BarcodeInput
-            key={barcodeFocusBump}
+            key={`${focusKey}-${localFocusBump}`}
             autoFocus
             onResolve={onBarcodeResolved}
             placeholder="Скануй або введи та натисни Enter"
@@ -87,7 +87,8 @@ export default function ArrivalDocItems({ doc, setDoc }) {
             onClick={() => {
               addRow();
               // підфокусується знову
-              setBarcodeFocusBump((n) => n + 1);
+              setLocalFocusBump((n) => n + 1);
+              onRequestFocus?.();
             }}
           >
             + Рядок

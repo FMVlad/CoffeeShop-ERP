@@ -3,6 +3,7 @@ import { api } from "../api";
 import useDebounced from "../hooks/useDebounced";
 import ProductPicker from "../components/ProductPicker";
 import BarcodeInput from "../components/BarcodeInput";
+import ArrivalDocItems from "../sections/arrival/ArrivalDocItems";
 
 export default function ArrivalDocumentsPage() {
   const [docs, setDocs] = useState([]);
@@ -625,91 +626,12 @@ export default function ArrivalDocumentsPage() {
 
           {/* контент вкладок */}
           {tab === "items" && (
-            <>
-              {/* штрихкод + дії пошуку */}
-              <div className="mt-4 flex flex-col md:flex-row gap-2 md:items-end">
-                <div className="flex-1">
-                  <label className="text-sm block mb-1">Штрихкод (Enter)</label>
-                  <BarcodeInput
-                     key={barcodeFocusBump}
-                         autoFocus
-                            onResolve={onBarcodeResolved}
-                     onNotFound={(bc) => alert("Штрихкод не знайдено")}
-                     placeholder="Скануй або введи та натисни Enter"
-                />
-
-                </div>
-                <div className="flex gap-2">
-                  <button className="border rounded px-3 py-2" onClick={addRow}>
-                    + Рядок
-                  </button>
-                </div>
-              </div>
-
-              {/* позиції */}
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full bg-white border rounded">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="p-2 border">Товар</th>
-                      <th className="p-2 border w-28">К-сть</th>
-                      <th className="p-2 border w-28">Ціна</th>
-                      <th className="p-2 border w-28">Сума</th>
-                      <th className="p-2 border w-16">Дії</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {doc.Items.map((r, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 border">
-                          <ProductPicker
-                            value={r}
-                            onSelect={(p) => {
-                              const full = p?.ProductName || p?.FullName || p?.Name || "";
-                              setItem(idx, "ProductID", p.ProductID);
-                              setItem(idx, "ProductName", full);
-                            }}
-                          />
-                        </td>
-                        <td className="p-2 border">
-                          <input
-                            className="border rounded p-2 w-full text-right"
-                            type="number"
-                            step="0.001"
-                            value={r.Quantity}
-                            onChange={(e) => setItem(idx, "Quantity", e.target.value)}
-                          />
-                        </td>
-                        <td className="p-2 border">
-                          <input
-                            className="border rounded p-2 w-full text-right"
-                            type="number"
-                            step="0.01"
-                            value={r.Price}
-                            onChange={(e) => setItem(idx, "Price", e.target.value)}
-                          />
-                        </td>
-                        <td className="p-2 border text-right">
-                          {((+r.Quantity || 0) * (+r.Price || 0)).toFixed(2)}
-                        </td>
-                        <td className="p-2 border text-center">
-                          <button className="px-2 py-1 border" onClick={() => delItem(idx)}>
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {doc.Items.length === 0 && (
-                      <tr>
-                        <td className="p-3 text-center text-gray-500 border" colSpan={5}>
-                          Додайте позиції
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            <ArrivalDocItems
+              doc={doc}
+              setDoc={setDoc}
+              focusKey={barcodeFocusBump}
+              onRequestFocus={() => setBarcodeFocusBump((n) => n + 1)}
+            />
           )}
 
           {tab === "extras" && (

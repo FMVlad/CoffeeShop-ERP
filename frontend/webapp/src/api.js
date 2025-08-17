@@ -550,6 +550,7 @@ export const getProductByBarcode = async (barcode) => {
     const found = await searchProducts(s);
     const exact =
       found.find((x) => String(x.Barcode || "").trim() === s) ||
+      found.find((x) => String(x.Sku || "").trim() === s) ||
       found[0] ||
       null;
     return exact || null;
