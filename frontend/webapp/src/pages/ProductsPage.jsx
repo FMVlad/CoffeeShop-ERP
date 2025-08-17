@@ -47,6 +47,7 @@ export default function ProductsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
+    const source = params.get('source');
     const prefill = sessionStorage.getItem('prefill_barcode') || '';
     if (mode === 'add') {
       setEditingProductId(null);
@@ -55,6 +56,11 @@ export default function ProductsPage() {
       if (prefill) {
         sessionStorage.setItem('productcard_prefill_barcode', prefill);
         sessionStorage.removeItem('prefill_barcode');
+      }
+      if (source === 'selector') {
+        sessionStorage.setItem('productcard_enable_quick_add', '1');
+      } else {
+        sessionStorage.removeItem('productcard_enable_quick_add');
       }
     }
   }, []);

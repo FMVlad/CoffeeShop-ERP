@@ -541,6 +541,37 @@ export default function ProductCard({
           marginTop: 32,
           justifyContent: "flex-end"
         }}>
+          {sessionStorage.getItem('productcard_enable_quick_add') === '1' && (
+            <button
+              onClick={async () => {
+                // короткий режим: зберегти і повернутися з додаванням у накладну
+                try {
+                  await handleSave();
+                  const bc = fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
+                  if (bc) {
+                    try {
+                      const p = await api.getProductByBarcode(bc);
+                      if (p && p.ID) {
+                        sessionStorage.setItem('arrival_selected_products', JSON.stringify([{ ID: p.ID, FullName: p.FullName || p.Name || "", Quantity: 1 }]));
+                      }
+                    } catch {}
+                  }
+                } finally {
+                  window.history.back();
+                }
+              }}
+              disabled={saving}
+              style={{
+                background: saving ? "#e9ecef" : "#28a745",
+                color: saving ? "#6c757d" : "white",
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 24px",
+                fontWeight: 600,
+                cursor: saving ? "not-allowed" : "pointer"
+              }}
+            >{saving ? "Збереження…" : "Зберегти й додати"}</button>
+          )}
           <button
             onClick={onCancel}
             disabled={saving}

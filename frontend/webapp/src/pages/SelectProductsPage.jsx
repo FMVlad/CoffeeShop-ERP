@@ -82,7 +82,7 @@ export default function SelectProductsPage() {
   }
 
   function quickAddProduct() {
-    navigate(`/dictionaries/products?mode=add`);
+    navigate(`/dictionaries/products?mode=add&source=selector`);
   }
 
   return (
