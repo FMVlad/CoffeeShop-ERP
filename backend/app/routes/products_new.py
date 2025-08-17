@@ -63,13 +63,25 @@ def generate_ean13_barcode(db, barcode_prefix):
     cursor.execute("UPDATE SystemParameters SET ParamValue = ? WHERE ParamKey = 'BarcodeNum'", (str(barcode_num + 1),))
     return full_barcode
 
-def _get_fullname_fields(db):
+def _get_fullname_fields(db, template_id: int | None):
     cursor = db.cursor()
-    cursor.execute("""
-        SELECT SqlName FROM ProductFullNameFields
-        WHERE IsIncluded=1
-        ORDER BY DisplayOrder
-    """)
+    if template_id is not None:
+        cursor.execute(
+            """
+            SELECT SqlName FROM ProductFullNameFields
+            WHERE IsIncluded=1 AND TemplateID = ?
+            ORDER BY DisplayOrder
+            """,
+            (template_id,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT SqlName FROM ProductFullNameFields
+            WHERE IsIncluded=1
+            ORDER BY DisplayOrder
+            """
+        )
     return [row[0] for row in cursor.fetchall()]
 
 def _generate_fullname(product_id, db):
@@ -80,6 +92,18 @@ def _generate_fullname(product_id, db):
         return ""
     columns = [col[0] for col in cursor.description]
     product = dict(zip(columns, row))
+
+    # 1. Визначаємо TemplateID за категорією товару
+    template_id = None
+    try:
+        cat_id = product.get("CategoryID")
+        if cat_id:
+            cursor.execute("SELECT ProductCardTemplateID FROM Categories WHERE ID = ?", (cat_id,))
+            r = cursor.fetchone()
+            if r:
+                template_id = r[0]
+    except Exception:
+        template_id = None
 
     # 2. Атрибути (ProductAttributes)
     cursor.execute("SELECT FieldID, AttrValue FROM ProductAttributes WHERE ProductID = ?", (product_id,))
@@ -96,8 +120,8 @@ def _generate_fullname(product_id, db):
     # 3. Основні значення + атрибути
     values = {**product, **attr_map}
 
-    # 4. Беремо потрібні поля для формування назви
-    fields = _get_fullname_fields(db)
+    # 4. Беремо потрібні поля для формування назви (за конкретним шаблоном)
+    fields = _get_fullname_fields(db, template_id)
     full_name_parts = []
     for sql in fields:
         val = str(values.get(sql, "")).strip()
