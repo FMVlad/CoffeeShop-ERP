@@ -189,7 +189,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                   const appended = selected.map((p) => ({
                     ProductID: p.ID,
                     ProductName: p.FullName || p.Name || "",
-                    Quantity: 1,
+                    Quantity: Number(p.Quantity || 1),
                     Price: 0,
                     TaxRateID: null,
                   }));

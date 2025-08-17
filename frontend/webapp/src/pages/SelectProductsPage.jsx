@@ -11,7 +11,8 @@ export default function SelectProductsPage() {
   const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState("rows");
-  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectedQty, setSelectedQty] = useState(new Map());
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     api.getCategories().then((cats) => setCategories(cats || []));
@@ -36,26 +37,46 @@ export default function SelectProductsPage() {
     return m;
   }, [categories]);
 
+  function promptQty(defaultQty = 1) {
+    const str = window.prompt("Кількість:", String(defaultQty));
+    if (str == null) return null; // cancel
+    const q = parseFloat(String(str).replace(",", "."));
+    if (!isFinite(q) || q <= 0) return 1;
+    return q;
+  }
+
   function toggle(id) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+    setSelectedQty((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        const q = promptQty(1);
+        if (q == null) return prev;
+        next.set(id, q);
+      }
       return next;
     });
   }
 
   function addToArrival() {
-    const selected = products.filter((p) => selectedIds.has(p.ID));
+    setSubmitting(true);
+    const selected = products.filter((p) => selectedQty.has(p.ID));
     const payload = selected.map((p) => ({
       ID: p.ID,
       FullName: p.FullName || p.Name || "",
       Name: p.Name || "",
       Barcode: p.Barcode || "",
       Article: p.Article || "",
+      Quantity: Number(selectedQty.get(p.ID) || 1),
     }));
     sessionStorage.setItem("arrival_selected_products", JSON.stringify(payload));
-    navigate(-1);
+    const back = sessionStorage.getItem("arrival_back");
+    if (back) {
+      window.location.assign(back);
+    } else {
+      navigate(-1);
+    }
   }
 
   function quickAddProduct() {
@@ -126,10 +147,12 @@ export default function SelectProductsPage() {
                 ) : products.map((p) => {
                   const img = p.Photo ? `http://localhost:8000/api/preview/${p.Photo}` : null;
                   const catName = categoriesById.get(p.CategoryID)?.CategoryName || '';
+                  const checked = selectedQty.has(p.ID);
+                  const qty = Number(selectedQty.get(p.ID) || 1);
                   return (
                     <tr key={p.ID} className="hover:bg-gray-50">
                       <td className="p-2 border" style={{ textAlign: 'center' }}>
-                        <input type="checkbox" checked={selectedIds.has(p.ID)} onChange={() => toggle(p.ID)} />
+                        <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} title={checked ? `К-сть: ${qty}` : 'Вибрати'} />
                       </td>
                       <td className="p-2 border">
                         <div style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -150,7 +173,8 @@ export default function SelectProductsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
             {products.map((p) => {
               const img = p.Photo ? `http://localhost:8000/api/preview/${p.Photo}` : null;
-              const checked = selectedIds.has(p.ID);
+              const checked = selectedQty.has(p.ID);
+              const qty = Number(selectedQty.get(p.ID) || 1);
               return (
                 <div key={p.ID} className="border rounded" style={{ background: '#fff', padding: 12 }}>
                   <div style={{ display: 'flex', gap: 10 }}>
@@ -161,7 +185,7 @@ export default function SelectProductsPage() {
                       <div style={{ fontWeight: 700 }}>{p.FullName || p.Name}</div>
                       <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#555' }}>ШК: {p.Barcode || '—'} • Арт.: {p.Article || '—'}</div>
                     </div>
-                    <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} />
+                    <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} title={checked ? `К-сть: ${qty}` : 'Вибрати'} />
                   </div>
                 </div>
               );
@@ -171,7 +195,7 @@ export default function SelectProductsPage() {
 
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={() => navigate(-1)} style={{ background: '#6c757d', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: 'pointer' }}>Скасувати</button>
-          <button onClick={addToArrival} disabled={selectedIds.size === 0} style={{ background: selectedIds.size === 0 ? '#e9ecef' : '#28a745', color: selectedIds.size === 0 ? '#6c757d' : '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: selectedIds.size === 0 ? 'not-allowed' : 'pointer' }}>Додати в накладну</button>
+          <button onClick={addToArrival} disabled={selectedQty.size === 0 || submitting} style={{ background: selectedQty.size === 0 || submitting ? '#e9ecef' : '#28a745', color: selectedQty.size === 0 || submitting ? '#6c757d' : '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: selectedQty.size === 0 || submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Додаю…' : 'Додати в накладну'}</button>
         </div>
       </div>
     </div>
