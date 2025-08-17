@@ -81,6 +81,14 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
             key={`${focusKey}-${localFocusBump}`}
             autoFocus
             onResolve={onBarcodeResolved}
+            onNotFound={(bc) => {
+              try {
+                const snapshot = { editingId: null, doc };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+                window.sessionStorage.setItem("prefill_barcode", bc);
+              } catch {}
+              navigate("/select-products?mode=add");
+            }}
             placeholder="Скануй або введи та натисни Enter"
           />
         </div>

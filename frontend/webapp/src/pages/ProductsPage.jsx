@@ -43,6 +43,22 @@ export default function ProductsPage() {
   const searchInputRef = useRef(null);
   const navigate = useNavigate();
 
+  // Prefill для режиму швидкого додавання з вибірника/сканера
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const prefill = sessionStorage.getItem('prefill_barcode') || '';
+    if (mode === 'add') {
+      setEditingProductId(null);
+      setShowProductCard(true);
+      // Передамо штрихкод у форму картки через sessionStorage
+      if (prefill) {
+        sessionStorage.setItem('productcard_prefill_barcode', prefill);
+        sessionStorage.removeItem('prefill_barcode');
+      }
+    }
+  }, []);
+
   useEffect(() => {
     api.getCategories().then(cats => setCategories(cats || []));
   }, []);

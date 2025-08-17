@@ -35,6 +35,7 @@ export default function SelectProductsPage() {
       }
     }
     load();
+    // якщо відкрито в режимі додавання — покажемо банер і кнопку швидкого переходу в додавання
   }, [search, category]);
 
   const categoriesById = useMemo(() => {
@@ -81,8 +82,7 @@ export default function SelectProductsPage() {
   }
 
   function quickAddProduct() {
-    const back = encodeURIComponent(location.pathname);
-    navigate(`/dictionaries/products?mode=add&back=${back}`);
+    navigate(`/dictionaries/products?mode=add`);
   }
 
   return (

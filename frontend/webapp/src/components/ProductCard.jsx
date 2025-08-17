@@ -101,7 +101,13 @@ export default function ProductCard({
         setTemplateFields(tFields);
 
         tFields.forEach(field => {
-          initialFields[field.SqlName] = "";
+          if (field.SqlName === "Barcode") {
+            const prefill = sessionStorage.getItem('productcard_prefill_barcode');
+            if (prefill) initialFields[field.SqlName] = prefill;
+            else initialFields[field.SqlName] = "";
+          } else {
+            initialFields[field.SqlName] = "";
+          }
         });
         setFields(initialFields);
         setAttributeValues([]);
