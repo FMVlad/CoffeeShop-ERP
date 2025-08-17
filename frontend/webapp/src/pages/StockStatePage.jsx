@@ -117,6 +117,13 @@ export default function StockStatePage() {
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
         >{loading ? 'Завантаження…' : '🔄 Оновити'}</button>
+        <button
+          onClick={()=>setShowConfig(true)}
+          style={{
+            background:'#7b6eea', color:'#fff', border:'none', borderRadius:12,
+            padding:'14px 20px', fontWeight:800, fontSize:16, boxShadow:'0 4px 14px rgba(0,0,0,0.15)', cursor:'pointer'
+          }}
+        >⚙️ Налаштувати…</button>
       </div>
 
       <div style={{ display:'flex', gap:12, marginBottom: 10, alignItems:'center' }}>
@@ -136,17 +143,6 @@ export default function StockStatePage() {
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ display:'flex', gap:10, marginBottom:8, alignItems:'center' }}>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.photo} onChange={e=>{ const v={...visibleCols, photo:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Фото</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.name} onChange={e=>{ const v={...visibleCols, name:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Товар</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.barcode} onChange={e=>{ const v={...visibleCols, barcode:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Штрихкод</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.article} onChange={e=>{ const v={...visibleCols, article:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Артикул</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.qty} onChange={e=>{ const v={...visibleCols, qty:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> К-сть</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.price} onChange={e=>{ const v={...visibleCols, price:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Ціна</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.avgcost} onChange={e=>{ const v={...visibleCols, avgcost:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Сер.собівартість</label>
-          <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.amount} onChange={e=>{ const v={...visibleCols, amount:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Сума</label>
-          <button onClick={()=>setShowConfig(true)} style={{ marginLeft:'auto', background:'#7b6eea', color:'#fff', border:'none', borderRadius:8, padding:'10px 14px', fontWeight:700, cursor:'pointer' }}>⚙️ Налаштувати…</button>
-        </div>
         {showConfig && (
           <ColumnsConfigModal
             visible={visibleCols}
