@@ -75,6 +75,8 @@ export default function StockStatePage() {
   const totalQty = useMemo(() => rows.reduce((s,r)=>s + Number(r.Qty||0), 0), [rows]);
   const totalAmount = useMemo(() => rows.reduce((s,r)=>s + Number(r.Amount||0), 0), [rows]);
 
+  const [showConfig, setShowConfig] = useState(false);
+
   return (
     <div>
       <h2 style={{ fontWeight: 700, fontSize: 20, marginBottom: 12 }}>Стан складу</h2>
@@ -143,7 +145,15 @@ export default function StockStatePage() {
           <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.price} onChange={e=>{ const v={...visibleCols, price:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Ціна</label>
           <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.avgcost} onChange={e=>{ const v={...visibleCols, avgcost:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Сер.собівартість</label>
           <label style={{ display:'flex', gap:6, alignItems:'center' }}><input type="checkbox" checked={visibleCols.amount} onChange={e=>{ const v={...visibleCols, amount:e.target.checked}; setVisibleCols(v); savePrefs(v);} }/> Сума</label>
+          <button onClick={()=>setShowConfig(true)} style={{ marginLeft:'auto', background:'#7b6eea', color:'#fff', border:'none', borderRadius:8, padding:'10px 14px', fontWeight:700, cursor:'pointer' }}>⚙️ Налаштувати…</button>
         </div>
+        {showConfig && (
+          <ColumnsConfigModal
+            visible={visibleCols}
+            onClose={()=>setShowConfig(false)}
+            onSave={(nextVisible)=>{ setVisibleCols(nextVisible); savePrefs(nextVisible); setShowConfig(false); }}
+          />
+        )}
         <table className="min-w-full bg-white border rounded">
           <thead>
             <tr className="bg-gray-100">
@@ -250,6 +260,43 @@ function CategorySelectStyles(){
       .category-select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; }
       .category-select option { padding: 6px 8px; }
     `}</style>
+  );
+}
+
+function ColumnsConfigModal({ visible, onClose, onSave }){
+  const FIELDS = [
+    { key:'photo', label:'Фото' },
+    { key:'name', label:'Товар' },
+    { key:'barcode', label:'Штрихкод' },
+    { key:'article', label:'Артикул' },
+    { key:'qty', label:'К-сть' },
+    { key:'price', label:'Ціна' },
+    { key:'avgcost', label:'Сер.собівартість' },
+    { key:'amount', label:'Сума' },
+  ];
+  const [local, setLocal] = React.useState({ ...visible });
+  function toggle(k){ setLocal(v => ({ ...v, [k]: !v[k] })); }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div style={{ width:'min(640px, 95vw)', background:'#fff', borderRadius:16, boxShadow:'0 10px 40px rgba(0,0,0,0.3)', padding:20 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <div style={{ fontSize:18, fontWeight:800 }}>Налаштування колонок</div>
+          <button onClick={onClose} style={{ border:'none', background:'transparent', fontSize:22, cursor:'pointer' }}>✕</button>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {FIELDS.map(f => (
+            <label key={f.key} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 6px', border:'1px solid #f1f1f1', borderRadius:8 }}>
+              <input type="checkbox" checked={!!local[f.key]} onChange={()=>toggle(f.key)} />
+              <span>{f.label}</span>
+            </label>
+          ))}
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:12 }}>
+          <button onClick={onClose} style={{ background:'#6c757d', color:'#fff', border:'none', borderRadius:8, padding:'10px 16px', fontWeight:700, cursor:'pointer' }}>Скасувати</button>
+          <button onClick={()=>onSave(local)} style={{ background:'#28a745', color:'#fff', border:'none', borderRadius:8, padding:'10px 16px', fontWeight:700, cursor:'pointer' }}>Зберегти</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
