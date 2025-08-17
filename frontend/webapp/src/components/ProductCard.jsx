@@ -267,6 +267,24 @@ export default function ProductCard({
     }
   };
 
+  // Кнопка: Зберегти й додати в накладну
+  const handleSaveAndAddToArrival = async () => {
+    await handleSave();
+    try {
+      // Після створення в onSave міг прийти response з id — заберемо останній продукт через пошук по штрихкоду
+      const bc = fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
+      if (bc) {
+        const p = await api.getProductByBarcode(bc);
+        if (p && p.ID) {
+          const selected = [{ ID: p.ID, FullName: p.FullName || p.Name || "", Quantity: 1 }];
+          sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected));
+        }
+      }
+    } catch {}
+    // Повертаємось назад
+    window.history.back();
+  };
+
   // --- Рендер полів ---
   const renderField = (field) => {
     const { SqlName, DisplayName, FieldType, IsRequired, ID: FieldID, IsStandard } = field;
@@ -552,6 +570,19 @@ export default function ProductCard({
               opacity: saving ? 0.6 : 1
             }}
           >Скасувати</button>
+          <button
+            onClick={handleSaveAndAddToArrival}
+            disabled={saving}
+            style={{
+              background: saving ? "#e9ecef" : "#28a745",
+              color: saving ? "#6c757d" : "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "12px 24px",
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer"
+            }}
+          >{saving ? "Збереження…" : "Зберегти й додати в накладну"}</button>
           <button
             onClick={handleSave}
             disabled={saving}
