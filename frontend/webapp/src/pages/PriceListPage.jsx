@@ -49,22 +49,42 @@ export default function PriceListPage() {
               Прайс-лист
             </span>
           </div>
-          <button
-            onClick={() => window.location.assign('/webapp')}
-            style={{
-              background: '#e9ecef',
-              color: '#333',
-              border: 'none',
-              borderRadius: 10,
-              padding: '12px 32px',
-              fontWeight: 700,
-              fontSize: 18,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px #0002'
-            }}
-          >
-            ← На головну
-          </button>
+          <div style={{ display:'flex', gap: 10 }}>
+            <button
+              onClick={() => window.location.assign('/webapp')}
+              style={{
+                background: '#e9ecef',
+                color: '#333',
+                border: 'none',
+                borderRadius: 10,
+                padding: '12px 32px',
+                fontWeight: 700,
+                fontSize: 18,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px #0002'
+              }}
+            >
+              ← На головну
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const priceCategoryId = (priceCategories[0] && priceCategories[0].ID) || null;
+                  if (!priceCategoryId) return alert('Немає категорій цін');
+                  const payload = { price_category_id: priceCategoryId, rounding: 1 };
+                  const res = await api.post('/product-prices/generate', null, payload);
+                  alert(`Згенеровано: ${res.generated}`);
+                  api.getProductPrices().then(setPrices);
+                } catch (e) {
+                  alert('Помилка генерації цін');
+                }
+              }}
+              style={{
+                background: '#00b894', color:'#fff', border:'none', borderRadius: 10,
+                padding:'12px 20px', fontWeight:700, fontSize:16, cursor:'pointer', boxShadow:'0 2px 8px #0002'
+              }}
+            >Згенерувати ціни</button>
+          </div>
         </div>
         {/* Таблиця */}
         <div style={{
