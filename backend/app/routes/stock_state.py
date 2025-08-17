@@ -27,6 +27,11 @@ def stock_state(
     warehouse_id: Optional[int] = Query(None),
     on_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     price_category_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None, description="Пошук: штрихкод/повна назва/артикул"),
+    category_id: Optional[int] = Query(None),
+    qty_filter: Optional[str] = Query(None, description="in_stock|negative|zero"),
+    only_weight: Optional[bool] = Query(False),
+    only_piece: Optional[bool] = Query(False),
     db: pyodbc.Connection = Depends(get_db),
 ):
     # 1) Базовий набір залишків із партій
@@ -61,17 +66,39 @@ def stock_state(
     products: Dict[int, Dict[str, Any]] = {}
     if prod_ids:
         in_placeholders = ",".join(["?"] * len(prod_ids))
+        extra_cols = []
+        # Додаткові атрибути, якщо існують
+        has_isweight = _has_column(db, "Products", "IsWeight") or _has_column(db, "Products", "IsWeighted")
+        has_category = _has_column(db, "Products", "CategoryID")
+        select_cols = ["ID", "FullName", "Barcode", "Article", "Photo"]
+        if has_isweight:
+            # пробуємо обидва варіанти назв
+            if _has_column(db, "Products", "IsWeight"):
+                select_cols.append("IsWeight")
+                extra_cols.append("IsWeight")
+            elif _has_column(db, "Products", "IsWeighted"):
+                select_cols.append("IsWeighted")
+                extra_cols.append("IsWeighted")
+        if has_category:
+            select_cols.append("CategoryID")
+            extra_cols.append("CategoryID")
+
         info = cur.execute(
-            f"SELECT ID, FullName, Barcode, Article, Photo FROM Products WHERE ID IN ({in_placeholders})",
+            f"SELECT {', '.join(select_cols)} FROM Products WHERE ID IN ({in_placeholders})",
             tuple(prod_ids),
         ).fetchall()
         for r in info:
-            products[int(r[0])] = {
+            data = {
                 "FullName": r[1],
                 "Barcode": r[2],
                 "Article": r[3],
                 "Photo": r[4],
             }
+            idx = 5
+            for col in extra_cols:
+                data[col] = r[idx]
+                idx += 1
+            products[int(r[0])] = data
 
     # 2) Підбір ціни продажу (за моделлю глобально/по центру)
     price_model = (_get_program_param(db, "PriceModel", "global") or "global").lower()
@@ -118,12 +145,40 @@ def stock_state(
                 "Barcode": prod.get("Barcode", ""),
                 "Article": prod.get("Article", ""),
                 "Photo": prod.get("Photo"),
+                "CategoryID": prod.get("CategoryID"),
+                "IsWeight": bool(prod.get("IsWeight") or prod.get("IsWeighted") or False),
                 "Qty": qty,
                 "AvgCost": avg_cost,
                 "Price": price,
                 "Amount": qty * price,
             }
         )
+
+    # --- Пошук і фільтри на боці сервера ---
+    s = (search or "").strip().lower()
+    if s:
+        def _match(it: Dict[str, Any]) -> bool:
+            return (
+                (it.get("Barcode") or "").lower().find(s) >= 0
+                or (it.get("FullName") or "").lower().find(s) >= 0
+                or (it.get("Article") or "").lower().find(s) >= 0
+            )
+        items = [it for it in items if _match(it)]
+
+    if category_id:
+        items = [it for it in items if int(it.get("CategoryID") or 0) == int(category_id)]
+
+    if qty_filter == "in_stock":
+        items = [it for it in items if float(it.get("Qty") or 0) > 0]
+    elif qty_filter == "negative":
+        items = [it for it in items if float(it.get("Qty") or 0) < 0]
+    elif qty_filter == "zero":
+        items = [it for it in items if float(it.get("Qty") or 0) == 0]
+
+    if only_weight:
+        items = [it for it in items if bool(it.get("IsWeight"))]
+    if only_piece:
+        items = [it for it in items if not bool(it.get("IsWeight"))]
 
     return {"items": items}
 

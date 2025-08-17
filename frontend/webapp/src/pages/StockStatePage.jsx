@@ -11,10 +11,17 @@ export default function StockStatePage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [previewSrc, setPreviewSrc] = useState(null);
+  const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [qtyFilter, setQtyFilter] = useState(""); // in_stock | negative | zero
+  const [onlyWeight, setOnlyWeight] = useState(false);
+  const [onlyPiece, setOnlyPiece] = useState(false);
 
   useEffect(() => {
     api.getCenters().then(setCenters);
     api.getPriceCategories && api.getPriceCategories().then(setPriceCategories).catch(()=>{});
+    api.getCategories && api.getCategories().then(setCategories).catch(()=>{});
   }, []);
 
   async function load() {
@@ -25,6 +32,11 @@ export default function StockStatePage() {
         warehouse_id: warehouseId || undefined,
         on_date: date,
         price_category_id: priceCategoryId || undefined,
+        search: search || undefined,
+        category_id: categoryId || undefined,
+        qty_filter: qtyFilter || undefined,
+        only_weight: onlyWeight || undefined,
+        only_piece: onlyPiece || undefined,
       });
       setRows((data && data.items) || []);
     } finally {
@@ -40,7 +52,14 @@ export default function StockStatePage() {
   return (
     <div>
       <h2 style={{ fontWeight: 700, fontSize: 20, marginBottom: 12 }}>Стан складу</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 120px', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr 140px', gap: 8, marginBottom: 12 }}>
+        <input
+          placeholder="Пошук: штрихкод / назва / артикул"
+          value={search}
+          onChange={e=>setSearch(e.target.value)}
+          onKeyDown={(e)=>{ if (e.key === 'Enter') load(); }}
+          style={{ padding: 8, borderRadius: 6 }}
+        />
         <select value={centerId} onChange={e=>setCenterId(e.target.value)}>
           <option value="">Всі центри</option>
           {centers.map(c => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
@@ -50,8 +69,27 @@ export default function StockStatePage() {
           <option value="">Категорія цін (за замовчуванням)</option>
           {(priceCategories||[]).map(pc => <option key={pc.ID} value={pc.ID}>{pc.Name||pc.CategoryName||pc.ID}</option>)}
         </select>
-        <div />
+        <select value={categoryId} onChange={e=>setCategoryId(e.target.value)}>
+          <option value="">Всі категорії</option>
+          {(categories||[]).map(c => <option key={c.ID} value={c.ID}>{c.CategoryName}</option>)}
+        </select>
         <button onClick={load} disabled={loading} style={{ padding: '8px 12px' }}>{loading? 'Завантаження...' : 'Оновити'}</button>
+      </div>
+
+      <div style={{ display:'flex', gap:12, marginBottom: 10, alignItems:'center' }}>
+        <label>Фільтр по кількості:</label>
+        <select value={qtyFilter} onChange={e=>setQtyFilter(e.target.value)}>
+          <option value="">Всі</option>
+          <option value="in_stock">В наявності (&gt; 0)</option>
+          <option value="zero">Нульовий залишок (= 0)</option>
+          <option value="negative">Відʼємний залишок (&lt; 0)</option>
+        </select>
+        <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <input type="checkbox" checked={onlyWeight} onChange={e=>{ setOnlyWeight(e.target.checked); if (e.target.checked) setOnlyPiece(false); }} /> Вагові
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <input type="checkbox" checked={onlyPiece} onChange={e=>{ setOnlyPiece(e.target.checked); if (e.target.checked) setOnlyWeight(false); }} /> Штучні
+        </label>
       </div>
 
       <div className="overflow-x-auto">
