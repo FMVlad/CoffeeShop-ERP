@@ -37,7 +37,7 @@ export default function ProductPicker({ value, onSelect, onSelectRaw, ...rest })
           </div>
           <div className="text-xs text-coffee-500">
             {p.Barcode ? `Штрихкод: ${p.Barcode}` : "—"}
-            {p.Sku ? ` • SKU: ${p.Sku}` : ""}
+            {p.Article ? ` • Артикул: ${p.Article}` : (p.Sku ? ` • SKU: ${p.Sku}` : "")}
           </div>
         </div>
       )}

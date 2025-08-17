@@ -38,6 +38,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'rows'
+  const [previewSrc, setPreviewSrc] = useState(null);
   const searchInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -166,6 +168,25 @@ export default function ProductsPage() {
               padding: '12px 24px', fontWeight: 700, cursor: 'pointer'
             }}
           >Скинути</button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ color: '#4a4a4a', fontWeight: 600 }}>Вигляд:</span>
+            <button
+              onClick={() => setViewMode('cards')}
+              style={{
+                background: viewMode === 'cards' ? '#4c6ef5' : '#f2f2f2',
+                color: viewMode === 'cards' ? '#fff' : '#636e72',
+                border: 'none', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer'
+              }}
+            >Картки</button>
+            <button
+              onClick={() => setViewMode('rows')}
+              style={{
+                background: viewMode === 'rows' ? '#4c6ef5' : '#f2f2f2',
+                color: viewMode === 'rows' ? '#fff' : '#636e72',
+                border: 'none', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer'
+              }}
+            >Рядки</button>
+          </div>
         </div>
         {/* --- Список товарів --- */}
         {loading ? (
@@ -174,7 +195,7 @@ export default function ProductsPage() {
           }}>
             Завантаження...
       </div>
-        ) : (
+        ) : viewMode === 'cards' ? (
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
@@ -300,6 +321,69 @@ export default function ProductsPage() {
                 </div>
               )
             })}
+          </div>
+        ) : (
+          <div style={{ marginTop: 8 }}>
+            <table className="w-full bg-white rounded border">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-2 border w-24">Фото</th>
+                  <th className="p-2 border text-left">Повна назва</th>
+                  <th className="p-2 border w-40">Штрихкод</th>
+                  <th className="p-2 border w-40">Артикул</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-4 text-center text-gray-500">Немає товарів</td>
+                  </tr>
+                ) : (
+                  products.map((p) => (
+                    <tr key={p.ID} className="hover:bg-gray-50 cursor-pointer" onDoubleClick={() => { setEditingProductId(p.ID); setShowProductCard(true); }}>
+                      <td className="p-2 border">
+                        <div
+                          title={p.Photo ? 'Клік для превʼю' : ''}
+                          style={{ width: 96, height: 96, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: p.Photo ? 'zoom-in' : 'default' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (p.Photo) setPreviewSrc(`http://localhost:8000/api/preview/${p.Photo}`);
+                          }}
+                        >
+                          {p.Photo ? (
+                            <img
+                              src={`http://localhost:8000/api/preview/${p.Photo}`}
+                              alt={p.Name}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 24, color: '#bbb' }}>📷</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 border" style={{ fontWeight: 600, color: '#2d3436' }}>{p.FullName || p.Name}</td>
+                      <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{String(p.Barcode || '')}</td>
+                      <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{p.Article || ''}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+            {previewSrc && (
+              <div
+                onClick={() => setPreviewSrc(null)}
+                style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+                }}
+              >
+                <img
+                  src={previewSrc}
+                  alt="preview"
+                  style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.4)' }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

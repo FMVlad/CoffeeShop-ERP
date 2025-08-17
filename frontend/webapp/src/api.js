@@ -517,13 +517,14 @@ export const searchProducts = async (q) => {
       Name: p.Name ?? p.name ?? p.ProductName ?? p.FullName ?? "",
       Barcode: p.Barcode ?? p.barcode ?? "",
       Sku: p.Sku ?? p.sku ?? "",
+      Article: p.Article ?? p.article ?? "",
     }));
     // Пріоритезуємо точні збіги: спочатку штрихкод, потім артикул (SKU)
     const exactBarcodeIdx = normalized.findIndex(
       (x) => String(x.Barcode || "").trim() === s
     );
     const exactSkuIdx = normalized.findIndex(
-      (x) => String(x.Sku || "").trim() === s
+      (x) => String(x.Sku || "").trim() === s || String(x.Article || "").trim() === s
     );
     if (exactBarcodeIdx > 0) {
       const [hit] = normalized.splice(exactBarcodeIdx, 1);
