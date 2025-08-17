@@ -85,8 +85,11 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
         <div className="flex gap-2 md:flex-[0.45]">
           <button
             className="border rounded px-3 py-2"
-            onClick={() => setShowDirectory(true)}
-            title="Вибрати з довідника товарів"
+            onClick={() => {
+              window.sessionStorage.setItem("arrival_back", window.location.pathname + window.location.search);
+              window.location.assign("/webapp/select-products");
+            }}
+            title="Відкрити сторінку вибору товарів"
           >
             🔎 Пошук у довіднику
           </button>
@@ -173,27 +176,33 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
           </tbody>
         </table>
       </div>
-      {showDirectory && (
-        <ProductDirectoryModal
-          isOpen={showDirectory}
-          onClose={() => setShowDirectory(false)}
-          onAdd={(items) => {
-            if (!Array.isArray(items) || items.length === 0) return;
-            setDoc((d) => {
-              const appended = items.map((p) => ({
-                ProductID: p.ID ?? p.ProductID,
-                ProductName: p.FullName || p.Name || "",
-                Quantity: 1,
-                Price: 0,
-                TaxRateID: null,
-              }));
-              const newItems = [...d.Items, ...appended];
-              const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
-              return { ...d, Items: newItems, TotalAmount: total };
-            });
-          }}
-        />
-      )}
+      {/* Обробка повернення зі сторінки вибору */}
+      {(() => {
+        try {
+          const raw = window.sessionStorage.getItem("arrival_selected_products");
+          if (raw) {
+            window.sessionStorage.removeItem("arrival_selected_products");
+            const selected = JSON.parse(raw);
+            if (Array.isArray(selected) && selected.length > 0) {
+              setTimeout(() => {
+                setDoc((d) => {
+                  const appended = selected.map((p) => ({
+                    ProductID: p.ID,
+                    ProductName: p.FullName || p.Name || "",
+                    Quantity: 1,
+                    Price: 0,
+                    TaxRateID: null,
+                  }));
+                  const newItems = [...d.Items, ...appended];
+                  const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+                  return { ...d, Items: newItems, TotalAmount: total };
+                });
+              }, 0);
+            }
+          }
+        } catch {}
+        return null;
+      })()}
     </>
   );
 }

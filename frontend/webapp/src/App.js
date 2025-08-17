@@ -11,6 +11,7 @@ import ProductPricesPage from './pages/ProductPricesPage';
 import PriceListPage from './pages/PriceListPage';
 import StockPage from './pages/StockPage.jsx';
 import ProductsPage from './pages/ProductsPage';
+import SelectProductsPage from './pages/SelectProductsPage.jsx';
 
 import ProgrammParametersPage from './pages/ProgrammParametersPage';
 
@@ -196,6 +197,7 @@ function AppRoutes() {
                   {/* Документи */}
                   <Route path="/docs" element={<DocumentsPage />} />
                   <Route path="/docs/arrivals" element={<ArrivalDocumentsPage />} />
+                  <Route path="/select-products" element={<SelectProductsPage />} />
                   <Route path="/admin" element={<AdminLayout />} >
                     <Route index element={<AdminServicePage />} />
                     <Route path="system" element={<AdminSystemParameters />} />
