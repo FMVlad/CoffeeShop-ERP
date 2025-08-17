@@ -110,6 +110,13 @@ export default function ProductsPage() {
           onCancel={() => {
             setShowProductCard(false);
             setEditingProductId(null);
+            // Якщо прийшли у режимі додавання з накладної — повертаємось назад
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('mode') === 'add') {
+              const back = sessionStorage.getItem('arrival_back_path');
+              if (back) window.location.assign(back);
+              else window.history.back();
+            }
           }}
         />
       </div>
@@ -184,6 +191,11 @@ export default function ProductsPage() {
               padding: '12px 24px', fontWeight: 700, cursor: 'pointer'
             }}
           >Скинути</button>
+          {new URLSearchParams(window.location.search).get('mode') === 'add' && (
+            <div style={{ marginLeft: 12, color: '#8a6d3b', background: '#fcf8e3', border: '1px solid #faebcc', borderRadius: 8, padding: '10px 14px', fontSize: 14 }}>
+              Відскановано новий штрихкод. Щоб додати товар — натисніть “+ Додати”.
+            </div>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ color: '#4a4a4a', fontWeight: 600 }}>Вигляд:</span>
             <button

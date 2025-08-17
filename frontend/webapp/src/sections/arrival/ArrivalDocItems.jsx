@@ -103,6 +103,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                   doc,
                 };
                 window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+                window.sessionStorage.setItem("arrival_back_path", window.location.pathname + window.location.search);
               } catch {}
               navigate("/select-products");
             }}
