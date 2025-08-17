@@ -137,9 +137,8 @@ def stock_state(
         avg_cost = (amount_cost / qty) if qty else 0.0
         prod = products.get(pid, {})
         price = resolve_price(pid) or 0.0
-        barcode_s = str(prod.get("Barcode") or "")
-        inferred_weight = True if (len(barcode_s) >= 1 and barcode_s[0] == "2") else False
-        is_weight = bool(prod.get("IsWeight") or prod.get("IsWeighted") or inferred_weight)
+        # Визначаємо ваговий товар ТІЛЬКИ за полем у БД, без інференсу з штрихкоду
+        is_weight = bool(prod.get("IsWeight") or prod.get("IsWeighted") or False)
         items.append(
             {
                 "ProductID": pid,

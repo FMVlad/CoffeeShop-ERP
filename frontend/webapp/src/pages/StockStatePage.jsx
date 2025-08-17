@@ -84,10 +84,10 @@ export default function StockStatePage() {
           <option value="negative">Відʼємний залишок (&lt; 0)</option>
         </select>
         <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-          <input type="checkbox" checked={onlyWeight} onChange={e=>{ setOnlyWeight(e.target.checked); if (e.target.checked) setOnlyPiece(false); }} /> Вагові
+          <input type="checkbox" checked={onlyWeight} onChange={e=>{ const v = e.target.checked; setOnlyWeight(v); if (v) setOnlyPiece(false); }} /> Вагові
         </label>
         <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-          <input type="checkbox" checked={onlyPiece} onChange={e=>{ setOnlyPiece(e.target.checked); if (e.target.checked) setOnlyWeight(false); }} /> Штучні
+          <input type="checkbox" checked={onlyPiece} onChange={e=>{ const v = e.target.checked; setOnlyPiece(v); if (v) setOnlyWeight(false); }} /> Штучні
         </label>
       </div>
 
