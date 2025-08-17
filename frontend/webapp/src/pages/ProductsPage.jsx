@@ -199,7 +199,7 @@ export default function ProductsPage() {
           >Скинути</button>
           {new URLSearchParams(window.location.search).get('mode') === 'add' && (
             <div style={{ marginLeft: 12, color: '#8a6d3b', background: '#fcf8e3', border: '1px solid #faebcc', borderRadius: 8, padding: '10px 14px', fontSize: 14 }}>
-              Відскановано новий штрихкод. Щоб додати товар — натисніть “+ Додати”.
+              Відскановано новий штрихкод. Щоб додати товар — натисніть “+ Додати”. Після збереження ви повернетесь у документ для продовження.
             </div>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>

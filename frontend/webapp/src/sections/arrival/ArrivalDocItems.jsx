@@ -9,6 +9,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const [localFocusBump, setLocalFocusBump] = useState(0);
   const [showDirectory, setShowDirectory] = useState(false);
   const navigate = useNavigate();
+  const [notFoundBc, setNotFoundBc] = useState("");
 
   const addRow = useCallback(() => {
     setDoc((d) => ({
@@ -82,15 +83,48 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
             autoFocus
             onResolve={onBarcodeResolved}
             onNotFound={(bc) => {
+              // Не показуємо alert — даємо варіанти дії
+              setNotFoundBc(String(bc || ""));
               try {
                 const snapshot = { editingId: null, doc };
                 window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+                window.sessionStorage.setItem("arrival_back_path", window.location.pathname + window.location.search);
                 window.sessionStorage.setItem("prefill_barcode", bc);
               } catch {}
-              navigate("/select-products?mode=add");
             }}
             placeholder="Скануй або введи та натисни Enter"
           />
+          {notFoundBc && (
+            <div className="mt-2" style={{ background: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  Штрихкод {notFoundBc} не знайдено. Потрібно додати товар у довідник або додати позицію вручну.
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="border rounded px-3 py-2"
+                    onClick={() => {
+                      navigate("/dictionaries/products?mode=add&source=selector");
+                    }}
+                  >+ Додати товар</button>
+                  <button
+                    className="border rounded px-3 py-2"
+                    onClick={() => {
+                      setNotFoundBc("");
+                      // додати порожній рядок і сфокусуватися назад
+                      addRow();
+                      setLocalFocusBump(n => n + 1);
+                      onRequestFocus?.();
+                    }}
+                  >+ Додати рядок</button>
+                  <button
+                    className="border rounded px-3 py-2"
+                    onClick={() => setNotFoundBc("")}
+                  >Закрити</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 md:flex-[0.45]">
           <button
