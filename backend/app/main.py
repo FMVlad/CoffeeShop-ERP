@@ -37,6 +37,7 @@ from app.routes import arrival_documents
 from app.routes import stock_state as stock_state_router
 from app.routes import costing as costing_router
 from app.routes import service_tasks as service_tasks_router
+from app.routes import user_prefs as user_prefs_router
 
 app = FastAPI(
     title="VYSHNIA API",
@@ -97,6 +98,7 @@ app.include_router(arrival_documents.router, prefix="/api")
 app.include_router(stock_state_router.router, prefix="/api")
 app.include_router(costing_router.router, prefix="/api")
 app.include_router(service_tasks_router.router, prefix="/api")
+app.include_router(user_prefs_router.router, prefix="/api")
 
 @app.get("/")
 def read_root():

@@ -788,5 +788,12 @@ export const api = {
   getProgrammParameters,
   upsertProgrammParameter,
   updateProgrammParameter,
+  // User prefs
+  async getUserTablePrefs(employeeId, prefKey) {
+    return fetchJSON('/user-prefs', { method: 'GET', query: { employee_id: employeeId, pref_key: prefKey } });
+  },
+  async upsertUserTablePref(employeeId, prefKey, prefJson) {
+    return fetchJSON('/user-prefs', { method: 'POST', data: { EmployeeID: employeeId, PrefKey: prefKey, PrefJson: prefJson } });
+  },
 
 };
