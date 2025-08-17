@@ -69,10 +69,9 @@ export default function StockStatePage() {
           <option value="">Категорія цін (за замовчуванням)</option>
           {(priceCategories||[]).map(pc => <option key={pc.ID} value={pc.ID}>{pc.Name||pc.CategoryName||pc.ID}</option>)}
         </select>
-        <select value={categoryId} onChange={e=>setCategoryId(e.target.value)}>
-          <option value="">Всі категорії</option>
-          {(categories||[]).map(c => <option key={c.ID} value={c.ID}>{c.CategoryName}</option>)}
-        </select>
+        <div>
+          <CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} />
+        </div>
         <button onClick={load} disabled={loading} style={{ padding: '8px 12px' }}>{loading? 'Завантаження...' : 'Оновити'}</button>
       </div>
 
@@ -154,7 +153,48 @@ export default function StockStatePage() {
           <img src={previewSrc} alt="preview" style={{ maxWidth:'90vw', maxHeight:'90vh', objectFit:'contain', borderRadius:8, boxShadow:'0 10px 30px rgba(0,0,0,0.4)' }} />
         </div>
       )}
+      <CategorySelectStyles />
     </div>
+  );
+}
+
+// Маленький компонент-дерево вибору категорій із плоского списку {ID, CategoryName, ParentID}
+function CategorySelectTree({ categories, value, onChange }) {
+  const map = React.useMemo(() => {
+    const byParent = new Map();
+    (categories||[]).forEach(c => {
+      const pid = c.ParentID || 0;
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(c);
+    });
+    // відсортуємо для охайності
+    for (const arr of byParent.values()) arr.sort((a,b)=>String(a.CategoryName||'').localeCompare(String(b.CategoryName||'')));
+    return byParent;
+  }, [categories]);
+
+  function renderLevel(parentId = 0, depth = 0) {
+    const list = map.get(parentId) || [];
+    return list.map(c => (
+      <option key={c.ID} value={c.ID}>
+        {`${'— '.repeat(depth)}${c.CategoryName}`}
+      </option>
+    )).concat(...list.map(c => renderLevel(c.ID, depth + 1)));
+  }
+
+  return (
+    <select value={value} onChange={e=>onChange(e.target.value)} className="category-select">
+      <option value="">Всі категорії</option>
+      {renderLevel(0, 0)}
+    </select>
+  );
+}
+
+function CategorySelectStyles(){
+  return (
+    <style>{`
+      .category-select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; }
+      .category-select option { padding: 6px 8px; }
+    `}</style>
   );
 }
 

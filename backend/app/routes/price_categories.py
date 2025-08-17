@@ -7,7 +7,12 @@ router = APIRouter()
 @router.get("/categories")
 def get_categories(db=Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT ID, CategoryName FROM Categories ORDER BY CategoryName")
+    # Повертаємо також ParentID, щоб фронт міг будувати ієрархію
+    try:
+        cursor.execute("SELECT ID, CategoryName, ParentID FROM Categories ORDER BY CategoryName")
+    except Exception:
+        # Якщо немає ParentID — повернемо без нього
+        cursor.execute("SELECT ID, CategoryName FROM Categories ORDER BY CategoryName")
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
