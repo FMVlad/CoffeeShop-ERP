@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../api";
 
@@ -13,6 +13,7 @@ export default function SelectProductsPage() {
   const [viewMode, setViewMode] = useState("rows");
   const [selectedQty, setSelectedQty] = useState(new Map());
   const [submitting, setSubmitting] = useState(false);
+  const promptGuardRef = useRef(0);
 
   useEffect(() => {
     // очищаємо будь-які попередні кеші
@@ -51,17 +52,19 @@ export default function SelectProductsPage() {
   }
 
   function toggle(id) {
+    const now = Date.now();
+    if (now - (promptGuardRef.current || 0) < 600) return; // анти-дубль
+    promptGuardRef.current = now;
     setSelectedQty((prev) => {
       const next = new Map(prev);
       if (next.has(id)) {
-        // якщо вже обраний — пропонуємо змінити кількість
         const current = Number(next.get(id) || 1);
         const q = promptQty(current);
-        if (q == null) return prev; // скасовано — залишаємо як було
+        if (q == null) return prev;
         next.set(id, q);
       } else {
         const q = promptQty(1);
-        if (q == null) return prev; // скасовано — не додаємо
+        if (q == null) return prev;
         next.set(id, q);
       }
       return next;
