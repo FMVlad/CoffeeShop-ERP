@@ -784,5 +784,9 @@ export const api = {
   deleteArrivalDocItem,
   postArrivalDocPostings,
   cancelArrivalDocPostings,
+  // Програмні параметри
+  getProgrammParameters,
+  upsertProgrammParameter,
+  updateProgrammParameter,
 
 };

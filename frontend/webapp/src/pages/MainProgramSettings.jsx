@@ -89,7 +89,9 @@ export default function MainProgramSettings() {
             await api.upsertProgrammParameter({ ParamKey: "PriceModel", ParamValue: main.priceModel });
             alert("Збережено!");
           } catch (e) {
-            alert("Помилка збереження параметрів");
+            // Показуємо детальніше повідомлення і лог у консоль
+            alert(`Помилка збереження параметрів: ${e?.message || "невідома"}`);
+            try { console.error(e?.diagText || e); } catch {}
           }
         }}
       >
