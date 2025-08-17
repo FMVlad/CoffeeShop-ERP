@@ -36,6 +36,8 @@ export default function ArrivalDocumentsPage() {
       Date: new Date().toISOString().slice(0, 10),
       SupplierID: "",
       CurrencyID: "",
+      CurrencyRate: 1,
+      CurrencyRateDate: new Date().toISOString().slice(0, 10),
       PricesIncludeVAT: false,
       CompanyID: "",
       CenterID: "",
@@ -263,6 +265,8 @@ export default function ArrivalDocumentsPage() {
       CompanyID: defCompany,
       CenterID: defCenter,
       CurrencyID: defCurrency,
+      CurrencyRate: 1,
+      CurrencyRateDate: new Date().toISOString().slice(0, 10),
       TypicalOperationID: defOp,
     });
     setShowForm(true);
@@ -278,6 +282,8 @@ export default function ArrivalDocumentsPage() {
       Date: d.Date?.slice(0, 10),
       SupplierID: d.SupplierID || "",
       CurrencyID: d.CurrencyID || "",
+      CurrencyRate: d.CurrencyRate || 1,
+      CurrencyRateDate: (d.CurrencyRateDate || d.Date || new Date().toISOString()).slice(0,10),
       CompanyID: d.CompanyID || "",
       CenterID: d.CenterID || "",
       TypicalOperationID: d.TypicalOperationID || "",
@@ -286,6 +292,7 @@ export default function ArrivalDocumentsPage() {
       Items: (d.Items || []).map((r) => ({
         ...r,
         ProductName: r.ProductName || r.FullName || r.Name || "",
+        PriceFC: r.PriceFC || null,
       })),
       TotalAmount:
         (d.Items || []).reduce(
@@ -508,6 +515,70 @@ export default function ArrivalDocumentsPage() {
               </select>
             </div>
 
+            {/* Валюта, курс, дата курсу — у потрібному порядку */}
+            <div>
+              <label className="text-sm block mb-1">Валюта</label>
+              <select
+                className="border rounded p-2 w-full"
+                value={doc.CurrencyID}
+                onChange={(e) => setDoc({ ...doc, CurrencyID: e.target.value })}
+              >
+                <option value="">— не вказано —</option>
+                {currencies.map((c) => (
+                  <option key={c.ID} value={c.ID}>
+                    {c.CurrencyCode}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm block mb-1">Курс</label>
+              <div className="flex gap-2">
+                <input
+                  className="border rounded p-2 w-full text-right"
+                  type="number"
+                  step="0.0001"
+                  value={doc.CurrencyRate}
+                  onChange={(e) => {
+                    const rate = e.target.value;
+                    // перерахунок гривневих цін з PriceFC
+                    setDoc((d) => {
+                      const newItems = (d.Items || []).map(r => {
+                        const priceFC = Number(r.PriceFC || 0);
+                        if (priceFC && Number(rate)) {
+                          return { ...r, Price: priceFC * Number(rate) };
+                        }
+                        return r;
+                      });
+                      const total = newItems.reduce((s, r) => s + (Number(r.Quantity || 0) * Number(r.Price || 0)), 0);
+                      return { ...d, CurrencyRate: rate, Items: newItems, TotalAmount: total };
+                    });
+                  }}
+                />
+                <button
+                  className="border rounded px-3 whitespace-nowrap"
+                  title="Підтягнути курс на дату"
+                  onClick={async () => {
+                    try {
+                      const list = await api.getCurrencyRates({ currency_id: doc.CurrencyID, date_to: doc.Date });
+                      const rate = (list || []).find(r => r.RateDate && r.RateDate.slice(0,10) <= doc.Date)?.Rate || (list && list[0] ? list[0].Rate : 1);
+                      setDoc(d => ({ ...d, CurrencyRate: rate || 1, CurrencyRateDate: doc.Date }));
+                    } catch {}
+                  }}
+                >Оновити курс</button>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm block mb-1">Дата курсу</label>
+              <input
+                type="date"
+                className="border rounded p-2 w-full"
+                value={doc.CurrencyRateDate}
+                onChange={(e) => setDoc({ ...doc, CurrencyRateDate: e.target.value })}
+              />
+            </div>
+
+            {/* Після валютного блоку — центр та компанія */}
             <div>
               <label className="text-sm block mb-1">Центр обліку</label>
               <select
@@ -523,7 +594,7 @@ export default function ArrivalDocumentsPage() {
                 ))}
               </select>
             </div>
-
+            
             <div>
               <label className="text-sm block mb-1">Підприємець / Компанія</label>
               <select
@@ -535,22 +606,6 @@ export default function ArrivalDocumentsPage() {
                 {companies.map((c) => (
                   <option key={c.ID} value={c.ID}>
                     {c.Name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm block mb-1">Валюта</label>
-              <select
-                className="border rounded p-2 w-full"
-                value={doc.CurrencyID}
-                onChange={(e) => setDoc({ ...doc, CurrencyID: e.target.value })}
-              >
-                <option value="">— не вказано —</option>
-                {currencies.map((c) => (
-                  <option key={c.ID} value={c.ID}>
-                    {c.CurrencyCode}
                   </option>
                 ))}
               </select>
@@ -649,6 +704,13 @@ export default function ArrivalDocumentsPage() {
               setDoc={setDoc}
               focusKey={barcodeFocusBump}
               onRequestFocus={() => setBarcodeFocusBump((n) => n + 1)}
+              showFC={(() => {
+                const uah = currencies.find(c => c.CurrencyCode === 'UAH');
+                if (!doc.CurrencyID) return false;
+                if (!uah) return false;
+                return String(doc.CurrencyID) !== String(uah.ID);
+              })()}
+              rate={Number(doc.CurrencyRate || 1)}
             />
           )}
 
@@ -719,14 +781,14 @@ export default function ArrivalDocumentsPage() {
             </div>
 
             { (doc.Postings || []).length === 0 ? (
-              <button
-                className="bg-blue-600 text-white px-5 py-2 rounded disabled:opacity-60"
-                onClick={runPostings}
-                disabled={posting || !editingId}
-                title={!editingId ? "Спочатку збережи документ" : undefined}
-              >
-                {posting ? "Проводжу…" : "Провести"}
-              </button>
+            <button
+              className="bg-blue-600 text-white px-5 py-2 rounded disabled:opacity-60"
+              onClick={runPostings}
+              disabled={posting || !editingId}
+              title={!editingId ? "Спочатку збережи документ" : undefined}
+            >
+              {posting ? "Проводжу…" : "Провести"}
+            </button>
             ) : (
               <button
                 className="bg-orange-600 text-white px-5 py-2 rounded disabled:opacity-60"

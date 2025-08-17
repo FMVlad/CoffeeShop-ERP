@@ -304,6 +304,13 @@ export const updateSystemParameter = (id, data) =>
 export const deleteSystemParameter = (id) =>
   fetchJSON(`/system-parameters/${id}`, { method: "DELETE" });
 
+// --- Програмні параметри ---
+export const getProgrammParameters = () => fetchJSON("/programm-parameters");
+export const upsertProgrammParameter = (param) =>
+  fetchJSON("/programm-parameters", { method: "POST", data: param });
+export const updateProgrammParameter = (id, data) =>
+  fetchJSON(`/programm-parameters/${id}`, { method: "PUT", data });
+
 // --- Назви за правилами ---
 export const getProductNameRules = () => fetchJSON("/product-name-rules");
 export const addProductNameRule = (data) =>

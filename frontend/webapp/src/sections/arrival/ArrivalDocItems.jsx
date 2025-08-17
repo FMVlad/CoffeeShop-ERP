@@ -5,7 +5,7 @@ import ProductPicker from "../../components/ProductPicker";
 import BarcodeInput from "../../components/BarcodeInput";
 import ProductDirectoryModal from "../../components/ProductDirectoryModal";
 
-export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus }) {
+export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus, showFC = false, rate = 1 }) {
   const [localFocusBump, setLocalFocusBump] = useState(0);
   const [showDirectory, setShowDirectory] = useState(false);
   const navigate = useNavigate();
@@ -50,12 +50,23 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const setItem = useCallback(
     (idx, key, val) => {
       setDoc((d) => {
-        const items = d.Items.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
-        const total = items.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+        let items = d.Items.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
+        // Якщо користувач змінює PriceFC або змінився курс — перерахувати Price у гривні
+        if (key === 'PriceFC' || key === 'Quantity' || key === 'Price') {
+          const rate = Number(d.CurrencyRate || 1);
+          items = items.map((r, i) => {
+            if (i !== idx) return r;
+            const q = Number(r.Quantity || 0);
+            const priceFC = Number(r.PriceFC || 0);
+            const priceUAH = showFC && rate ? (priceFC * rate) : Number(r.Price || 0);
+            return { ...r, Price: showFC ? priceUAH : Number(r.Price || 0) };
+          });
+        }
+        const total = items.reduce((s, r) => s + (Number(r.Quantity || 0) * Number(r.Price || 0)), 0);
         return { ...d, Items: items, TotalAmount: total };
       });
     },
-    [setDoc]
+    [setDoc, showFC]
   );
 
   const delItem = useCallback(
@@ -140,7 +151,9 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
               <th className="p-2 border">Товар</th>
               <th className="p-2 border w-28">К-сть</th>
               <th className="p-2 border w-28">Ціна</th>
+              {showFC && <th className="p-2 border w-28">Ціна (валюта)</th>}
               <th className="p-2 border w-28">Сума</th>
+              {showFC && <th className="p-2 border w-28">Сума (валюта)</th>}
               <th className="p-2 border w-16">Дії</th>
             </tr>
           </thead>
@@ -174,9 +187,26 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                     onChange={(e) => setItem(idx, "Price", e.target.value)}
                   />
                 </td>
+                {showFC && (
+                  <td className="p-2 border">
+                    <input
+                      className="border rounded p-2 w-full text-right"
+                      type="number"
+                      step="0.01"
+                      value={r.PriceFC || ""}
+                      onChange={(e) => setItem(idx, "PriceFC", e.target.value)}
+                      placeholder="в валюті"
+                    />
+                  </td>
+                )}
                 <td className="p-2 border text-right">
                   {((+r.Quantity || 0) * (+r.Price || 0)).toFixed(2)}
                 </td>
+                {showFC && (
+                  <td className="p-2 border text-right">
+                    {((+r.Quantity || 0) * (+r.PriceFC || 0)).toFixed(2)}
+                  </td>
+                )}
                 <td className="p-2 border text-center">
                   <button className="px-2 py-1 border" onClick={() => delItem(idx)}>
                     ✕

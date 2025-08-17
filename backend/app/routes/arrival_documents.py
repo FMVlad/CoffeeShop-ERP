@@ -305,7 +305,10 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         db,
         (
             "SELECT ID, Number, Date, SupplierID, CenterID, PricesIncludeVAT, TotalAmount, Status, "
-            "CurrencyID, ExternalNumber, Comment, TypicalOperationID, CompanyID "
+            "CurrencyID, ExternalNumber, Comment, TypicalOperationID, CompanyID, "
+            + ("CurrencyRate" if _table_has_column(db, "ArrivalDocuments", "CurrencyRate") else "NULL AS CurrencyRate") + ", "
+            + ("CurrencyRateDate" if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate") else "NULL AS CurrencyRateDate") +
+            " "
             "FROM ArrivalDocuments WHERE ID = ?"
         ),
         (doc_id,),
@@ -316,8 +319,9 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     items = _fetch_all(
         db,
         (
-            "SELECT i.ID, i.ProductID, p.FullName, i.Quantity, i.Price, i.TaxRateID, i.PartyID, i.QtyOrdered, i.QtyInvoiced "
-            "FROM ArrivalDocumentItems i JOIN Products p ON p.ID = i.ProductID "
+            "SELECT i.ID, i.ProductID, p.FullName, i.Quantity, i.Price, i.TaxRateID, i.PartyID, i.QtyOrdered, i.QtyInvoiced, "
+            + ("i.PriceFC" if _table_has_column(db, "ArrivalDocumentItems", "PriceFC") else "NULL AS PriceFC") +
+            " FROM ArrivalDocumentItems i JOIN Products p ON p.ID = i.ProductID "
             "WHERE i.DocID = ? ORDER BY i.ID"
         ),
         (doc_id,),
@@ -360,6 +364,8 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         "Comment": head[10],
         "TypicalOperationID": head[11],
         "CompanyID": head[12],
+        "CurrencyRate": head[13] if len(head) > 13 else None,
+        "CurrencyRateDate": head[14] if len(head) > 14 else None,
         "Items": [
             {
                 "ID": int(r[0]),
@@ -371,6 +377,7 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                 "PartyID": r[6],
                 "QtyOrdered": r[7],
                 "QtyInvoiced": r[8],
+                "PriceFC": r[9] if len(r) > 9 else None,
             }
             for r in items
         ],
@@ -423,10 +430,35 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if _table_has_column(db, "ArrivalDocuments", "CurrencyID") and currency_id is not None:
                 cols.append("CurrencyID")
                 params.append(currency_id)
+            # Autofill CurrencyRate from CurrencyRates if not provided
+            if _table_has_column(db, "ArrivalDocuments", "CurrencyRate"):
+                rate_in = header.get("CurrencyRate")
+                if not rate_in and currency_id:
+                    try:
+                        rate_row = _fetch_one(db,
+                            "SELECT TOP 1 Rate FROM CurrencyRates WHERE CurrencyID=? AND RateDate<=? ORDER BY RateDate DESC",
+                            (currency_id, date_val)
+                        )
+                        rate_in = rate_row[0] if rate_row else 1
+                    except Exception:
+                        rate_in = 1
+                cols.append("CurrencyRate")
+                params.append(float(rate_in or 1))
+            if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate"):
+                date_in = header.get("CurrencyRateDate") or date_val
+                cols.append("CurrencyRateDate")
+                params.append(date_in)
             # Company
             if _table_has_column(db, "ArrivalDocuments", "CompanyID"):
                 cols.append("CompanyID")
                 params.append(company_id)
+            # Currency rate & date if columns exist
+            if _table_has_column(db, "ArrivalDocuments", "CurrencyRate"):
+                cols.append("CurrencyRate")
+                params.append(float(header.get("CurrencyRate") or 1))
+            if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate"):
+                cols.append("CurrencyRateDate")
+                params.append(header.get("CurrencyRateDate") or date_val)
             # Typical operation
             if _table_has_column(db, "ArrivalDocuments", "TypicalOperationID"):
                 cols.append("TypicalOperationID")
@@ -488,12 +520,23 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if qty <= 0:
                 raise HTTPException(status_code=400, detail=f"Рядок {idx}: кількість має бути > 0")
 
+            # Support FC price input
+            price_fc_input = Decimal(str(it.get("PriceFC", 0)))
             price_input = Decimal(str(it.get("Price", 0)))
             tax_rate_id = it.get("TaxRateID")
             vat_rate = _get_tax_rate(db, tax_rate_id)
 
+            # Determine working price (in UAH)
+            working_price = price_input
+            try:
+                if price_fc_input and price_fc_input > 0:
+                    rate = Decimal(str(header.get("CurrencyRate") or 1))
+                    working_price = (price_fc_input * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except Exception:
+                pass
+
             # VAT logic
-            price_to_save = price_input if prices_include_vat else _gross_price(price_input, vat_rate)
+            price_to_save = working_price if prices_include_vat else _gross_price(working_price, vat_rate)
             # Net for party (we store gross in Parties.PurchasePrice; compute net to fill NetPurchasePrice when available)
             try:
                 net_for_party = (price_to_save / (Decimal("1") + vat_rate / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -505,13 +548,22 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             )
 
             # Save item and capture ID
-            cursor.execute(
-                (
-                    "INSERT INTO ArrivalDocumentItems (DocID, ProductID, Quantity, Price, TaxRateID) "
-                    "OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)"
-                ),
-                (doc_id, product_id, float(qty), float(price_to_save), tax_rate_id),
-            )
+            if _table_has_column(db, "ArrivalDocumentItems", "PriceFC"):
+                cursor.execute(
+                    (
+                        "INSERT INTO ArrivalDocumentItems (DocID, ProductID, Quantity, Price, TaxRateID, PriceFC) "
+                        "OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?, ?)"
+                    ),
+                    (doc_id, product_id, float(qty), float(price_to_save), tax_rate_id, float(price_fc_input or 0)),
+                )
+            else:
+                cursor.execute(
+                    (
+                        "INSERT INTO ArrivalDocumentItems (DocID, ProductID, Quantity, Price, TaxRateID) "
+                        "OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)"
+                    ),
+                    (doc_id, product_id, float(qty), float(price_to_save), tax_rate_id),
+                )
             item_row = cursor.fetchone()
             item_id = int(item_row[0]) if item_row else None
 

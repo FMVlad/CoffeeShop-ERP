@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
+import StockStatePage from "./StockStatePage.jsx";
 
 const menu = [
   { key: "state", label: "Стан складу", route: "/stock/state" },
@@ -29,7 +30,7 @@ export default function StockPage() {
 
       <main style={{ flex: 1, padding: 24 }}>
         <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 4px 24px #0001", padding: 20 }}>
-          <Outlet />
+          {current === 'state' ? <StockStatePage /> : <Outlet />}
         </div>
       </main>
     </div>
