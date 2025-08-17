@@ -87,6 +87,8 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                 window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
                 window.sessionStorage.setItem("prefill_barcode", bc);
               } catch {}
+              // Виводимо дружню підказку і одразу переходимо у додавання
+              try { window.localStorage.setItem("__notify_add_product", "true"); } catch {}
               navigate("/select-products?mode=add");
             }}
             placeholder="Скануй або введи та натисни Enter"

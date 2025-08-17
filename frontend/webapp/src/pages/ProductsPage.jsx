@@ -65,6 +65,22 @@ export default function ProductsPage() {
     }
   }, []);
 
+  // Одноразова підказка після перенаправлення зі сканера
+  useEffect(() => {
+    try {
+      const shouldNotify = localStorage.getItem("__notify_add_product") === "true";
+      if (shouldNotify) {
+        localStorage.removeItem("__notify_add_product");
+        // Показуємо ненав’язливий банер підказки у верхній частині
+        const hint = document.createElement('div');
+        hint.textContent = 'Штрихкод не знайдено. Натисніть “+ Додати”, щоб створити товар.';
+        hint.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#856404;border:1px solid #ffeeba;padding:10px 14px;border-radius:8px;z-index:1000;box-shadow:0 2px 8px rgba(0,0,0,0.1);font-weight:600';
+        document.body.appendChild(hint);
+        setTimeout(() => { try { document.body.removeChild(hint); } catch {} }, 3000);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     api.getCategories().then(cats => setCategories(cats || []));
   }, []);
