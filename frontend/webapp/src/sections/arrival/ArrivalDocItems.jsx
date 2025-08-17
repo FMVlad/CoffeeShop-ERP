@@ -1,5 +1,6 @@
 // src/sections/arrival/ArrivalDocItems.jsx
 import React, { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ProductPicker from "../../components/ProductPicker";
 import BarcodeInput from "../../components/BarcodeInput";
 import ProductDirectoryModal from "../../components/ProductDirectoryModal";
@@ -7,6 +8,7 @@ import ProductDirectoryModal from "../../components/ProductDirectoryModal";
 export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus }) {
   const [localFocusBump, setLocalFocusBump] = useState(0);
   const [showDirectory, setShowDirectory] = useState(false);
+  const navigate = useNavigate();
 
   const addRow = useCallback(() => {
     setDoc((d) => ({
@@ -86,8 +88,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
           <button
             className="border rounded px-3 py-2"
             onClick={() => {
-              window.sessionStorage.setItem("arrival_back", window.location.pathname + window.location.search);
-              window.location.assign("/webapp/select-products");
+              navigate("/select-products");
             }}
             title="Відкрити сторінку вибору товарів"
           >
@@ -177,32 +178,31 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
         </table>
       </div>
       {/* Обробка повернення зі сторінки вибору */}
-      {(() => {
+      {/* Один раз обробляємо кеш після повернення */}
+      {React.useMemo(() => {
         try {
           const raw = window.sessionStorage.getItem("arrival_selected_products");
-          if (raw) {
-            window.sessionStorage.removeItem("arrival_selected_products");
-            const selected = JSON.parse(raw);
-            if (Array.isArray(selected) && selected.length > 0) {
-              setTimeout(() => {
-                setDoc((d) => {
-                  const appended = selected.map((p) => ({
-                    ProductID: p.ID,
-                    ProductName: p.FullName || p.Name || "",
-                    Quantity: Number(p.Quantity || 1),
-                    Price: 0,
-                    TaxRateID: null,
-                  }));
-                  const newItems = [...d.Items, ...appended];
-                  const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
-                  return { ...d, Items: newItems, TotalAmount: total };
-                });
-              }, 0);
-            }
-          }
+          if (!raw) return null;
+          window.sessionStorage.removeItem("arrival_selected_products");
+          const selected = JSON.parse(raw);
+          if (!Array.isArray(selected) || selected.length === 0) return null;
+          setTimeout(() => {
+            setDoc((d) => {
+              const appended = selected.map((p) => ({
+                ProductID: p.ID,
+                ProductName: p.FullName || p.Name || "",
+                Quantity: Number(p.Quantity || 1),
+                Price: 0,
+                TaxRateID: null,
+              }));
+              const newItems = [...d.Items, ...appended];
+              const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+              return { ...d, Items: newItems, TotalAmount: total };
+            });
+          }, 0);
         } catch {}
         return null;
-      })()}
+      }, [])}
     </>
   );
 }

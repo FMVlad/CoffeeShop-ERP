@@ -15,6 +15,11 @@ export default function SelectProductsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    // очищаємо будь-які попередні кеші
+    sessionStorage.removeItem("arrival_selected_products");
+  }, []);
+
+  useEffect(() => {
     api.getCategories().then((cats) => setCategories(cats || []));
   }, []);
 
@@ -71,12 +76,7 @@ export default function SelectProductsPage() {
       Quantity: Number(selectedQty.get(p.ID) || 1),
     }));
     sessionStorage.setItem("arrival_selected_products", JSON.stringify(payload));
-    const back = sessionStorage.getItem("arrival_back");
-    if (back) {
-      window.location.assign(back);
-    } else {
-      navigate(-1);
-    }
+    navigate(-1);
   }
 
   function quickAddProduct() {
