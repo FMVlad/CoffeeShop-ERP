@@ -160,31 +160,33 @@ export default function StockStatePage() {
 
 // Маленький компонент-дерево вибору категорій із плоского списку {ID, CategoryName, ParentID}
 function CategorySelectTree({ categories, value, onChange }) {
-  const map = React.useMemo(() => {
-    const byParent = new Map();
+  const flat = React.useMemo(() => {
+    const result = [];
+    const children = new Map();
     (categories||[]).forEach(c => {
-      const pid = c.ParentID || 0;
-      if (!byParent.has(pid)) byParent.set(pid, []);
-      byParent.get(pid).push(c);
+      const pid = c.ParentID == null ? null : c.ParentID;
+      if (!children.has(pid)) children.set(pid, []);
+      children.get(pid).push(c);
     });
-    // відсортуємо для охайності
-    for (const arr of byParent.values()) arr.sort((a,b)=>String(a.CategoryName||'').localeCompare(String(b.CategoryName||'')));
-    return byParent;
+    for (const arr of children.values()) arr.sort((a,b)=>String(a.CategoryName||'').localeCompare(String(b.CategoryName||'')));
+    const walk = (pid, level) => {
+      (children.get(pid) || []).forEach(c => {
+        result.push({ ...c, _level: level });
+        walk(c.ID, level + 1);
+      });
+    };
+    walk(null, 0);
+    // backfill: якщо у когось ParentID=0
+    if (children.has(0)) children.get(0).forEach(c => result.push({ ...c, _level: 0 }));
+    return result;
   }, [categories]);
-
-  function renderLevel(parentId = 0, depth = 0) {
-    const list = map.get(parentId) || [];
-    return list.map(c => (
-      <option key={c.ID} value={c.ID}>
-        {`${'— '.repeat(depth)}${c.CategoryName}`}
-      </option>
-    )).concat(...list.map(c => renderLevel(c.ID, depth + 1)));
-  }
 
   return (
     <select value={value} onChange={e=>onChange(e.target.value)} className="category-select">
       <option value="">Всі категорії</option>
-      {renderLevel(0, 0)}
+      {flat.map(c => (
+        <option key={c.ID} value={c.ID}>{`${'— '.repeat(c._level||0)}${c._level>0?'▶ ':''}${c.CategoryName}`}</option>
+      ))}
     </select>
   );
 }
