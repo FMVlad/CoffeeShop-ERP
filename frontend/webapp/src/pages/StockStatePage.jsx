@@ -72,7 +72,23 @@ export default function StockStatePage() {
         <div>
           <CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} />
         </div>
-        <button onClick={load} disabled={loading} style={{ padding: '8px 12px' }}>{loading? 'Завантаження...' : 'Оновити'}</button>
+        <button
+          onClick={load}
+          disabled={loading}
+          aria-label="Оновити стан складу"
+          style={{
+            background: loading ? '#e9ecef' : '#00b894',
+            color: loading ? '#6c757d' : '#fff',
+            border: 'none',
+            borderRadius: 12,
+            padding: '14px 28px',
+            fontWeight: 800,
+            fontSize: 16,
+            letterSpacing: 0.3,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+        >{loading ? 'Завантаження…' : '🔄 Оновити'}</button>
       </div>
 
       <div style={{ display:'flex', gap:12, marginBottom: 10, alignItems:'center' }}>
