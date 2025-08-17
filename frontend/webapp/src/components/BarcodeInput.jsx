@@ -22,7 +22,7 @@ export default function BarcodeInput({
         onResolve?.(p);
       } else {
         if (typeof onNotFound === "function") onNotFound(s);
-        else alert("Штрихкод не знайдено");
+        // без alert — передаємо керування зовнішній логіці
         onResolve?.(null); // НЕ додаємо пустий рядок
       }
     } catch (e) {
