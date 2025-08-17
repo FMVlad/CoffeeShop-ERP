@@ -3,8 +3,26 @@ from app.db_connection import get_db
 
 router = APIRouter()
 
+def _ensure_table(db):
+    cursor = db.cursor()
+    # Створюємо таблицю за потреби
+    cursor.execute(
+        """
+        IF OBJECT_ID('dbo.ProgrammParameters', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.ProgrammParameters (
+                ID INT IDENTITY(1,1) PRIMARY KEY,
+                ParamKey NVARCHAR(100) NOT NULL UNIQUE,
+                ParamValue NVARCHAR(4000) NULL
+            );
+        END
+        """
+    )
+    db.commit()
+
 @router.get("/programm-parameters")
 def get_programm_parameters(db=Depends(get_db)):
+    _ensure_table(db)
     cursor = db.cursor()
     cursor.execute("SELECT ID, ParamKey, ParamValue FROM ProgrammParameters")
     columns = [col[0] for col in cursor.description]
@@ -12,6 +30,7 @@ def get_programm_parameters(db=Depends(get_db)):
 
 @router.post("/programm-parameters")
 def add_or_update_programm_parameter(data: dict, db=Depends(get_db)):
+    _ensure_table(db)
     key = data.get("ParamKey")
     if not key:
         raise HTTPException(400, "ParamKey is required")
