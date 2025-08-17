@@ -283,8 +283,7 @@ export const getProductFullNameFields = (templateId) =>
 export const saveProductFullNameFields = (templateId, fields) =>
   fetchJSON("/product-full-name-fields", {
     method: "POST",
-    query: { template_id: templateId },
-    data: fields,
+    data: { template_id: templateId, fields },
   });
 
 // --- Розрахункові рахунки ---
