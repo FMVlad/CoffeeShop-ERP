@@ -185,3 +185,46 @@ def stock_state(
     return {"items": items}
 
 
+@router.get("/stock/state/available-fields")
+def available_fields(db: pyodbc.Connection = Depends(get_db)):
+    """Повертає повний список доступних колонок для 'Стан складу':
+    - standard: стандартні колонки
+    - custom: додаткові поля з ProductCardTemplateFields (всі шаблони)
+    """
+    standard = [
+        {"key": "photo", "label": "Фото", "sql": "Photo", "group": "standard"},
+        {"key": "name", "label": "Товар", "sql": "FullName", "group": "standard"},
+        {"key": "barcode", "label": "Штрихкод", "sql": "Barcode", "group": "standard"},
+        {"key": "article", "label": "Артикул", "sql": "Article", "group": "standard"},
+        {"key": "qty", "label": "К-сть", "sql": "Qty", "group": "standard"},
+        {"key": "price", "label": "Ціна", "sql": "Price", "group": "standard"},
+        {"key": "avgcost", "label": "Сер.собівартість", "sql": "AvgCost", "group": "standard"},
+        {"key": "amount", "label": "Сума", "sql": "Amount", "group": "standard"},
+    ]
+
+    cur = db.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT DISTINCT DisplayName, SqlName, FieldType, TemplateID
+            FROM ProductCardTemplateFields
+            ORDER BY DisplayName
+            """
+        )
+        rows = cur.fetchall() or []
+        custom = [
+            {
+                "key": f"custom_{(row[1] or row[0]).lower()}",
+                "label": row[0] or row[1] or "—",
+                "sql": row[1] or None,
+                "type": row[2] or None,
+                "templateId": int(row[3]) if row[3] is not None else None,
+                "group": "custom",
+            }
+            for row in rows
+        ]
+    except Exception:
+        custom = []
+
+    return {"standard": standard, "custom": custom}
+
