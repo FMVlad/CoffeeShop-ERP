@@ -10,6 +10,7 @@ export default function StockStatePage() {
   const [priceCategoryId, setPriceCategoryId] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState(null);
 
   useEffect(() => {
     api.getCenters().then(setCenters);
@@ -71,7 +72,15 @@ export default function StockStatePage() {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td className="p-2 border" style={{ textAlign:'center' }}>
-                  {r.Photo ? <img alt="p" src={`http://localhost:8000/api/preview/${r.Photo}`} style={{ width: 40, height: 40, objectFit: 'contain' }} /> : '—'}
+                  {r.Photo ? (
+                    <div
+                      title="Клік для превʼю"
+                      style={{ width: 56, height: 56, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-in' }}
+                      onClick={() => setPreviewSrc(`http://localhost:8000/api/preview/${r.Photo}`)}
+                    >
+                      <img alt="p" src={`http://localhost:8000/api/preview/${r.Photo}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  ) : '—'}
                 </td>
                 <td className="p-2 border">{r.FullName}</td>
                 <td className="p-2 border" style={{ fontFamily:'monospace' }}>{r.Barcode||''}</td>
@@ -99,6 +108,14 @@ export default function StockStatePage() {
           </tfoot>
         </table>
       </div>
+      {previewSrc && (
+        <div
+          onClick={() => setPreviewSrc(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        >
+          <img src={previewSrc} alt="preview" style={{ maxWidth:'90vw', maxHeight:'90vh', objectFit:'contain', borderRadius:8, boxShadow:'0 10px 30px rgba(0,0,0,0.4)' }} />
+        </div>
+      )}
     </div>
   );
 }
