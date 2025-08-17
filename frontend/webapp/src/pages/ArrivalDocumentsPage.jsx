@@ -83,6 +83,25 @@ export default function ArrivalDocumentsPage() {
     };
   }, []);
 
+  // Відновлення форми та черги додавання позицій після повернення зі сторінки вибору товарів
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("arrival_restore_doc");
+      if (raw) {
+        sessionStorage.removeItem("arrival_restore_doc");
+        const payload = JSON.parse(raw);
+        if (payload && payload.doc) {
+          setDoc({ ...emptyDoc, ...payload.doc });
+          setEditingId(payload.editingId || null);
+          setShowForm(true);
+          setTab("items");
+          setTimeout(() => setBarcodeFocusBump((n) => n + 1), 0);
+        }
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ф-ція підвантаження списку документів (щоб тригерити після save)
   const fetchDocs = useCallback(async (filts) => {
     setLoading(true);

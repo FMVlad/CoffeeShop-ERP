@@ -88,6 +88,14 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
           <button
             className="border rounded px-3 py-2"
             onClick={() => {
+              // Зберігаємо стан форми документа, щоб не втратити постачальника тощо
+              try {
+                const snapshot = {
+                  editingId: null,
+                  doc,
+                };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+              } catch {}
               navigate("/select-products");
             }}
             title="Відкрити сторінку вибору товарів"
@@ -199,6 +207,8 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
               const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
               return { ...d, Items: newItems, TotalAmount: total };
             });
+            // після імпорту — сфокусувати штрихкод і нічого більше не відкривати
+            setLocalFocusBump((n) => n + 1);
           }, 0);
         } catch {}
         return null;

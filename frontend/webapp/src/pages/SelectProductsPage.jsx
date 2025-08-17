@@ -45,8 +45,8 @@ export default function SelectProductsPage() {
   function promptQty(defaultQty = 1) {
     const str = window.prompt("Кількість:", String(defaultQty));
     if (str == null) return null; // cancel
-    const q = parseFloat(String(str).replace(",", "."));
-    if (!isFinite(q) || q <= 0) return 1;
+    const q = parseFloat(String(str).replace(/,/g, "."));
+    if (!isFinite(q) || q <= 0) return null; // не приймаємо 0/некоректне
     return q;
   }
 
@@ -54,10 +54,14 @@ export default function SelectProductsPage() {
     setSelectedQty((prev) => {
       const next = new Map(prev);
       if (next.has(id)) {
-        next.delete(id);
+        // якщо вже обраний — пропонуємо змінити кількість
+        const current = Number(next.get(id) || 1);
+        const q = promptQty(current);
+        if (q == null) return prev; // скасовано — залишаємо як було
+        next.set(id, q);
       } else {
         const q = promptQty(1);
-        if (q == null) return prev;
+        if (q == null) return prev; // скасовано — не додаємо
         next.set(id, q);
       }
       return next;
