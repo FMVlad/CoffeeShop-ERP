@@ -2,9 +2,11 @@
 import React, { useCallback, useState } from "react";
 import ProductPicker from "../../components/ProductPicker";
 import BarcodeInput from "../../components/BarcodeInput";
+import ProductDirectoryModal from "../../components/ProductDirectoryModal";
 
 export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus }) {
   const [localFocusBump, setLocalFocusBump] = useState(0);
+  const [showDirectory, setShowDirectory] = useState(false);
 
   const addRow = useCallback(() => {
     setDoc((d) => ({
@@ -71,7 +73,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
     <>
       {/* штрихкод + дії пошуку */}
       <div className="mt-4 flex flex-col md:flex-row gap-2 md:items-end">
-        <div className="flex-1">
+        <div className="flex-1 md:flex-[0.55]">
           <label className="text-sm block mb-1">Штрихкод (Enter)</label>
           <BarcodeInput
             key={`${focusKey}-${localFocusBump}`}
@@ -80,13 +82,26 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
             placeholder="Скануй або введи та натисни Enter"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 md:flex-[0.45]">
+          <button
+            className="border rounded px-3 py-2"
+            onClick={() => setShowDirectory(true)}
+            title="Вибрати з довідника товарів"
+          >
+            🔎 Пошук у довіднику
+          </button>
+          <button
+            className="border rounded px-3 py-2"
+            onClick={() => alert('Стан складу: поки опційно')}
+            title="Переглянути стан складу (опційно)"
+          >
+            🏬 Стан складу
+          </button>
           <button
             id="arrival-items-add-row"
             className="border rounded px-3 py-2"
             onClick={() => {
               addRow();
-              // підфокусується знову
               setLocalFocusBump((n) => n + 1);
               onRequestFocus?.();
             }}
@@ -158,6 +173,27 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
           </tbody>
         </table>
       </div>
+      {showDirectory && (
+        <ProductDirectoryModal
+          isOpen={showDirectory}
+          onClose={() => setShowDirectory(false)}
+          onAdd={(items) => {
+            if (!Array.isArray(items) || items.length === 0) return;
+            setDoc((d) => {
+              const appended = items.map((p) => ({
+                ProductID: p.ID ?? p.ProductID,
+                ProductName: p.FullName || p.Name || "",
+                Quantity: 1,
+                Price: 0,
+                TaxRateID: null,
+              }));
+              const newItems = [...d.Items, ...appended];
+              const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+              return { ...d, Items: newItems, TotalAmount: total };
+            });
+          }}
+        />
+      )}
     </>
   );
 }
