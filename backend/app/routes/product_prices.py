@@ -109,7 +109,8 @@ def generate_prices(payload: dict, db=Depends(get_db)):
       date_start: Optional[str],           # YYYY-MM-DD, за замовч. сьогодні
       rounding: Optional[float],           # крок заокруглення (напр. 1, 0.5, 0.1)
       use_category_margins: bool = True,   # брати з CategoryMargins
-      default_margin_percent: Optional[float]  # запасний варіант, якщо немає правила
+      default_margin_percent: Optional[float], # запасний варіант, якщо немає правила
+      product_ids: Optional[List[int]]     # обмежити генерацію конкретними товарами
     }
     """
     price_category_id = payload.get("price_category_id")
@@ -120,11 +121,19 @@ def generate_prices(payload: dict, db=Depends(get_db)):
     rounding_step = payload.get("rounding")
     use_margins = bool(payload.get("use_category_margins", True))
     default_margin = payload.get("default_margin_percent")
+    product_ids = payload.get("product_ids") or []
 
     cur = db.cursor()
 
-    # 1) Підтягнемо товари і їх категорії
-    products = cur.execute("SELECT ID, ISNULL(CategoryID, 0) FROM Products").fetchall()
+    # 1) Підтягнемо товари і їх категорії (опційно обмежимо списком)
+    if product_ids:
+        placeholders = ",".join(["?"] * len(product_ids))
+        products = cur.execute(
+            f"SELECT ID, ISNULL(CategoryID, 0) FROM Products WHERE ID IN ({placeholders})",
+            tuple(product_ids),
+        ).fetchall()
+    else:
+        products = cur.execute("SELECT ID, ISNULL(CategoryID, 0) FROM Products").fetchall()
     prod_to_cat: Dict[int, int] = {int(r[0]): int(r[1] or 0) for r in products}
 
     # 2) Націнки по категоріям для потрібної цінової категорії

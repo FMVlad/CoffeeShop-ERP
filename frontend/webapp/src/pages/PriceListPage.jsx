@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 
 export default function PriceListPage() {
   const [products, setProducts] = useState([]);
   const [priceCategories, setPriceCategories] = useState([]);
   const [prices, setPrices] = useState([]);
+  const [selectedCatId, setSelectedCatId] = useState('');
+  const [rounding, setRounding] = useState(1);
+  const [selected, setSelected] = useState(() => new Set());
+  const [selectAll, setSelectAll] = useState(false);
+  const roundingOptions = [0.05, 0.25, 0.5, 1, 5, 10];
 
   useEffect(() => {
     api.getProducts && api.getProducts().then(data => {
@@ -49,7 +54,14 @@ export default function PriceListPage() {
               Прайс-лист
             </span>
           </div>
-          <div style={{ display:'flex', gap: 10 }}>
+          <div style={{ display:'flex', gap: 10, alignItems:'center' }}>
+            <select value={selectedCatId} onChange={e=>setSelectedCatId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8 }}>
+              <option value="">Категорія цін…</option>
+              {priceCategories.map(pc => <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>)}
+            </select>
+            <select value={rounding} onChange={e=>setRounding(Number(e.target.value))} style={{ padding:'10px 12px', borderRadius:8 }}>
+              {roundingOptions.map(r => <option key={r} value={r}>Заокруглення: {r}</option>)}
+            </select>
             <button
               onClick={() => window.location.assign('/webapp')}
               style={{
@@ -69,9 +81,12 @@ export default function PriceListPage() {
             <button
               onClick={async () => {
                 try {
-                  const priceCategoryId = (priceCategories[0] && priceCategories[0].ID) || null;
-                  if (!priceCategoryId) return alert('Немає категорій цін');
-                  const payload = { price_category_id: priceCategoryId, rounding: 1 };
+                  const priceCategoryId = Number(selectedCatId || (priceCategories[0]?.ID || 0));
+                  if (!priceCategoryId) return alert('Оберіть категорію цін');
+                  const payload = { price_category_id: priceCategoryId, rounding };
+                  if (!selectAll && selected.size) {
+                    payload.product_ids = Array.from(selected);
+                  }
                   const res = await api.post('/product-prices/generate', null, payload);
                   alert(`Згенеровано: ${res.generated}`);
                   api.getProductPrices().then(setPrices);
@@ -93,6 +108,12 @@ export default function PriceListPage() {
           boxShadow: '0 4px 24px #0001',
           padding: 32
         }}>
+          <div style={{ marginBottom: 10, display:'flex', alignItems:'center', gap: 12 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+              <input type="checkbox" checked={selectAll} onChange={e=>{ setSelectAll(e.target.checked); if (e.target.checked) setSelected(new Set()); }} />
+              <span>Усі товари</span>
+            </label>
+          </div>
           <table style={{
             width: '100%',
             borderCollapse: 'separate',
@@ -105,6 +126,7 @@ export default function PriceListPage() {
           }}>
             <thead>
               <tr style={{ background: '#ede7fb' }}>
+                <th style={{ width: 40, textAlign:'center', borderBottom: '2.5px solid #a78bfa' }}>✓</th>
                 <th style={{
                   textAlign: 'left',
                   padding: '12px 16px',
@@ -126,8 +148,25 @@ export default function PriceListPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map(prod => (
+              {products.map(prod => {
+                const checked = selectAll ? true : selected.has(prod.ID);
+                return (
                 <tr key={prod.ID} style={{ borderBottom: '1.7px solid #ede7fb' }}>
+                  <td style={{ textAlign:'center', borderBottom: '1.7px solid #ede7fb' }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={e=>{
+                        const c = e.target.checked;
+                        setSelected(prev => {
+                          const next = new Set(prev);
+                          if (c) next.add(prod.ID); else next.delete(prod.ID);
+                          return next;
+                        })
+                      }}
+                      disabled={selectAll}
+                    />
+                  </td>
                   <td style={{
                     padding: '12px 16px',
                     borderBottom: '1.7px solid #ede7fb',
@@ -147,7 +186,7 @@ export default function PriceListPage() {
                     </td>
                   ))}
                 </tr>
-              ))}
+              )})}
               {!products.length && (
                 <tr>
                   <td colSpan={1 + priceCategories.length} style={{ textAlign: 'center', padding: 30, color: '#bbb', fontSize: 18 }}>
