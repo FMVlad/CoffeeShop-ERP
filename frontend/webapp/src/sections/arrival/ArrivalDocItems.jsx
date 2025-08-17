@@ -22,8 +22,6 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
 
   const onBarcodeResolved = React.useCallback((p) => {
   if (!p) {
-    alert("Штрихкод не знайдено");
-    // TODO: відкрити форму створення товару зі штрихкодом
     return;
   }
   const name =
@@ -105,9 +103,9 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                   doc,
                 };
                 window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
-                window.sessionStorage.setItem("arrival_back_path", window.location.pathname + window.location.search);
               } catch {}
-              navigate("/select-products");
+              const back = encodeURIComponent(window.location.pathname + window.location.search);
+              navigate(`/select-products?back=${back}`);
             }}
             title="Відкрити сторінку вибору товарів"
           >

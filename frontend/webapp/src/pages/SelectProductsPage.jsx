@@ -82,7 +82,10 @@ export default function SelectProductsPage() {
   }
 
   function quickAddProduct() {
-    navigate(`/dictionaries/products?mode=add&source=selector`);
+    const params = new URLSearchParams(location.search);
+    const back = params.get('back');
+    const backArg = back ? `&back=${encodeURIComponent(back)}` : '';
+    navigate(`/dictionaries/products?mode=add&source=selector${backArg}`);
   }
 
   return (
@@ -218,7 +221,11 @@ export default function SelectProductsPage() {
         )}
 
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={() => navigate(-1)} style={{ background: '#6c757d', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: 'pointer' }}>Скасувати</button>
+          <button onClick={() => {
+            const params = new URLSearchParams(location.search);
+            const back = params.get('back');
+            if (back) window.location.assign(decodeURIComponent(back)); else navigate(-1);
+          }} style={{ background: '#6c757d', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: 'pointer' }}>Скасувати</button>
           <button onClick={addToArrival} disabled={selectedQty.size === 0 || submitting} style={{ background: selectedQty.size === 0 || submitting ? '#e9ecef' : '#28a745', color: selectedQty.size === 0 || submitting ? '#6c757d' : '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: selectedQty.size === 0 || submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Додаю…' : 'Додати в накладну'}</button>
         </div>
       </div>

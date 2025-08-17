@@ -48,6 +48,7 @@ export default function ProductsPage() {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
     const source = params.get('source');
+    const back = params.get('back');
     const prefill = sessionStorage.getItem('prefill_barcode') || '';
     if (mode === 'add') {
       setEditingProductId(null);
@@ -62,6 +63,7 @@ export default function ProductsPage() {
       } else {
         sessionStorage.removeItem('productcard_enable_quick_add');
       }
+      if (back) sessionStorage.setItem('arrival_back_path', back);
     }
   }, []);
 
@@ -136,7 +138,7 @@ export default function ProductsPage() {
             const params = new URLSearchParams(window.location.search);
             if (params.get('mode') === 'add') {
               const back = sessionStorage.getItem('arrival_back_path');
-              if (back) window.location.assign(back);
+              if (back) window.location.assign(decodeURIComponent(back));
               else window.history.back();
             }
           }}

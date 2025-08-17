@@ -1,11 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Query
+from app.security import require_roles
 from app.db_connection import get_db
 import os
 from PIL import Image
 
 router = APIRouter()
+from fastapi import Request
+import time
+
+# very lightweight in-memory throttle per ip+endpoint (MVP)
+_rate_cache = {}
+
+def _rate_limit_key(ip: str, endpoint: str) -> str:
+    return f"{ip}:{endpoint}"
+
+def _check_rate_limit(ip: str, endpoint: str, limit_per_sec: float = 5.0) -> None:
+    now = time.time()
+    key = _rate_limit_key(ip, endpoint)
+    window = 1.0 / limit_per_sec
+    last = _rate_cache.get(key)
+    if last and (now - last) < window:
+        raise HTTPException(status_code=429, detail="Забагато запитів. Спробуйте пізніше.")
+    _rate_cache[key] = now
+
 @router.get("/products/search")
-def search_products(q: str = Query(""), db=Depends(get_db)):
+def search_products(q: str = Query(""), request: Request = None, db=Depends(get_db)):
+    try:
+        ip = request.client.host if request else "-"
+        _check_rate_limit(ip, "search", 10.0)
+    except Exception:
+        pass
     s = (q or "").strip()
     if not s:
         return []
@@ -24,7 +48,12 @@ def search_products(q: str = Query(""), db=Depends(get_db)):
     return [dict(zip(cols, r)) for r in cursor.fetchall()]
 
 @router.get("/products/by-barcode/{barcode}")
-def get_product_by_barcode(barcode: str, db=Depends(get_db)):
+def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get_db)):
+    try:
+        ip = request.client.host if request else "-"
+        _check_rate_limit(ip, "by-barcode", 15.0)
+    except Exception:
+        pass
     cursor = db.cursor()
     cursor.execute(
         """
@@ -187,7 +216,7 @@ def get_product(id: int, db=Depends(get_db)):
     raise HTTPException(status_code=404, detail="Товар не знайдено")
 
 @router.post("/products")
-def create_product(data: dict, db=Depends(get_db)):
+def create_product(data: dict, db=Depends(get_db), _=Depends(require_roles(["admin", "manager"]))):
     cursor = db.cursor()
     if not data.get('Barcode') or data.get('Barcode').strip() == '':
         try:
@@ -215,7 +244,7 @@ def create_product(data: dict, db=Depends(get_db)):
     return {"message": "Товар створено!", "id": int(new_id), "barcode": data.get('Barcode')}
 
 @router.put("/products/{id}")
-def update_product(id: int, data: dict, db=Depends(get_db)):
+def update_product(id: int, data: dict, db=Depends(get_db), _=Depends(require_roles(["admin", "manager"]))):
     cursor = db.cursor()
     if not data.get('Barcode') or data.get('Barcode').strip() == '':
         try:
@@ -248,7 +277,7 @@ def update_product(id: int, data: dict, db=Depends(get_db)):
     return {"message": "Товар оновлено!", "barcode": data.get('Barcode')}
 
 @router.delete("/products/{id}")
-def delete_product(id: int, db=Depends(get_db)):
+def delete_product(id: int, db=Depends(get_db), _=Depends(require_roles(["admin"]))):
     cursor = db.cursor()
     cursor.execute("DELETE FROM ProductAttributes WHERE ProductID = ?", (id,))
     cursor.execute("DELETE FROM Products WHERE ID = ?", (id,))

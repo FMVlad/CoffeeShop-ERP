@@ -322,7 +322,6 @@ export default function ArrivalDocumentsPage() {
   // результат сканування/вводу штрихкоду
   const onBarcodeResolved = useCallback((p) => {
     if (!p) {
-      alert("Штрихкод не знайдено");
       return; // НЕ додаємо порожній рядок!
     }
     const displayName = p.FullName || p.ProductName || p.Name || "";
