@@ -37,6 +37,7 @@ export default function ProductCard({
   const [attributeValues, setAttributeValues] = useState([]);
   const [fullName, setFullName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(templateId);
+  const [addQty, setAddQty] = useState(1);
 
   const isEditMode = productId !== null;
 
@@ -260,6 +261,12 @@ export default function ProductCard({
         onSave(response);
         alert('✅ Товар створено!');
       }
+      try {
+        const savedId = (response && (response.id || response.ID)) ? (response.id || response.ID) : (isEditMode ? productId : null);
+        if (savedId) sessionStorage.setItem('productcard_last_saved_id', String(savedId));
+        const bcToStore = standardData.Barcode || fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
+        if (bcToStore) sessionStorage.setItem('productcard_last_saved_barcode', bcToStore);
+      } catch {}
     } catch (error) {
       alert('❌ Помилка збереження');
     } finally {
@@ -272,11 +279,23 @@ export default function ProductCard({
     await handleSave();
     try {
       // Після створення в onSave міг прийти response з id — заберемо останній продукт через пошук по штрихкоду
-      const bc = fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
-      if (bc) {
-        const p = await api.getProductByBarcode(bc);
+      const bcStored = sessionStorage.getItem('productcard_last_saved_barcode') || fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
+      if (bcStored) {
+        const p = await api.getProductByBarcode(bcStored);
         if (p && p.ID) {
-          const selected = [{ ID: p.ID, FullName: p.FullName || p.Name || "", Quantity: 1 }];
+          const selected = [{ ID: p.ID, FullName: p.FullName || p.Name || "", Quantity: Number(addQty || 1) }];
+          sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected));
+        } else {
+          const savedId = sessionStorage.getItem('productcard_last_saved_id');
+          if (savedId) {
+            const selected = [{ ID: Number(savedId), FullName: fullName || fields.Name || "", Quantity: Number(addQty || 1) }];
+            sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected));
+          }
+        }
+      } else {
+        const savedId = sessionStorage.getItem('productcard_last_saved_id');
+        if (savedId) {
+          const selected = [{ ID: Number(savedId), FullName: fullName || fields.Name || "", Quantity: Number(addQty || 1) }];
           sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected));
         }
       }
@@ -556,6 +575,20 @@ export default function ProductCard({
           marginTop: 32,
           justifyContent: "flex-end"
         }}>
+          {!isEditMode && (
+            <div style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontWeight: 600, color: '#333' }}>К-сть:</label>
+              <input
+                type="number"
+                min="0.001"
+                step="0.001"
+                value={addQty}
+                onChange={(e) => setAddQty(e.target.value)}
+                className="border"
+                style={{ width: 120, padding: '10px', borderRadius: 8, border: '1px solid #ddd', textAlign: 'right' }}
+              />
+            </div>
+          )}
           <button
             onClick={onCancel}
             disabled={saving}
