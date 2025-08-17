@@ -43,29 +43,23 @@ export default function SelectProductsPage() {
     return m;
   }, [categories]);
 
-  function promptQty(defaultQty = 1) {
-    const str = window.prompt("Кількість:", String(defaultQty));
-    if (str == null) return null; // cancel
-    const q = parseFloat(String(str).replace(/,/g, "."));
-    if (!isFinite(q) || q <= 0) return null; // не приймаємо 0/некоректне
-    return q;
-  }
-
   function toggle(id) {
-    const now = Date.now();
-    if (now - (promptGuardRef.current || 0) < 600) return; // анти-дубль
-    promptGuardRef.current = now;
     setSelectedQty((prev) => {
       const next = new Map(prev);
-      if (next.has(id)) {
-        const current = Number(next.get(id) || 1);
-        const q = promptQty(current);
-        if (q == null) return prev;
-        next.set(id, q);
+      if (next.has(id)) next.delete(id);
+      else next.set(id, 1);
+      return next;
+    });
+  }
+
+  function setQty(id, q) {
+    const val = Number(String(q).replace(/,/g, "."));
+    setSelectedQty((prev) => {
+      const next = new Map(prev);
+      if (!isFinite(val) || val <= 0) {
+        if (next.has(id)) next.set(id, 1);
       } else {
-        const q = promptQty(1);
-        if (q == null) return prev;
-        next.set(id, q);
+        next.set(id, val);
       }
       return next;
     });
@@ -145,12 +139,13 @@ export default function SelectProductsPage() {
                   <th className="p-2 border text-left">Повна назва</th>
                   <th className="p-2 border w-40">Штрихкод</th>
                   <th className="p-2 border w-40">Артикул</th>
+                  <th className="p-2 border w-28">К-сть</th>
                   <th className="p-2 border w-56">Категорія</th>
                 </tr>
               </thead>
               <tbody>
                 {products.length === 0 ? (
-                  <tr><td colSpan={6} className="p-4 text-center text-gray-500">Немає товарів</td></tr>
+                  <tr><td colSpan={7} className="p-4 text-center text-gray-500">Немає товарів</td></tr>
                 ) : products.map((p) => {
                   const img = p.Photo ? `http://localhost:8000/api/preview/${p.Photo}` : null;
                   const catName = categoriesById.get(p.CategoryID)?.CategoryName || '';
@@ -159,7 +154,7 @@ export default function SelectProductsPage() {
                   return (
                     <tr key={p.ID} className="hover:bg-gray-50">
                       <td className="p-2 border" style={{ textAlign: 'center' }}>
-                        <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} title={checked ? `К-сть: ${qty}` : 'Вибрати'} />
+                        <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} />
                       </td>
                       <td className="p-2 border">
                         <div style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -169,6 +164,17 @@ export default function SelectProductsPage() {
                       <td className="p-2 border" style={{ fontWeight: 600 }}>{p.FullName || p.Name}</td>
                       <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{p.Barcode || ''}</td>
                       <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{p.Article || ''}</td>
+                      <td className="p-2 border">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          value={qty}
+                          disabled={!checked}
+                          onChange={(e) => setQty(p.ID, e.target.value)}
+                          className="border rounded p-1 w-24 text-right"
+                        />
+                      </td>
                       <td className="p-2 border">{catName}</td>
                     </tr>
                   );
@@ -192,7 +198,18 @@ export default function SelectProductsPage() {
                       <div style={{ fontWeight: 700 }}>{p.FullName || p.Name}</div>
                       <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#555' }}>ШК: {p.Barcode || '—'} • Арт.: {p.Article || '—'}</div>
                     </div>
-                    <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} title={checked ? `К-сть: ${qty}` : 'Вибрати'} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggle(p.ID)} />
+                      <input
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        value={qty}
+                        disabled={!checked}
+                        onChange={(e) => setQty(p.ID, e.target.value)}
+                        className="border rounded p-1 w-24 text-right"
+                      />
+                    </div>
                   </div>
                 </div>
               );
