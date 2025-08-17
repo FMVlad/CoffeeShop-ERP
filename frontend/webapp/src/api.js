@@ -510,7 +510,7 @@ export const searchProducts = async (q) => {
   try {
     const raw = await fetchJSON("/products/search", { query: { q: s } });
     const arr = Array.isArray(raw) ? raw : [];
-    return arr.map((p) => ({
+    const normalized = arr.map((p) => ({
       ...p,
       ID: p.ID ?? p.Id ?? p.ProductID ?? p.productId ?? p.id,
       FullName: p.FullName ?? p.fullName ?? p.ProductName ?? p.Name ?? p.name ?? "",
@@ -518,6 +518,21 @@ export const searchProducts = async (q) => {
       Barcode: p.Barcode ?? p.barcode ?? "",
       Sku: p.Sku ?? p.sku ?? "",
     }));
+    // Пріоритезуємо точні збіги: спочатку штрихкод, потім артикул (SKU)
+    const exactBarcodeIdx = normalized.findIndex(
+      (x) => String(x.Barcode || "").trim() === s
+    );
+    const exactSkuIdx = normalized.findIndex(
+      (x) => String(x.Sku || "").trim() === s
+    );
+    if (exactBarcodeIdx > 0) {
+      const [hit] = normalized.splice(exactBarcodeIdx, 1);
+      normalized.unshift(hit);
+    } else if (exactBarcodeIdx === -1 && exactSkuIdx > 0) {
+      const [hit] = normalized.splice(exactSkuIdx, 1);
+      normalized.unshift(hit);
+    }
+    return normalized;
   } catch (e) {
     if (e.status === 422 || e.status === 400) return [];
     throw e;
