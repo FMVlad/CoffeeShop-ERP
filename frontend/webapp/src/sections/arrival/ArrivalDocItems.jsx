@@ -124,7 +124,14 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
           </button>
           <button
             className="border rounded px-3 py-2"
-            onClick={() => alert('Стан складу: поки опційно')}
+            onClick={() => {
+              try {
+                const snapshot = { editingId: null, doc };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+              } catch {}
+              const back = encodeURIComponent(window.location.pathname + window.location.search);
+              navigate(`/stock/state?select=1&back=${back}`);
+            }}
             title="Переглянути стан складу (опційно)"
           >
             🏬 Стан складу

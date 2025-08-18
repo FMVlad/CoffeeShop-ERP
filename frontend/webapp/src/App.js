@@ -10,6 +10,7 @@ import PriceCategoriesPage from './pages/PriceCategoriesPage';
 import ProductPricesPage from './pages/ProductPricesPage';
 import PriceListPage from './pages/PriceListPage';
 import StockPage from './pages/StockPage.jsx';
+import StockStatePage from './pages/StockStatePage.jsx';
 import ProductsPage from './pages/ProductsPage';
 import SelectProductsPage from './pages/SelectProductsPage.jsx';
 
@@ -169,8 +170,8 @@ function AppRoutes() {
                   <Route path="/analytics" element={<div style={{padding:20}}>Аналітика — у розробці</div>} />
                   {/* Склади з лівим меню */}
                   <Route path="/stock" element={<StockPage />}>
-                    <Route index element={<div>Стан складу — у розробці</div>} />
-                    <Route path="state" element={<div>Стан складу — у розробці</div>} />
+                    <Route index element={<StockStatePage />} />
+                    <Route path="state" element={<StockStatePage />} />
                     <Route path="price-categories" element={<PriceCategoriesPage />} />
                     <Route path="price-list" element={<PriceListPage />} />
                     <Route path="revaluation" element={<ProductPricesPage />} />

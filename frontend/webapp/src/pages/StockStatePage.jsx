@@ -20,27 +20,80 @@ export default function StockStatePage() {
   const [onlyWeight, setOnlyWeight] = useState(false);
   const [onlyPiece, setOnlyPiece] = useState(false);
 
-  // Table prefs per employee
+  // Table prefs per employee (порядок і видимість колонок)
   const PREF_KEY = 'stock_state_table';
-  const [visibleCols, setVisibleCols] = useState({
-    photo: true, name: true, barcode: true, article: true, qty: true, price: true, avgcost: true, amount: true,
-  });
+  const DEFAULT_COLUMNS = [
+    { key: 'photo', label: 'Фото', visible: true },
+    { key: 'name', label: 'Товар', visible: true },
+    { key: 'barcode', label: 'Штрихкод', visible: true },
+    { key: 'article', label: 'Артикул', visible: true },
+    { key: 'qty', label: 'К-сть', visible: true },
+    { key: 'price', label: 'Ціна', visible: true },
+    { key: 'avgcost', label: 'Сер.собівартість', visible: true },
+    { key: 'amount', label: 'Сума', visible: true },
+  ];
+  const [availableFields, setAvailableFields] = useState({ standard: [], custom: [] });
+  const [columns, setColumns] = useState(DEFAULT_COLUMNS);
+
+  // Похідні: впорядковані та видимі колонки
+  const orderedVisibleColumns = useMemo(() => columns.filter(c => c.visible), [columns]);
+  // Завантаження доступних полів та префів користувача
   useEffect(() => {
     (async () => {
       try {
-        if (!employee?.ID) return;
-        const pref = await api.getUserTablePrefs(employee.ID, PREF_KEY);
-        if (pref?.PrefJson) {
-          const parsed = JSON.parse(pref.PrefJson);
-          if (parsed && typeof parsed === 'object') setVisibleCols(v => ({ ...v, ...parsed }));
-        }
+        // 1) Завантажуємо доступні поля
+        let standard = [];
+        let custom = [];
+        try {
+          const af = await api.get('/stock/state/available-fields');
+          standard = Array.isArray(af?.standard) ? af.standard : [];
+          custom = Array.isArray(af?.custom) ? af.custom : [];
+          setAvailableFields({ standard, custom });
+        } catch {}
+
+        // Базовий список колонок: стандартні + кастомні (кастомні приховані за замовчуванням)
+        const baseColumns = [
+          ...DEFAULT_COLUMNS.map(c => ({ ...c })),
+          ...custom.map(c => ({ key: c.key, label: c.label || c.key, visible: false })),
+        ];
+
+        // 2) Преференси користувача і мердж
+        let nextColumns = baseColumns;
+        try {
+          if (employee?.ID) {
+            const pref = await api.getUserTablePrefs(employee.ID, PREF_KEY);
+            if (pref?.PrefJson) {
+              const parsed = JSON.parse(pref.PrefJson);
+              if (parsed && Array.isArray(parsed.order) && parsed.visible && typeof parsed.visible === 'object') {
+                const byKey = new Map(baseColumns.map(c => [c.key, { ...c }]));
+                const ordered = parsed.order
+                  .filter(k => byKey.has(k))
+                  .map(k => ({ ...byKey.get(k), visible: parsed.visible[k] !== false }));
+                // Додаємо відсутні ключі (нові поля)
+                baseColumns.forEach(c => {
+                  if (!ordered.find(x => x.key === c.key)) ordered.push({ ...c, visible: parsed.visible[c.key] !== false });
+                });
+                nextColumns = ordered;
+              } else if (parsed && typeof parsed === 'object') {
+                nextColumns = baseColumns.map(c => ({ ...c, visible: parsed[c.key] !== false }));
+              }
+            }
+          }
+        } catch {}
+
+        setColumns(nextColumns);
       } catch {}
     })();
   }, [employee?.ID]);
-  async function savePrefs(next) {
+
+  async function savePrefsStructure(nextColumns) {
     try {
       if (!employee?.ID) return;
-      await api.upsertUserTablePref(employee.ID, PREF_KEY, JSON.stringify(next));
+      const payload = {
+        order: nextColumns.map(c => c.key),
+        visible: nextColumns.reduce((acc, c) => ({ ...acc, [c.key]: !!c.visible }), {}),
+      };
+      await api.upsertUserTablePref(employee.ID, PREF_KEY, JSON.stringify(payload));
     } catch {}
   }
 
@@ -57,7 +110,7 @@ export default function StockStatePage() {
         center_id: centerId || undefined,
         warehouse_id: warehouseId || undefined,
         on_date: date,
-        price_category_id: priceCategoryId || undefined,
+        price_category_id: priceCategoryId ? Number(priceCategoryId) : undefined,
         search: search || undefined,
         category_id: categoryId || undefined,
         qty_filter: qtyFilter || undefined,
@@ -71,11 +124,34 @@ export default function StockStatePage() {
   }
 
   useEffect(() => { load(); }, []);
+  // Перезавантажувати при зміні вибраної категорії цін
+  useEffect(() => { load(); }, [priceCategoryId]);
 
   const totalQty = useMemo(() => rows.reduce((s,r)=>s + Number(r.Qty||0), 0), [rows]);
   const totalAmount = useMemo(() => rows.reduce((s,r)=>s + Number(r.Amount||0), 0), [rows]);
 
   const [showConfig, setShowConfig] = useState(false);
+
+  // --- Select mode support ---
+  const isSelectMode = (typeof window !== 'undefined') && new URLSearchParams(window.location.search).get('select') === '1';
+  const backUrl = (typeof window !== 'undefined') ? new URLSearchParams(window.location.search).get('back') : null;
+  const [checked, setChecked] = useState({}); // { [productId]: { qty } }
+  function addSelectedToInvoice(){
+    const byId = new Map((rows||[]).map(r => [Number(r.ProductID), r]));
+    const selected = Object.entries(checked)
+      .filter(([, v]) => v && Number(v.qty) > 0)
+      .map(([pid, v]) => {
+        const idNum = Number(pid);
+        const row = byId.get(idNum);
+        return {
+          ID: idNum,
+          Quantity: Number(v.qty),
+          FullName: row?.FullName || row?.Name || row?.ProductName || ""
+        };
+      });
+    try { window.sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected)); } catch {}
+    if (backUrl) window.location.assign(backUrl);
+  }
 
   return (
     <div>
@@ -117,13 +193,21 @@ export default function StockStatePage() {
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
         >{loading ? 'Завантаження…' : '🔄 Оновити'}</button>
-        <button
-          onClick={()=>setShowConfig(true)}
-          style={{
-            background:'#7b6eea', color:'#fff', border:'none', borderRadius:12,
-            padding:'14px 20px', fontWeight:800, fontSize:16, boxShadow:'0 4px 14px rgba(0,0,0,0.15)', cursor:'pointer'
-          }}
-        >⚙️ Налаштувати…</button>
+        {!isSelectMode && (
+          <button
+            onClick={()=>setShowConfig(true)}
+            style={{
+              background:'#7b6eea', color:'#fff', border:'none', borderRadius:12,
+              padding:'14px 20px', fontWeight:800, fontSize:16, boxShadow:'0 4px 14px rgba(0,0,0,0.15)', cursor:'pointer'
+            }}
+          >⚙️ Налаштувати…</button>
+        )}
+        {isSelectMode && (
+          <button
+            onClick={addSelectedToInvoice}
+            style={{ background:'#00b894', color:'#fff', border:'none', borderRadius:12, padding:'14px 20px', fontWeight:800, fontSize:16, boxShadow:'0 4px 14px rgba(0,0,0,0.15)', cursor:'pointer' }}
+          >Додати в накладну</button>
+        )}
       </div>
 
       <div style={{ display:'flex', gap:12, marginBottom: 10, alignItems:'center' }}>
@@ -145,62 +229,119 @@ export default function StockStatePage() {
       <div className="overflow-x-auto">
         {showConfig && (
           <ColumnsConfigModal
-            visible={visibleCols}
+            columns={columns}
             onClose={()=>setShowConfig(false)}
-            onSave={(nextVisible)=>{ setVisibleCols(nextVisible); savePrefs(nextVisible); setShowConfig(false); }}
+            onSave={(nextCols)=>{ setColumns(nextCols); savePrefsStructure(nextCols); setShowConfig(false); }}
           />
         )}
         <table className="min-w-full bg-white border rounded">
           <thead>
             <tr className="bg-gray-100">
-              {visibleCols.photo && <th className="p-2 border w-20">Фото</th>}
-              {visibleCols.name && <th className="p-2 border">Товар</th>}
-              {visibleCols.barcode && <th className="p-2 border w-32">Штрихкод</th>}
-              {visibleCols.article && <th className="p-2 border w-28">Артикул</th>}
-              {visibleCols.qty && <th className="p-2 border w-20">К-сть</th>}
-              {visibleCols.price && <th className="p-2 border w-28">Ціна</th>}
-              {visibleCols.avgcost && <th className="p-2 border w-32">Сер.собівартість</th>}
-              {visibleCols.amount && <th className="p-2 border w-32">Сума</th>}
+              {isSelectMode && <th className="p-2 border w-12">✓</th>}
+              {orderedVisibleColumns.map(c => (
+                <th key={c.key} className="p-2 border" style={{
+                  width: c.key === 'photo' ? 80 : (c.key === 'barcode' ? 128 : (c.key === 'article' ? 112 : (c.key === 'qty' ? 80 : (c.key === 'price' ? 112 : (c.key === 'avgcost' ? 144 : (c.key === 'amount' ? 144 : undefined))))) )
+                }}>{c.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                {visibleCols.photo && (
-                  <td className="p-2 border" style={{ textAlign:'center' }}>
-                    {r.Photo ? (
-                      <div
-                        title="Клік для превʼю"
-                        style={{ width: 56, height: 56, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-in' }}
-                        onClick={() => setPreviewSrc(`http://localhost:8000/api/preview/${r.Photo}`)}
-                      >
-                        <img alt="p" src={`http://localhost:8000/api/preview/${r.Photo}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                      </div>
-                    ) : '—'}
+                {isSelectMode && (
+                  <td className="p-2 border" style={{ width: 60 }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <input type="checkbox" checked={!!checked[r.ProductID]} onChange={e=>{
+                        const v = e.target.checked;
+                        setChecked(prev => {
+                          const next = { ...prev };
+                          if (v) next[r.ProductID] = { qty: 1 };
+                          else delete next[r.ProductID];
+                          return next;
+                        });
+                      }} />
+                      {!!checked[r.ProductID] && (
+                        <input type="number" min={0.001} step={0.001} value={checked[r.ProductID]?.qty || 1}
+                          onChange={e=>{
+                            const q = e.target.value;
+                            setChecked(prev => ({ ...prev, [r.ProductID]: { qty: q } }));
+                          }}
+                          style={{ width:80 }}
+                        />
+                      )}
+                    </div>
                   </td>
                 )}
-                {visibleCols.name && <td className="p-2 border">{r.FullName}</td>}
-                {visibleCols.barcode && <td className="p-2 border" style={{ fontFamily:'monospace' }}>{r.Barcode||''}</td>}
-                {visibleCols.article && <td className="p-2 border" style={{ fontFamily:'monospace' }}>{r.Article||''}</td>}
-                {visibleCols.qty && <td className="p-2 border text-right">{Number(r.Qty||0).toFixed(3)}</td>}
-                {visibleCols.price && <td className="p-2 border text-right">{Number(r.Price||0).toFixed(2)}</td>}
-                {visibleCols.avgcost && <td className="p-2 border text-right">{Number(r.AvgCost||0).toFixed(2)}</td>}
-                {visibleCols.amount && <td className="p-2 border text-right">{Number(r.Amount||0).toFixed(2)}</td>}
+                {orderedVisibleColumns.map(col => {
+                  if (col.key === 'photo') {
+                    return (
+                      <td key={col.key} className="p-2 border" style={{ textAlign:'center' }}>
+                        {r.Photo ? (
+                          <div
+                            title="Клік для превʼю"
+                            style={{ width: 56, height: 56, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-in' }}
+                            onClick={() => setPreviewSrc(`http://localhost:8000/api/preview/${r.Photo}`)}
+                          >
+                            <img alt="p" src={`http://localhost:8000/api/preview/${r.Photo}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                          </div>
+                        ) : '—'}
+                      </td>
+                    );
+                  }
+                  if (col.key === 'name') return <td key={col.key} className="p-2 border">{r.FullName}</td>;
+                  if (col.key === 'barcode') return <td key={col.key} className="p-2 border" style={{ fontFamily:'monospace' }}>{r.Barcode||''}</td>;
+                  if (col.key === 'article') return <td key={col.key} className="p-2 border" style={{ fontFamily:'monospace' }}>{r.Article||''}</td>;
+                  if (col.key === 'qty') return <td key={col.key} className="p-2 border text-right">{Number(r.Qty||0).toFixed(3)}</td>;
+                  if (col.key === 'price') return <td key={col.key} className="p-2 border text-right">{Number(r.Price||0).toFixed(2)}</td>;
+                  if (col.key === 'avgcost') return <td key={col.key} className="p-2 border text-right">{Number(r.AvgCost||0).toFixed(2)}</td>;
+                  if (col.key === 'amount') return <td key={col.key} className="p-2 border text-right">{Number(r.Amount||0).toFixed(2)}</td>;
+                  // Кастомні поля: очікуємо ключі custom_<sql>
+                  if (col.key && col.key.startsWith('custom_')) {
+                    return <td key={col.key} className="p-2 border">{r[col.key] != null ? String(r[col.key]) : '—'}</td>;
+                  }
+                  return <td key={col.key} className="p-2 border">—</td>;
+                })}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-3 text-center text-gray-500 border">Немає даних</td>
+                <td colSpan={(orderedVisibleColumns.length + (isSelectMode ? 1 : 0)) || 1} className="p-3 text-center text-gray-500 border">Немає даних</td>
               </tr>
             )}
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 font-semibold">
-              <td className="p-2 border" colSpan={4}>Разом:</td>
-              {visibleCols.qty && <td className="p-2 border text-right">{totalQty.toFixed(3)}</td>}
-              {visibleCols.price && <td className="p-2 border" />}
-              {visibleCols.avgcost && <td className="p-2 border" />}
-              {visibleCols.amount && <td className="p-2 border text-right">{totalAmount.toFixed(2)}</td>}
+              {(() => {
+                // Формуємо футер динамічно: у першій клітинці до колонки 'qty' пишемо "Разом:";
+                const tds = [];
+                if (isSelectMode) tds.push(<td key={`f-sel`} className="p-2 border" />);
+                let beforeQty = true;
+                orderedVisibleColumns.forEach((c, idx) => {
+                  if (beforeQty && c.key !== 'qty') {
+                    // перші комірки до qty: зливаємо у першу
+                    if (idx === 0) tds.push(<td key={`f-${c.key}`} className="p-2 border" colSpan={1}>Разом:</td>);
+                    else {
+                      const last = tds[tds.length - 1];
+                      if (last && last.props && last.props.colSpan) {
+                        // збільшуємо colSpan останньої клітинки "Разом:" замість додавання нової
+                        const newColSpan = last.props.colSpan + 1;
+                        tds[tds.length - 1] = React.cloneElement(last, { colSpan: newColSpan });
+                      } else {
+                        // гарантія на випадок нештатного порядку
+                        tds.push(<td key={`f-pad-${idx}`} className="p-2 border" />);
+                      }
+                    }
+                  } else if (c.key === 'qty') {
+                    beforeQty = false;
+                    tds.push(<td key={`f-qty`} className="p-2 border text-right">{totalQty.toFixed(3)}</td>);
+                  } else if (c.key === 'amount') {
+                    tds.push(<td key={`f-amount`} className="p-2 border text-right">{totalAmount.toFixed(2)}</td>);
+                  } else {
+                    tds.push(<td key={`f-${c.key}`} className="p-2 border" />);
+                  }
+                });
+                return tds;
+              })()}
             </tr>
           </tfoot>
         </table>
@@ -259,37 +400,79 @@ function CategorySelectStyles(){
   );
 }
 
-function ColumnsConfigModal({ visible, onClose, onSave }){
-  const FIELDS = [
-    { key:'photo', label:'Фото' },
-    { key:'name', label:'Товар' },
-    { key:'barcode', label:'Штрихкод' },
-    { key:'article', label:'Артикул' },
-    { key:'qty', label:'К-сть' },
-    { key:'price', label:'Ціна' },
-    { key:'avgcost', label:'Сер.собівартість' },
-    { key:'amount', label:'Сума' },
-  ];
-  const [local, setLocal] = React.useState({ ...visible });
-  function toggle(k){ setLocal(v => ({ ...v, [k]: !v[k] })); }
+function ColumnsConfigModal({ columns, onClose, onSave }){
+  const [localCols, setLocalCols] = React.useState(columns);
+
+  // Drag and drop
+  const dragIndexRef = React.useRef(null);
+  function onDragStart(idx){ dragIndexRef.current = idx; }
+  function onDragOver(e){ e.preventDefault(); }
+  function onDrop(idx){
+    const from = dragIndexRef.current;
+    if (from == null || from === idx) return;
+    setLocalCols(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(idx, 0, moved);
+      return next;
+    });
+    dragIndexRef.current = null;
+  }
+
+  function toggleVisible(k){
+    setLocalCols(prev => prev.map(c => c.key === k ? { ...c, visible: !c.visible } : c));
+  }
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style={{ width:'min(640px, 95vw)', background:'#fff', borderRadius:16, boxShadow:'0 10px 40px rgba(0,0,0,0.3)', padding:20 }}>
+      <div style={{ width:'min(700px, 95vw)', background:'#fff', borderRadius:16, boxShadow:'0 10px 40px rgba(0,0,0,0.3)', padding:20 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <div style={{ fontSize:18, fontWeight:800 }}>Налаштування колонок</div>
           <button onClick={onClose} style={{ border:'none', background:'transparent', fontSize:22, cursor:'pointer' }}>✕</button>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          {FIELDS.map(f => (
-            <label key={f.key} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 6px', border:'1px solid #f1f1f1', borderRadius:8 }}>
-              <input type="checkbox" checked={!!local[f.key]} onChange={()=>toggle(f.key)} />
-              <span>{f.label}</span>
-            </label>
+        <div style={{ fontSize:12, color:'#6c757d', marginBottom:10 }}>Перетягніть рядки мишкою або використайте стрілки ▲▼ справа, щоб змінити порядок.</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:8 }}>
+          {localCols.map((c, idx) => (
+            <div
+              key={c.key}
+              draggable
+              onDragStart={() => onDragStart(idx)}
+              onDragOver={onDragOver}
+              onDrop={() => onDrop(idx)}
+              style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 10px', border:'1px solid #f1f1f1', borderRadius:10, background:'#fafafa', cursor:'grab' }}
+              title="Перетягніть, щоб змінити порядок"
+            >
+              <span style={{ fontSize:18, lineHeight:1 }}>☰</span>
+              <label style={{ display:'flex', alignItems:'center', gap:10, flex:1 }}>
+                <input type="checkbox" checked={!!c.visible} onChange={() => toggleVisible(c.key)} />
+                <span>{c.label}</span>
+              </label>
+              <div style={{ display:'flex', gap:6 }}>
+                <button onClick={()=>{
+                  setLocalCols(prev => {
+                    const next = [...prev];
+                    if (idx === 0) return next;
+                    const [m] = next.splice(idx, 1);
+                    next.splice(idx-1, 0, m);
+                    return next;
+                  });
+                }} disabled={idx===0} title="Вгору" style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #ddd', background:'#fff', cursor: idx===0 ? 'not-allowed' : 'pointer' }}>▲</button>
+                <button onClick={()=>{
+                  setLocalCols(prev => {
+                    const next = [...prev];
+                    if (idx === next.length-1) return next;
+                    const [m] = next.splice(idx, 1);
+                    next.splice(idx+1, 0, m);
+                    return next;
+                  });
+                }} disabled={idx===localCols.length-1} title="Вниз" style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #ddd', background:'#fff', cursor: idx===localCols.length-1 ? 'not-allowed' : 'pointer' }}>▼</button>
+              </div>
+            </div>
           ))}
         </div>
         <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:12 }}>
           <button onClick={onClose} style={{ background:'#6c757d', color:'#fff', border:'none', borderRadius:8, padding:'10px 16px', fontWeight:700, cursor:'pointer' }}>Скасувати</button>
-          <button onClick={()=>onSave(local)} style={{ background:'#28a745', color:'#fff', border:'none', borderRadius:8, padding:'10px 16px', fontWeight:700, cursor:'pointer' }}>Зберегти</button>
+          <button onClick={()=>onSave(localCols)} style={{ background:'#28a745', color:'#fff', border:'none', borderRadius:8, padding:'10px 16px', fontWeight:700, cursor:'pointer' }}>Зберегти</button>
         </div>
       </div>
     </div>

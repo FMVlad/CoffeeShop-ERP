@@ -815,64 +815,132 @@ def update_arrival_document(doc_id: int, payload: Dict[str, Any], db: pyodbc.Con
 def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     cursor = db.cursor()
     try:
-        # First collect product/warehouse pairs for potential cleanup
+        # Collect PartyIDs linked to this document (before movements are deleted)
         try:
             cursor.execute(
-                (
-                    "SELECT p.ProductID, pm.WarehouseID, COUNT(*) AS Cnt "
-                    "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
-                    "WHERE pm.DocumentType='Arrival' AND pm.DocumentID = ? "
-                    "GROUP BY p.ProductID, pm.WarehouseID"
-                ),
+                "SELECT DISTINCT PartyID FROM ArrivalDocumentItems WHERE DocID = ? AND PartyID IS NOT NULL",
                 (doc_id,),
             )
-            pairs = [(int(r[0]), int(r[1])) for r in cursor.fetchall() or []]
+            party_ids = [int(r[0]) for r in (cursor.fetchall() or []) if r and r[0] is not None]
         except Exception:
+            party_ids = []
+
+        # Collect product/warehouse(/company) for potential StockBalances cleanup
+        try:
+            has_sb_company = _table_has_column(db, "StockBalances", "CompanyID")
+            has_party_company = _table_has_column(db, "Parties", "CompanyID")
+            triples = []
+            pairs = []
+            if has_sb_company and has_party_company:
+                cursor.execute(
+                    (
+                        "SELECT p.ProductID, pm.WarehouseID, p.CompanyID "
+                        "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
+                        "WHERE pm.DocumentType='Arrival' AND pm.DocumentID = ? "
+                        "GROUP BY p.ProductID, pm.WarehouseID, p.CompanyID"
+                    ),
+                    (doc_id,),
+                )
+                triples = [
+                    (int(r[0]), int(r[1]), None if r[2] is None else int(r[2]))
+                    for r in (cursor.fetchall() or [])
+                ]
+            else:
+                cursor.execute(
+                    (
+                        "SELECT p.ProductID, pm.WarehouseID "
+                        "FROM PartyMovements pm JOIN Parties p ON p.ID = pm.PartyID "
+                        "WHERE pm.DocumentType='Arrival' AND pm.DocumentID = ? "
+                        "GROUP BY p.ProductID, pm.WarehouseID"
+                    ),
+                    (doc_id,),
+                )
+                pairs = [(int(r[0]), int(r[1])) for r in (cursor.fetchall() or [])]
+        except Exception:
+            triples = []
             pairs = []
 
-        # rollback balances first (decrement quantities that were added by this document)
+        # Rollback balances first (decrement quantities that were added by this document) and delete movements
         _rollback_balances_for_document(db, doc_id)
-        # Remove postings first
+
+        # Remove postings
         try:
             cursor.execute("DELETE FROM DocumentPostings WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
         except Exception:
-            pass
-        # Remove movements linked to this document
+            try:
+                cursor.execute("DELETE FROM DocumentPostings WHERE DocumentType='Arrival' AND DocumentID=?", (doc_id,))
+            except Exception:
+                pass
+
+        # Remove movements linked to this document (in case schema differs and rollback did not cover)
         try:
             cursor.execute("DELETE FROM PartyMovements WHERE DocumentType = 'Arrival' AND DocumentID = ?", (doc_id,))
         except Exception:
             pass
-        # Remove Parties created for this document if they have no other movements left
+
+        # Remove cost calculations for parties of this document
         try:
-            cursor.execute(
-                (
-                    "DELETE FROM Parties WHERE ID IN ("
-                    "  SELECT DISTINCT pm.PartyID FROM PartyMovements pm WHERE pm.DocumentType='Arrival' AND pm.DocumentID=?"
-                    ") AND NOT EXISTS (SELECT 1 FROM PartyMovements x WHERE x.PartyID = Parties.ID)"
-                ),
-                (doc_id,),
-            )
+            if party_ids:
+                placeholders = ", ".join(["?" for _ in party_ids])
+                cursor.execute(
+                    f"DELETE FROM CostCalculations WHERE PartyID IN ({placeholders})",
+                    tuple(party_ids),
+                )
         except Exception:
             pass
+
+        # Remove Parties created for this document if they have no other movements left
+        try:
+            if party_ids:
+                placeholders = ", ".join(["?" for _ in party_ids])
+                cursor.execute(
+                    (
+                        f"DELETE FROM Parties WHERE ID IN ({placeholders}) "
+                        "AND NOT EXISTS (SELECT 1 FROM PartyMovements x WHERE x.PartyID = Parties.ID)"
+                    ),
+                    tuple(party_ids),
+                )
+        except Exception:
+            pass
+
+        # Remove document items and header
         cursor.execute("DELETE FROM ArrivalDocumentItems WHERE DocID = ?", (doc_id,))
         cursor.execute("DELETE FROM ArrivalDocuments WHERE ID = ?", (doc_id,))
 
         # Cleanup StockBalances rows that became zero and have no related movements anymore
         try:
-            for prod_id, wh_id in pairs:
-                try:
-                    cursor.execute(
-                        (
-                            "DELETE FROM StockBalances WHERE ProductID=? AND WarehouseID=? AND (Quantity IS NULL OR Quantity<=0) "
-                            "AND NOT EXISTS ("
-                            "  SELECT 1 FROM PartyMovements pm JOIN Parties p ON p.ID=pm.PartyID "
-                            "  WHERE p.ProductID=? AND pm.WarehouseID=?"
-                            ")"
-                        ),
-                        (prod_id, wh_id, prod_id, wh_id),
-                    )
-                except Exception:
-                    pass
+            if triples:
+                for prod_id, wh_id, comp_id in triples:
+                    if comp_id is None:
+                        continue
+                    try:
+                        cursor.execute(
+                            (
+                                "DELETE FROM StockBalances WHERE ProductID=? AND WarehouseID=? AND CompanyID=? "
+                                "AND (Quantity IS NULL OR Quantity<=0) AND NOT EXISTS ("
+                                "  SELECT 1 FROM PartyMovements pm JOIN Parties p ON p.ID=pm.PartyID "
+                                "  WHERE p.ProductID=? AND pm.WarehouseID=? AND p.CompanyID=?"
+                                ")"
+                            ),
+                            (prod_id, wh_id, comp_id, prod_id, wh_id, comp_id),
+                        )
+                    except Exception:
+                        pass
+            elif pairs:
+                for prod_id, wh_id in pairs:
+                    try:
+                        cursor.execute(
+                            (
+                                "DELETE FROM StockBalances WHERE ProductID=? AND WarehouseID=? AND (Quantity IS NULL OR Quantity<=0) "
+                                "AND NOT EXISTS ("
+                                "  SELECT 1 FROM PartyMovements pm JOIN Parties p ON p.ID=pm.PartyID "
+                                "  WHERE p.ProductID=? AND pm.WarehouseID=?"
+                                ")"
+                            ),
+                            (prod_id, wh_id, prod_id, wh_id),
+                        )
+                    except Exception:
+                        pass
         except Exception:
             pass
         db.commit()
