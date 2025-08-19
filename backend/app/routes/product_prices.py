@@ -17,12 +17,22 @@ def get_product_prices(
     db=Depends(get_db)
 ):
     cursor = db.cursor()
-    query = (
-        "SELECT ID, ProductID, PriceCategoryID, Price, "
-        "ISNULL(CenterID, 0) AS CenterID, "
-        "DateStart, DateEnd "
-        "FROM ProductPrices WHERE 1=1"
+    base_sql = "FROM ProductPrices WHERE 1=1"
+    # Спроба з додатковими колонками (можуть бути відсутні в деяких БД)
+    try_sql = (
+        "SELECT ID, ProductID, PriceCategoryID, Price, ISNULL(CenterID,0) AS CenterID, DateStart, DateEnd, "
+        "PriceWithDiscount, DiscountRecalcAt " + base_sql
     )
+    fallback_sql = (
+        "SELECT ID, ProductID, PriceCategoryID, Price, ISNULL(CenterID,0) AS CenterID, DateStart, DateEnd "
+        + base_sql
+    )
+    # Оберемо SQL, який спрацює
+    try:
+        cursor.execute(try_sql + " AND 1=0")
+        query = try_sql
+    except Exception:
+        query = fallback_sql
     params = []
     if product_id:
         query += " AND ProductID=?"
@@ -98,6 +108,30 @@ def _round_price(value: float, step: Optional[float]) -> float:
     import math
     return round(math.ceil(value / step) * step, 2)
 
+
+# === ВИНЯТКИ ЗІ ЗНИЖОК (повтор знизу, аби функції були доступні вище) ===
+def _ensure_exclusions_table(db):
+    cur = db.cursor()
+    cur.execute(
+        """
+        IF OBJECT_ID('dbo.PriceDiscountExclusions','U') IS NULL
+        BEGIN
+          CREATE TABLE dbo.PriceDiscountExclusions (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            PriceCategoryID INT NOT NULL,
+            CenterID INT NULL,
+            WarehouseID INT NULL,
+            ProductID INT NOT NULL,
+            DateStart DATE NOT NULL,
+            DateEnd DATE NULL,
+            Comment NVARCHAR(250) NULL,
+            CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+          );
+          CREATE INDEX IX_PDE_Scope ON dbo.PriceDiscountExclusions(PriceCategoryID, CenterID, WarehouseID, ProductID, DateStart, DateEnd);
+        END
+        """
+    )
+    db.commit()
 
 @router.post("/product-prices/generate")
 def generate_prices(payload: dict, db=Depends(get_db)):
@@ -199,3 +233,262 @@ def generate_prices(payload: dict, db=Depends(get_db)):
 
     db.commit()
     return {"generated": generated, "date_start": date_start}
+
+
+# === Допоміжне: колонки PriceWithDiscount / DiscountRecalcAt у ProductPrices ===
+def _ensure_product_prices_extra(db):
+    cur = db.cursor()
+    cur.execute(
+        """
+        IF COL_LENGTH('dbo.ProductPrices','PriceWithDiscount') IS NULL
+        BEGIN
+          ALTER TABLE dbo.ProductPrices ADD PriceWithDiscount DECIMAL(18,4) NULL;
+        END;
+        IF COL_LENGTH('dbo.ProductPrices','DiscountRecalcAt') IS NULL
+        BEGIN
+          ALTER TABLE dbo.ProductPrices ADD DiscountRecalcAt DATETIME NULL;
+        END;
+        """
+    )
+    db.commit()
+
+
+def _round_to_step(value: float, step: Optional[float]) -> float:
+    if step is None or step <= 0:
+        return round(float(value), 2)
+    import math
+    return round(math.ceil(value / step) * step, 2)
+
+
+def _pick_rule_for_product(cur, price_category_id: int, center_id: Optional[int], product_id: int, on_date: str, product_category_id: Optional[int]) -> Optional[Dict[str, Any]]:
+    params_base = [price_category_id]
+    sql_base = [
+        "SELECT TOP 1 ID, DiscountType, DiscountValue, RoundingStep, DateStart, DateEnd, CenterID, CategoryID, ProductID",
+        "FROM PriceDiscounts WHERE PriceCategoryID=?",
+        "AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)",
+    ]
+    # 1) конкретний товар у конкретному центрі
+    if center_id is not None:
+        row = cur.execute(
+            " ".join(sql_base + ["AND ISNULL(CenterID,0)=ISNULL(?,0) AND ISNULL(ProductID,0)=? ORDER BY DateStart DESC, ID DESC"]),
+            (price_category_id, on_date, on_date, center_id, product_id),
+        ).fetchone()
+        if row:
+            return {
+                "DiscountType": row[1],
+                "DiscountValue": float(row[2] or 0),
+                "RoundingStep": float(row[3] or 0) or None,
+            }
+    # 2) конкретний товар глобально
+    row = cur.execute(
+        " ".join(sql_base + ["AND ISNULL(CenterID,0)=0 AND ISNULL(ProductID,0)=? ORDER BY DateStart DESC, ID DESC"]),
+        (price_category_id, on_date, on_date, product_id),
+    ).fetchone()
+    if row:
+        return {
+            "DiscountType": row[1],
+            "DiscountValue": float(row[2] or 0),
+            "RoundingStep": float(row[3] or 0) or None,
+        }
+    # 3) категорія товару у конкретному центрі
+    if product_category_id is not None and center_id is not None:
+        row = cur.execute(
+            " ".join(sql_base + ["AND ISNULL(CenterID,0)=ISNULL(?,0) AND ISNULL(CategoryID,0)=? AND ISNULL(ProductID,0)=0 ORDER BY DateStart DESC, ID DESC"]),
+            (price_category_id, on_date, on_date, center_id, product_category_id),
+        ).fetchone()
+        if row:
+            return {
+                "DiscountType": row[1],
+                "DiscountValue": float(row[2] or 0),
+                "RoundingStep": float(row[3] or 0) or None,
+            }
+    # 4) категорія товару глобально
+    if product_category_id is not None:
+        row = cur.execute(
+            " ".join(sql_base + ["AND ISNULL(CenterID,0)=0 AND ISNULL(CategoryID,0)=? AND ISNULL(ProductID,0)=0 ORDER BY DateStart DESC, ID DESC"]),
+            (price_category_id, on_date, on_date, product_category_id),
+        ).fetchone()
+        if row:
+            return {
+                "DiscountType": row[1],
+                "DiscountValue": float(row[2] or 0),
+                "RoundingStep": float(row[3] or 0) or None,
+            }
+    # 5) глобальне правило для всіх
+    row = cur.execute(
+        " ".join(sql_base + ["AND ISNULL(CenterID,0)=ISNULL(?,0) AND ISNULL(CategoryID,0)=0 AND ISNULL(ProductID,0)=0 ORDER BY DateStart DESC, ID DESC"]),
+        (price_category_id, on_date, on_date, center_id or 0),
+    ).fetchone()
+    if row:
+        return {
+            "DiscountType": row[1],
+            "DiscountValue": float(row[2] or 0),
+            "RoundingStep": float(row[3] or 0) or None,
+        }
+    return None
+
+
+@router.post("/product-prices/apply-discounts")
+def apply_discounts(payload: dict, db=Depends(get_db)):
+    """Обчислює ціну зі знижкою для вибраної категорії цін/центру і записує у ProductPrices.PriceWithDiscount.
+
+    payload = {
+      price_category_id: int,            # обов'язково
+      center_id?: int,                   # null/відсутній = глобальні
+      active_on?: 'YYYY-MM-DD',          # дата актуальності; за замовч. сьогодні
+      product_ids?: [int]                # обмежити перерахунок
+    }
+    """
+    price_category_id = payload.get("price_category_id")
+    if not price_category_id:
+        raise HTTPException(400, "price_category_id is required")
+    center_id = payload.get("center_id")
+    on_date = payload.get("active_on") or datetime.date.today().isoformat()
+    product_ids: List[int] = payload.get("product_ids") or []
+    # ad-hoc знижка з модалки
+    adhoc_type = (payload.get("discount_type") or "").strip().lower() or None
+    adhoc_value = payload.get("discount_value")
+    adhoc_round = payload.get("rounding_step")
+
+    _ensure_exclusions_table(db)
+    _ensure_product_prices_extra(db)
+
+    cur = db.cursor()
+
+    # Побудуємо список товарів: або обрані, або всі, для яких є ціна у цій категорії/центрі
+    if not product_ids:
+        q = [
+            "SELECT DISTINCT ProductID FROM ProductPrices WHERE PriceCategoryID=? AND ISNULL(CenterID,0)=ISNULL(?,0)"
+        ]
+        params = [price_category_id, center_id or 0]
+        rows = cur.execute(" ".join(q), tuple(params)).fetchall() or []
+        product_ids = [int(r[0]) for r in rows]
+
+    updated = 0
+    for pid in product_ids:
+        # Категорія товару (для категорних правил)
+        row_cat = cur.execute("SELECT ISNULL(CategoryID,0) FROM Products WHERE ID=?", (pid,)).fetchone()
+        prod_cat_id = int(row_cat[0] or 0) if row_cat else None
+
+        # Базова ціна: спочатку по центру, потім глобальна
+        def _get_base_price_row(for_center_id: Optional[int]):
+            parts = [
+                "SELECT TOP 1 ID, Price FROM ProductPrices WHERE ProductID=? AND PriceCategoryID=?",
+                "AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)",
+                "AND ISNULL(CenterID,0)=ISNULL(?,0) ORDER BY DateStart DESC, ID DESC",
+            ]
+            return cur.execute(" ".join(parts), (pid, price_category_id, on_date, on_date, for_center_id or 0)).fetchone()
+
+        base = _get_base_price_row(center_id)
+        if not base and (center_id or 0) != 0:
+            base = _get_base_price_row(0)
+        if not base:
+            # немає базової ціни — обійдемо
+            continue
+        price_row_id, base_price = int(base[0]), float(base[1] or 0)
+
+        # Перевірка виключень
+        ex = cur.execute(
+            """
+            SELECT TOP 1 1 FROM PriceDiscountExclusions
+            WHERE PriceCategoryID=? AND ISNULL(CenterID,0)=ISNULL(?,0) AND ProductID=?
+              AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+            """,
+            (price_category_id, center_id or 0, pid, on_date, on_date),
+        ).fetchone()
+        if ex:
+            # Скасовуємо знижку
+            cur.execute(
+                "UPDATE ProductPrices SET PriceWithDiscount=NULL, DiscountRecalcAt=GETDATE() WHERE ID=?",
+                (price_row_id,),
+            )
+            updated += 1
+            continue
+
+        # Правило знижки або ad-hoc параметри з модалки
+        rule = None
+        if adhoc_type and adhoc_value is not None:
+            rule = {"DiscountType": adhoc_type, "DiscountValue": float(adhoc_value or 0), "RoundingStep": float(adhoc_round or 0) or 0.01}
+        else:
+            rule = _pick_rule_for_product(cur, price_category_id, center_id, pid, on_date, prod_cat_id)
+        if not rule:
+            # Немає правила — обнуляємо можливу стару знижку
+            cur.execute(
+                "UPDATE ProductPrices SET PriceWithDiscount=NULL, DiscountRecalcAt=GETDATE() WHERE ID=?",
+                (price_row_id,),
+            )
+            updated += 1
+            continue
+
+        dtype = (rule.get("DiscountType") or "").strip().lower()
+        dval = float(rule.get("DiscountValue") or 0)
+        step = float(rule.get("RoundingStep") or 0) or 0.01
+        if dtype == "percent":
+            discounted = base_price * (1.0 - dval / 100.0)
+        elif dtype == "amount":
+            discounted = max(0.0, base_price - dval)
+        else:
+            discounted = base_price
+        discounted = _round_to_step(discounted, step)
+
+        cur.execute(
+            "UPDATE ProductPrices SET PriceWithDiscount=?, DiscountRecalcAt=GETDATE() WHERE ID=?",
+            (float(discounted), price_row_id),
+        )
+        updated += 1
+
+    db.commit()
+    return {"updated": updated, "active_on": on_date, "center_id": center_id or 0, "price_category_id": price_category_id}
+
+
+@router.post("/product-prices/clear-discounts")
+def clear_discounts(payload: dict, db=Depends(get_db)):
+    """Знімає знижку (ставить PriceWithDiscount = NULL) для активних цін за скоупом.
+
+    payload = {
+      price_category_id: int,            # обов'язково
+      center_id?: int,                   # null/0 = глобальні
+      active_on?: 'YYYY-MM-DD',          # дата актуальності; за замовч. сьогодні
+      product_ids?: [int]                # опційно
+    }
+    """
+    price_category_id = payload.get("price_category_id")
+    if not price_category_id:
+        raise HTTPException(400, "price_category_id is required")
+    center_id = payload.get("center_id")
+    on_date = payload.get("active_on") or datetime.date.today().isoformat()
+    product_ids: List[int] = payload.get("product_ids") or []
+
+    _ensure_product_prices_extra(db)
+    cur = db.cursor()
+
+    if product_ids:
+        placeholders = ",".join(["?"] * len(product_ids))
+        cur.execute(
+            f"""
+            UPDATE ProductPrices
+            SET PriceWithDiscount = NULL, DiscountRecalcAt = GETDATE()
+            WHERE PriceCategoryID=?
+              AND ISNULL(CenterID,0)=ISNULL(?,0)
+              AND ProductID IN ({placeholders})
+              AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+            """,
+            (price_category_id, center_id or 0, *product_ids, on_date, on_date),
+        )
+        cleared = cur.rowcount or 0
+    else:
+        cur.execute(
+            """
+            UPDATE ProductPrices
+            SET PriceWithDiscount = NULL, DiscountRecalcAt = GETDATE()
+            WHERE PriceCategoryID=?
+              AND ISNULL(CenterID,0)=ISNULL(?,0)
+              AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+            """,
+            (price_category_id, center_id or 0, on_date, on_date),
+        )
+        cleared = cur.rowcount or 0
+
+    db.commit()
+    return {"cleared": cleared, "active_on": on_date, "center_id": center_id or 0, "price_category_id": price_category_id}
+

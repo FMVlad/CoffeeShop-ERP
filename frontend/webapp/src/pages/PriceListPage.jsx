@@ -15,6 +15,7 @@ export default function PriceListPage() {
   const [rounding, setRounding] = useState(1);
   const [selected, setSelected] = useState(() => new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [showApplyDiscModal, setShowApplyDiscModal] = useState(false);
   const roundingOptions = [0.05, 0.25, 0.5, 1, 5, 10];
 
   useEffect(() => {
@@ -47,17 +48,15 @@ export default function PriceListPage() {
     setPrices(Array.isArray(data) ? data : []);
   };
 
-  const getPrice = (productId, priceCategoryId) => {
-    // кандидати по товару та категорії і центру (спочатку вибраний центр, далі глобальні 0/NULL)
+  const pickPriceRow = (productId, priceCategoryId) => {
     const candidates = prices.filter(p =>
       p.ProductID === productId && p.PriceCategoryID === priceCategoryId &&
       (centerId === ''
-        ? true // коли центр не обрано — показуємо будь-яку (потім виберемо найновішу)
+        ? true
         : (Number(p.CenterID || 0) === Number(centerId) || Number(p.CenterID || 0) === 0)
       )
     );
-    if (!candidates.length) return '';
-    // сортуємо: спочатку за пріоритетом центру (точний центр > глобальна), потім за датою початку, потім за ID
+    if (!candidates.length) return null;
     const sorted = candidates.sort((a, b) => {
       const aCenterPriority = Number(centerId || 0) === Number(a.CenterID || 0) ? 1 : 0;
       const bCenterPriority = Number(centerId || 0) === Number(b.CenterID || 0) ? 1 : 0;
@@ -67,7 +66,17 @@ export default function PriceListPage() {
       if (ad !== bd) return bd - ad;
       return (b.ID || 0) - (a.ID || 0);
     });
-    return sorted[0]?.Price ?? '';
+    return sorted[0] || null;
+  };
+
+  const getPrice = (productId, priceCategoryId) => pickPriceRow(productId, priceCategoryId)?.Price ?? '';
+  const getDiscounted = (productId, priceCategoryId) => pickPriceRow(productId, priceCategoryId)?.PriceWithDiscount ?? '';
+  const getPriceDateEnd = (productId, priceCategoryId) => pickPriceRow(productId, priceCategoryId)?.DateEnd ?? null;
+
+  const hasDiscountByCategory = (catId) => {
+    return prices.some(p => p.PriceCategoryID === catId &&
+      (centerId === '' ? true : (Number(p.CenterID||0)===Number(centerId) || Number(p.CenterID||0)===0)) &&
+      p.PriceWithDiscount != null);
   };
 
   return (
@@ -101,22 +110,22 @@ export default function PriceListPage() {
             </span>
           </div>
           <div style={{ display:'flex', gap: 10, alignItems:'center', flexWrap:'wrap' }}>
-            <button
-              onClick={() => window.location.assign('/webapp')}
-              style={{
-                background: '#e9ecef',
-                color: '#333',
-                border: 'none',
-                borderRadius: 10,
-                padding: '12px 32px',
-                fontWeight: 700,
-                fontSize: 18,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px #0002'
-              }}
-            >
-              ← На головну
-            </button>
+          <button
+            onClick={() => window.location.assign('/webapp')}
+            style={{
+              background: '#e9ecef',
+              color: '#333',
+              border: 'none',
+              borderRadius: 10,
+              padding: '12px 32px',
+              fontWeight: 700,
+              fontSize: 18,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px #0002'
+            }}
+          >
+            ← На головну
+          </button>
             <button
               onClick={async () => {
                 try {
@@ -141,6 +150,69 @@ export default function PriceListPage() {
             >Згенерувати ціни</button>
           </div>
         </div>
+        <CategorySelectStyles />
+        {/* Сітка 2x3 */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(260px, 1fr))', gap: 10, rowGap: 10, marginBottom: 16, alignItems:'center' }}>
+          <input
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+            onKeyDown={(e)=>{ if (e.key === 'Enter') { reloadProducts(); reloadPrices(); } }}
+            placeholder="Пошук: назва / ШК / артикул"
+            style={{ padding:'10px 12px', borderRadius:8 }}
+          />
+          <div><CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+          <select value={centerId} onChange={e=>setCenterId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
+            <option value="">Центр обліку (усі/глобальні)</option>
+            {centers.map(c => (
+              <option key={c.ID} value={c.ID}>{c.Name}</option>
+            ))}
+          </select>
+          <select value={selectedCatId} onChange={e=>setSelectedCatId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
+            <option value="">Категорія цін…</option>
+            {priceCategories.map(pc => <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>)}
+          </select>
+          <select value={rounding} onChange={e=>setRounding(Number(e.target.value))} style={{ padding:'10px 12px', borderRadius:8, minWidth:180 }}>
+            {roundingOptions.map(r => <option key={r} value={r}>Заокруглення: {r}</option>)}
+          </select>
+          <button
+            onClick={async ()=>{ await reloadProducts(); await reloadPrices(); }}
+            style={{
+              background: '#00b894',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 10,
+              padding: '12px 18px',
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: 'pointer',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.12)'
+            }}
+          >🔄 Оновити</button>
+          <button
+            onClick={()=>setShowApplyDiscModal(true)}
+            style={{
+              background: '#28a745', color:'#fff', border:'none', borderRadius: 10,
+              padding:'12px 18px', fontWeight:800, fontSize:14, cursor:'pointer', boxShadow:'0 3px 10px rgba(0,0,0,0.12)'
+            }}
+          >Розрахувати і записати знижку</button>
+          {!!selected.size && (
+            <button
+              onClick={async()=>{
+                try{
+                  const pcid = Number(selectedCatId || (priceCategories[0]?.ID || 0));
+                  if (!pcid) return alert('Оберіть категорію цін');
+                  const pids = Array.from(selected);
+                  const payload = { price_category_id: pcid, product_ids: pids };
+                  if (centerId !== '') payload.center_id = Number(centerId) || 0;
+                  const res = await api.clearDiscounts(payload);
+                  alert(`Знято знижку у записах: ${res.cleared}`);
+                  await reloadPrices();
+                }catch(e){ alert('Помилка зняття знижки'); }
+              }}
+              style={{ background:'#ffc107', border:'none', borderRadius:10, padding:'12px 18px', fontWeight:800, cursor:'pointer' }}
+            >Зняти знижку</button>
+          )}
+        </div>
         {/* Таблиця */}
         <div style={{
           background: '#fff',
@@ -148,45 +220,6 @@ export default function PriceListPage() {
           boxShadow: '0 4px 24px #0001',
           padding: 32
         }}>
-          <CategorySelectStyles />
-          {/* Фільтри над таблицею */}
-          <div style={{ display:'grid', gridTemplateColumns:'minmax(260px,1.3fr) minmax(360px,2.7fr) minmax(220px,1fr) minmax(220px,1fr) minmax(200px,1fr) 160px', gap: 10, marginBottom: 16, alignItems:'center' }}>
-            <input
-              value={search}
-              onChange={e=>setSearch(e.target.value)}
-              onKeyDown={(e)=>{ if (e.key === 'Enter') { reloadProducts(); reloadPrices(); } }}
-              placeholder="Пошук: назва / ШК / артикул"
-              style={{ padding:'10px 12px', borderRadius:8 }}
-            />
-            <div><CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} /></div>
-            <select value={centerId} onChange={e=>setCenterId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
-              <option value="">Центр обліку (усі/глобальні)</option>
-              {centers.map(c => (
-                <option key={c.ID} value={c.ID}>{c.Name}</option>
-              ))}
-            </select>
-            <select value={selectedCatId} onChange={e=>setSelectedCatId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
-              <option value="">Категорія цін…</option>
-              {priceCategories.map(pc => <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>)}
-            </select>
-            <select value={rounding} onChange={e=>setRounding(Number(e.target.value))} style={{ padding:'10px 12px', borderRadius:8, minWidth:180 }}>
-              {roundingOptions.map(r => <option key={r} value={r}>Заокруглення: {r}</option>)}
-            </select>
-            <button
-              onClick={async ()=>{ await reloadProducts(); await reloadPrices(); }}
-              style={{
-                background: '#00b894',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 10,
-                padding: '12px 18px',
-                fontWeight: 800,
-                fontSize: 14,
-                cursor: 'pointer',
-                boxShadow: '0 3px 10px rgba(0,0,0,0.12)'
-              }}
-            >🔄 Оновити</button>
-          </div>
           <div style={{ marginBottom: 10, display:'flex', alignItems:'center', gap: 12 }}>
             <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
               <input type="checkbox" checked={selectAll} onChange={e=>{ setSelectAll(e.target.checked); if (e.target.checked) setSelected(new Set()); }} />
@@ -214,16 +247,27 @@ export default function PriceListPage() {
                   fontSize: 18,
                   borderRight: '2px solid #a78bfa'
                 }}>Назва товару</th>
-                {priceCategories.map((cat, idx) => (
-                  <th key={cat.ID} style={{
+                {priceCategories.map((cat, idx) => {
+                  const hasDisc = hasDiscountByCategory(cat.ID);
+                  return (
+                    <React.Fragment key={cat.ID}>
+                      <th style={{
                     textAlign: 'center',
                     padding: '12px 16px',
                     borderBottom: '2.5px solid #a78bfa',
                     fontWeight: 700,
                     fontSize: 18,
+                        borderRight: (idx < priceCategories.length - 1 || hasDisc) ? '2px solid #a78bfa' : 'none'
+                      }}>{cat.CategoryName}</th>
+                      {hasDisc && (
+                        <th style={{
+                          textAlign: 'center', padding:'12px 16px', borderBottom:'2.5px solid #a78bfa', fontWeight:700, fontSize:18,
                     borderRight: (idx < priceCategories.length - 1) ? '2px solid #a78bfa' : 'none'
-                  }}>{cat.CategoryName}</th>
-                ))}
+                        }}>{cat.CategoryName} (зі знижкою)</th>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -266,16 +310,24 @@ export default function PriceListPage() {
                       </div>
                     </div>
                   </td>
-                  {priceCategories.map((cat, idx) => (
-                    <td key={cat.ID} style={{
-                      textAlign: 'center',
-                      padding: '12px 16px',
-                      borderBottom: '1.7px solid #ede7fb',
-                      borderRight: (idx < priceCategories.length - 1) ? '2px solid #ede7fb' : 'none'
-                    }}>
-                      {getPrice(prod.ID, cat.ID)}
+                  {priceCategories.map((cat, idx) => {
+                    const hasDisc = hasDiscountByCategory(cat.ID);
+                    const base = getPrice(prod.ID, cat.ID);
+                    const dp = hasDisc ? getDiscounted(prod.ID, cat.ID) : '';
+                    const until = hasDisc ? getPriceDateEnd(prod.ID, cat.ID) : null;
+                    const cells = [(
+                      <td key={cat.ID} style={{ textAlign:'center', padding:'12px 16px', borderBottom:'1.7px solid #ede7fb', borderRight:(idx < priceCategories.length - 1 || hasDisc) ? '2px solid #ede7fb' : 'none' }}>
+                        {base}
+                      </td>
+                    )];
+                    if (hasDisc) cells.push((
+                      <td key={cat.ID+"-disc"} style={{ textAlign:'center', padding:'12px 16px', borderBottom:'1.7px solid #ede7fb', borderRight:(idx < priceCategories.length - 1)?'2px solid #ede7fb':'none', color: dp && Number(dp)!==Number(base) ? '#28a745' : undefined, fontWeight: dp && Number(dp)!==Number(base) ? 700 : undefined }}>
+                        <div>{dp || ''}</div>
+                        {until ? <div style={{ fontSize:12, color:'#6c757d' }}>До {String(until).slice(0,10)}</div> : null}
                     </td>
-                  ))}
+                    ));
+                    return cells;
+                  })}
                 </tr>
               )})}
               {!products.length && (
@@ -289,8 +341,109 @@ export default function PriceListPage() {
           </table>
         </div>
       </div>
+      {showApplyDiscModal && (
+        <ApplyDiscountModal
+          onClose={()=>setShowApplyDiscModal(false)}
+          centers={centers}
+          defaultCenterId={centerId}
+          priceCategories={priceCategories}
+          defaultCategoryId={selectedCatId || (priceCategories[0]?.ID || '')}
+          selectedProductIds={selectAll ? [] : Array.from(selected)}
+          onApplied={async()=>{ await reloadPrices(); }}
+        />
+      )}
     </div>
   );
 }
 
 // CategorySelectTree винесено у спільний компонент
+export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCategories, defaultCategoryId, selectedProductIds, onApplied }){
+  const [allCenters, setAllCenters] = React.useState(true);
+  const [centerIds, setCenterIds] = React.useState(new Set());
+  const [pcid, setPcid] = React.useState(String(defaultCategoryId||''));
+  const [dtype, setDtype] = React.useState('percent');
+  const [dval, setDval] = React.useState(10);
+  const [dateStart, setDateStart] = React.useState(new Date().toISOString().slice(0,10));
+  const [dateEnd, setDateEnd] = React.useState('');
+
+  const runApply = async () => {
+    try {
+      const catId = Number(pcid||0);
+      if (!catId) return alert('Оберіть категорію цін');
+      const targets = (allCenters || !centerIds.size) ? [null] : Array.from(centerIds);
+      for (const cid of targets){
+        const payload = {
+          price_category_id: catId,
+          discount_type: dtype,
+          discount_value: Number(dval||0),
+          rounding_step: 1,
+        };
+        if (cid != null) payload.center_id = Number(cid);
+        if (selectedProductIds && selectedProductIds.length) payload.product_ids = selectedProductIds;
+        // TODO: можна додати перевірку існуючих discount-цін і підтвердження
+        await api.applyDiscounts(payload);
+      }
+      if (onApplied) await onApplied();
+      onClose();
+    } catch(e){
+      alert('Помилка запису знижок');
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:120 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:'min(640px, 95vw)', background:'#fff', borderRadius:12, padding:16, boxShadow:'0 10px 30px rgba(0,0,0,0.25)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+          <div style={{ fontWeight:800, fontSize:18 }}>Розрахувати і записати знижку</div>
+          <button onClick={onClose} style={{ border:'none', background:'transparent', fontSize:22, cursor:'pointer' }}>✕</button>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div>
+            <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Категорія цін</div>
+            <select value={pcid} onChange={e=>setPcid(e.target.value)} style={{ width:'100%', padding:10, borderRadius:8 }}>
+              <option value="">Оберіть…</option>
+              {(priceCategories||[]).map(pc => <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Тип знижки</div>
+            <select value={dtype} onChange={e=>setDtype(e.target.value)} style={{ width:'100%', padding:10, borderRadius:8 }}>
+              <option value="percent">Відсоток (%)</option>
+              <option value="amount">Сума</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Значення</div>
+            <input type="number" value={dval} onChange={e=>setDval(e.target.value)} style={{ width:'100%', padding:10, borderRadius:8 }} />
+          </div>
+          <div>
+            <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Період дії</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <input type="date" value={dateStart} onChange={e=>setDateStart(e.target.value)} style={{ padding:10, borderRadius:8 }} />
+              <input type="date" value={dateEnd} onChange={e=>setDateEnd(e.target.value)} style={{ padding:10, borderRadius:8 }} />
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Центри</div>
+          <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+            <input type="checkbox" checked={allCenters} onChange={e=>{ const v=e.target.checked; setAllCenters(v); if(v) setCenterIds(new Set()); }} /> Усі центри
+          </label>
+          {!allCenters && (
+            <div style={{ maxHeight:170, overflow:'auto', border:'1px solid #f1f1f1', borderRadius:8, padding:8 }}>
+              {centers.map(c => (
+                <label key={c.ID} style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 10px', marginRight:8 }}>
+                  <input type="checkbox" checked={centerIds.has(c.ID)} onChange={e=>{ const v=e.target.checked; setCenterIds(prev=>{ const next=new Set(prev); if(v) next.add(c.ID); else next.delete(c.ID); return next;}); }} /> {c.Name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:14 }}>
+          <button onClick={onClose} style={{ padding:'10px 14px', borderRadius:8, border:'1px solid #ddd', background:'#fff', cursor:'pointer' }}>Скасувати</button>
+          <button onClick={runApply} style={{ padding:'10px 14px', borderRadius:8, border:'none', background:'#28a745', color:'#fff', fontWeight:800, cursor:'pointer' }}>Розрахувати і записати</button>
+        </div>
+      </div>
+    </div>
+  );
+}

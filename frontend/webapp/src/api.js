@@ -619,6 +619,7 @@ export const api = {
   // Глобальні методи для ручних викликів
   async get(path, query) { return fetchJSON(path, { method: "GET", query }); },
   async post(path, query, data) { return fetchJSON(path, { method: "POST", query, data }); },
+  async delete(path, query, data) { return fetchJSON(path, { method: "DELETE", query, data }); },
 
   // Сервісні задачі (планувальник)
   getServiceTasks: () => fetchJSON("/service-tasks"),
@@ -725,6 +726,8 @@ export const api = {
   addProductPrice,
   updateProductPrice,
   deleteProductPrice,
+  async applyDiscounts(data){ return fetchJSON('/product-prices/apply-discounts', { method: 'POST', data }); },
+  async clearDiscounts(data){ return fetchJSON('/product-prices/clear-discounts', { method: 'POST', data }); },
   // Націнки
   getCategoryMargins,
   addCategoryMargin,
