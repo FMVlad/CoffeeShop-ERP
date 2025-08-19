@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { api } from "../api";
+import { setSelection } from "../utils/selectionBridge";
 
 export default function BarcodeInput({
   onResolve,
@@ -7,6 +8,10 @@ export default function BarcodeInput({
   placeholder = "Скануй або введи та натисни Enter",
   autoFocus = false,
   className = "",
+  // Універсальний режим: якщо товар знайдено і задано selectionKey — повертаємо в документ через bridge
+  universal = false,
+  selectionKey = null,
+  backUrl = null,
 }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,11 +24,30 @@ export default function BarcodeInput({
     try {
       const p = await api.getProductByBarcode(s);
       if (p) {
-        onResolve?.(p);
+        // Пріоритет: якщо надано onResolve — додаємо в поточний документ без навігації
+        if (typeof onResolve === "function") {
+          onResolve(p);
+        } else if (universal && selectionKey && backUrl) {
+          const name = p.FullName || p.fullName || p.ProductName || p.Name || p.name || "";
+          const id = p.ID ?? p.Id ?? p.id ?? p.ProductID ?? p.product_id ?? undefined;
+          if (id) {
+            setSelection(selectionKey, { items: [{ id, qty: 1, name }], meta: { source: 'barcode' } });
+            window.location.assign(backUrl);
+            return;
+          }
+        }
       } else {
-        if (typeof onNotFound === "function") onNotFound(s);
-        // без alert — передаємо керування зовнішній логіці
-        onResolve?.(null); // НЕ додаємо пустий рядок
+        if (universal) {
+          try { sessionStorage.setItem('prefill_barcode', s); } catch {}
+          const back = backUrl || (window.location.pathname + window.location.search);
+          const target = `/products?mode=add&source=selector&back=${encodeURIComponent(back)}`;
+          window.location.assign(target);
+          return;
+        } else {
+          if (typeof onNotFound === "function") onNotFound(s);
+          // без alert — передаємо керування зовнішній логіці
+          onResolve?.(null); // НЕ додаємо пустий рядок
+        }
       }
     } catch (e) {
       console.error(e);

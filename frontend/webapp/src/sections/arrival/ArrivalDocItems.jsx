@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import ProductPicker from "../../components/ProductPicker";
 import BarcodeInput from "../../components/BarcodeInput";
 import ProductDirectoryModal from "../../components/ProductDirectoryModal";
+import { popSelection } from "../../utils/selectionBridge";
 
 export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus, showFC = false, rate = 1 }) {
   const [localFocusBump, setLocalFocusBump] = useState(0);
@@ -90,6 +91,9 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
             key={`${focusKey}-${localFocusBump}`}
             autoFocus
             onResolve={onBarcodeResolved}
+            universal
+            selectionKey="arrival"
+            backUrl={window.location.pathname + window.location.search}
             onNotFound={(bc) => {
               try {
                 const snapshot = { editingId: null, doc };
@@ -235,17 +239,15 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
       {/* Один раз обробляємо кеш після повернення */}
       {React.useMemo(() => {
         try {
-          const raw = window.sessionStorage.getItem("arrival_selected_products");
-          if (!raw) return null;
-          window.sessionStorage.removeItem("arrival_selected_products");
-          const selected = JSON.parse(raw);
-          if (!Array.isArray(selected) || selected.length === 0) return null;
+          const sel = popSelection('arrival');
+          if (!sel || !Array.isArray(sel.items) || sel.items.length === 0) return null;
+          const selected = sel.items;
           setTimeout(() => {
             setDoc((d) => {
               const appended = selected.map((p) => ({
-                ProductID: p.ID,
-                ProductName: p.FullName || p.Name || "",
-                Quantity: Number(p.Quantity || 1),
+                ProductID: p.id,
+                ProductName: p.name || "",
+                Quantity: Number(p.qty || 1),
                 Price: 0,
                 TaxRateID: null,
               }));
@@ -253,7 +255,6 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
               const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
               return { ...d, Items: newItems, TotalAmount: total };
             });
-            // після імпорту — сфокусувати штрихкод і нічого більше не відкривати
             setLocalFocusBump((n) => n + 1);
           }, 0);
         } catch {}

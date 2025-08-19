@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { setSelection } from "../utils/selectionBridge";
 import { useUser } from "../UserContext";
 
 export default function StockStatePage() {
@@ -138,18 +139,20 @@ export default function StockStatePage() {
   const [checked, setChecked] = useState({}); // { [productId]: { qty } }
   function addSelectedToInvoice(){
     const byId = new Map((rows||[]).map(r => [Number(r.ProductID), r]));
-    const selected = Object.entries(checked)
+    const items = Object.entries(checked)
       .filter(([, v]) => v && Number(v.qty) > 0)
       .map(([pid, v]) => {
         const idNum = Number(pid);
         const row = byId.get(idNum);
         return {
-          ID: idNum,
-          Quantity: Number(v.qty),
-          FullName: row?.FullName || row?.Name || row?.ProductName || ""
+          id: idNum,
+          qty: Number(v.qty),
+          name: row?.FullName || row?.Name || row?.ProductName || ""
         };
       });
-    try { window.sessionStorage.setItem('arrival_selected_products', JSON.stringify(selected)); } catch {}
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get('key') || 'arrival';
+    setSelection(key, { items, meta: { source: 'stock', centerId, warehouseId, priceCategoryId, date } });
     if (backUrl) window.location.assign(backUrl);
   }
 

@@ -3,6 +3,7 @@ import { api } from '../api';
 import ProductCard from '../components/ProductCard';
 import Barcode from 'react-barcode';
 import { useNavigate } from 'react-router-dom';
+import { setSelection } from '../utils/selectionBridge';
 
 const headerStyle = {
   background: 'linear-gradient(90deg,#7c6aea 0%,#a798f6 70%,#b7862b 100%)',
@@ -332,6 +333,15 @@ export default function ProductsPage() {
                   <div style={{ display: "flex", gap: 12, marginTop: "auto", justifyContent: "center", padding: 20 }}>
                     <button
                       onClick={() => {
+                        const params = new URLSearchParams(window.location.search);
+                        const isSelect = params.get('select') === '1';
+                        const back = params.get('back');
+                        const key = params.get('key') || 'arrival';
+                        if (isSelect) {
+                          setSelection(key, { items: [{ id: product.ID, qty: 1, name: product.FullName || product.Name }], meta: { source: 'products' } });
+                          if (back) window.location.assign(back);
+                          return;
+                        }
                         setEditingProductId(product.ID);
                         setShowProductCard(true);
                       }}
