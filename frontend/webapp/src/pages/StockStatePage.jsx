@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { setSelection } from "../utils/selectionBridge";
+import CategorySelectTree, { CategorySelectStyles } from "../components/CategorySelectTree";
 import { useUser } from "../UserContext";
 
 export default function StockStatePage() {
@@ -362,46 +363,7 @@ export default function StockStatePage() {
   );
 }
 
-// Маленький компонент-дерево вибору категорій із плоского списку {ID, CategoryName, ParentID}
-function CategorySelectTree({ categories, value, onChange }) {
-  const flat = React.useMemo(() => {
-    const result = [];
-    const children = new Map();
-    (categories||[]).forEach(c => {
-      const pid = c.ParentID == null ? null : c.ParentID;
-      if (!children.has(pid)) children.set(pid, []);
-      children.get(pid).push(c);
-    });
-    for (const arr of children.values()) arr.sort((a,b)=>String(a.CategoryName||'').localeCompare(String(b.CategoryName||'')));
-    const walk = (pid, level) => {
-      (children.get(pid) || []).forEach(c => {
-        result.push({ ...c, _level: level });
-        walk(c.ID, level + 1);
-      });
-    };
-    walk(null, 0);
-    if (children.has(0)) children.get(0).forEach(c => result.push({ ...c, _level: 0 }));
-    return result;
-  }, [categories]);
-
-  return (
-    <select value={value} onChange={e=>onChange(e.target.value)} className="category-select">
-      <option value="">Всі категорії</option>
-      {flat.map(c => (
-        <option key={c.ID} value={c.ID}>{`${'— '.repeat(c._level||0)}${c._level>0?'▶ ':''}${c.CategoryName}`}</option>
-      ))}
-    </select>
-  );
-}
-
-function CategorySelectStyles(){
-  return (
-    <style>{`
-      .category-select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; }
-      .category-select option { padding: 6px 8px; }
-    `}</style>
-  );
-}
+// CategorySelectTree/Styles тепер імпортовані з ../components/CategorySelectTree
 
 function ColumnsConfigModal({ columns, onClose, onSave }){
   const [localCols, setLocalCols] = React.useState(columns);

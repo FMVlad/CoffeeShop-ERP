@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
+import CategorySelectTree, { CategorySelectStyles } from '../components/CategorySelectTree';
 
 export default function PriceListPage() {
   const [products, setProducts] = useState([]);
@@ -148,8 +149,8 @@ export default function PriceListPage() {
           padding: 32
         }}>
           <CategorySelectStyles />
-          {/* Фільтри над таблицею (як у стані складу) */}
-          <div style={{ display:'grid', gridTemplateColumns:'1.2fr 2fr 1fr 1fr 1fr 140px', gap: 10, marginBottom: 16, alignItems:'center' }}>
+          {/* Фільтри над таблицею */}
+          <div style={{ display:'grid', gridTemplateColumns:'minmax(260px,1.3fr) minmax(360px,2.7fr) minmax(220px,1fr) minmax(220px,1fr) minmax(200px,1fr) 160px', gap: 10, marginBottom: 16, alignItems:'center' }}>
             <input
               value={search}
               onChange={e=>setSearch(e.target.value)}
@@ -157,20 +158,18 @@ export default function PriceListPage() {
               placeholder="Пошук: назва / ШК / артикул"
               style={{ padding:'10px 12px', borderRadius:8 }}
             />
-            <div>
-              <CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} />
-            </div>
-            <select value={centerId} onChange={e=>setCenterId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8 }}>
+            <div><CategorySelectTree categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+            <select value={centerId} onChange={e=>setCenterId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
               <option value="">Центр обліку (усі/глобальні)</option>
               {centers.map(c => (
                 <option key={c.ID} value={c.ID}>{c.Name}</option>
               ))}
             </select>
-            <select value={selectedCatId} onChange={e=>setSelectedCatId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8 }}>
+            <select value={selectedCatId} onChange={e=>setSelectedCatId(e.target.value)} style={{ padding:'10px 12px', borderRadius:8, minWidth:220 }}>
               <option value="">Категорія цін…</option>
               {priceCategories.map(pc => <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>)}
             </select>
-            <select value={rounding} onChange={e=>setRounding(Number(e.target.value))} style={{ padding:'10px 12px', borderRadius:8 }}>
+            <select value={rounding} onChange={e=>setRounding(Number(e.target.value))} style={{ padding:'10px 12px', borderRadius:8, minWidth:180 }}>
               {roundingOptions.map(r => <option key={r} value={r}>Заокруглення: {r}</option>)}
             </select>
             <button
@@ -250,11 +249,23 @@ export default function PriceListPage() {
                   <td style={{
                     padding: '12px 16px',
                     borderBottom: '1.7px solid #ede7fb',
-                    minWidth: 220,
-                    fontWeight: 500,
-                    color: '#34395d',
+                    minWidth: 260,
                     borderRight: '2px solid #ede7fb'
-                  }}>{prod.FullName || prod.Name}</td>
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div title="Превʼю" style={{ width: 42, height: 42, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {prod.Photo ? (
+                          <img alt="p" src={`http://localhost:8000/api/preview/${prod.Photo}`} style={{ width:'100%', height:'100%', objectFit:'contain' }} />
+                        ) : (
+                          <span style={{ fontSize: 12, color:'#bbb' }}>—</span>
+                        )}
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column' }}>
+                        <div style={{ fontWeight: 600, color:'#34395d' }}>{prod.FullName || prod.Name}</div>
+                        <div style={{ fontFamily:'monospace', color:'#6c757d', fontSize: 13 }}>{prod.Barcode || ''}</div>
+                      </div>
+                    </div>
+                  </td>
                   {priceCategories.map((cat, idx) => (
                     <td key={cat.ID} style={{
                       textAlign: 'center',
@@ -282,43 +293,4 @@ export default function PriceListPage() {
   );
 }
 
-// Компонент вибору категорії як у стані складу
-function CategorySelectTree({ categories, value, onChange }) {
-  const flat = React.useMemo(() => {
-    const result = [];
-    const children = new Map();
-    (categories||[]).forEach(c => {
-      const pid = c.ParentID == null ? null : c.ParentID;
-      if (!children.has(pid)) children.set(pid, []);
-      children.get(pid).push(c);
-    });
-    for (const arr of children.values()) arr.sort((a,b)=>String(a.CategoryName||a.Name||'').localeCompare(String(b.CategoryName||b.Name||'')));
-    const walk = (pid, level) => {
-      (children.get(pid) || []).forEach(c => {
-        result.push({ ...c, _level: level });
-        walk(c.ID, level + 1);
-      });
-    };
-    walk(null, 0);
-    if (children.has(0)) children.get(0).forEach(c => result.push({ ...c, _level: 0 }));
-    return result;
-  }, [categories]);
-
-  return (
-    <select value={value} onChange={e=>onChange(e.target.value)} className="category-select">
-      <option value="">Всі категорії</option>
-      {flat.map(c => (
-        <option key={c.ID} value={c.ID}>{`${'— '.repeat(c._level||0)}${c._level>0?'▶ ':''}${c.CategoryName||c.Name}`}</option>
-      ))}
-    </select>
-  );
-}
-
-function CategorySelectStyles(){
-  return (
-    <style>{`
-      .category-select { padding: 10px 12px; border-radius: 8px; border: 1px solid #ddd; width: 100%; }
-      .category-select option { padding: 6px 8px; }
-    `}</style>
-  );
-}
+// CategorySelectTree винесено у спільний компонент
