@@ -311,9 +311,18 @@ def receipt_item(
     return party_id
 
 
-
+def upsert_stock_balance(
+    conn: pyodbc.Connection,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    delta_qty: float,
+    user_id: int = 1,
+    comment: str | None = None,
+    parent_id: int | None = None
+) -> None:
+    """
     Збільшує/зменшує залишок у dbo.StockBalances (або створює новий запис).
-
     """
 
     # пробуємо оновити

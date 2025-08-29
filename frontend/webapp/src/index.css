@@ -36,3 +36,371 @@ code {
     @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coffee-500 focus:border-transparent transition-all duration-200;
   }
 }
+
+/* Додаткові кастомні класи */
+@layer utilities {
+  .shadow-3xl {
+    box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.25);
+  }
+  
+  .shadow-4xl {
+    box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  .animate-bounce-slow {
+    animation: bounce 2s infinite;
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+  to {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.8);
+  }
+}
+
+/* Покращені скроллбари */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Покращені фокус стани */
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3);
+}
+
+/* Покращені переходи */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.transition-bounce {
+  transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Градієнтні тексти */
+.text-gradient-blue {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-green {
+  background: linear-gradient(135deg, #10b981, #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Покращені кнопки */
+.btn-modern {
+  @apply px-6 py-3 rounded-2xl font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95;
+}
+
+.btn-primary {
+  @apply btn-modern bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl;
+}
+
+.btn-secondary {
+  @apply btn-modern bg-gradient-to-r from-gray-500 to-gray-600 text-white hover:from-gray-600 hover:to-gray-700;
+}
+
+.btn-success {
+  @apply btn-modern bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl;
+}
+
+.btn-danger {
+  @apply btn-modern bg-gradient-to-r from-red-500 to-pink-500 text-white hover:from-red-600 hover:to-pink-600;
+}
+
+/* Покращені картки */
+.card-modern {
+  @apply bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden;
+}
+
+.card-hover {
+  @apply card-modern hover:shadow-3xl hover:-translate-y-2 transition-all duration-500 transform hover:scale-105;
+}
+
+/* Покращені форми */
+.input-modern {
+  @apply w-full p-4 text-lg border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-300 focus:border-blue-500 transition-all duration-300;
+}
+
+.select-modern {
+  @apply w-full p-4 text-lg border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-300 focus:border-blue-500 transition-all duration-300 bg-white;
+}
+
+/* Покращені таблиці */
+.table-modern {
+  @apply w-full border-collapse;
+}
+
+.table-header {
+  @apply bg-gradient-to-r from-gray-50 to-gray-100;
+}
+
+.table-header th {
+  @apply px-8 py-4 text-left text-sm font-bold text-gray-700 uppercase tracking-wider;
+}
+
+.table-body tr {
+  @apply border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200;
+}
+
+.table-body td {
+  @apply px-8 py-6;
+}
+
+/* Покращені бейджі */
+.badge-modern {
+  @apply inline-flex px-4 py-2 text-sm font-semibold rounded-full;
+}
+
+.badge-blue {
+  @apply badge-modern bg-blue-100 text-blue-800;
+}
+
+.badge-green {
+  @apply badge-modern bg-green-100 text-green-800;
+}
+
+.badge-purple {
+  @apply badge-modern bg-purple-100 text-purple-800;
+}
+
+.badge-gray {
+  @apply badge-modern bg-gray-100 text-gray-800;
+}
+
+/* Покращені анімації */
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slideInUp 0.6s ease-out;
+}
+
+.animate-slide-in-down {
+  animation: slideInDown 0.6s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.6s ease-out;
+}
+
+/* Покращені градієнти */
+.gradient-hero {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-sunset {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.gradient-ocean {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.gradient-forest {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.gradient-fire {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+/* Покращені тіні */
+.shadow-soft {
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
+}
+
+.shadow-medium {
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-hard {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Покращені бордери */
+.border-gradient {
+  border: 2px solid;
+  border-image: linear-gradient(135deg, #667eea, #764ba2) 1;
+}
+
+.border-dashed-modern {
+  border: 2px dashed #e2e8f0;
+  border-radius: 1rem;
+}
+
+/* Покращені закруглення */
+.rounded-4xl {
+  border-radius: 2rem;
+}
+
+.rounded-5xl {
+  border-radius: 2.5rem;
+}
+
+/* Покращені відступи */
+.space-y-8 > * + * {
+  margin-top: 2rem;
+}
+
+.space-y-12 > * + * {
+  margin-top: 3rem;
+}
+
+.space-y-16 > * + * {
+  margin-top: 4rem;
+}
+
+/* Покращені розміри */
+.max-w-8xl {
+  max-width: 88rem;
+}
+
+.max-w-9xl {
+  max-width: 96rem;
+}
+
+/* Покращені сітки */
+.grid-cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.grid-cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+/* Покращені флекс */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-around {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+/* Покращені позиціонування */
+.absolute-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.absolute-center-x {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.absolute-center-y {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}

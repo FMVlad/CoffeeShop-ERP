@@ -33,7 +33,13 @@ export default function StatusBar() {
       alignItems: "center",
       justifyContent: "space-between"
     }}>
-      <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <img
+          src="/webapp/vyshnia_logo.png"
+          alt="VYSHNIA"
+          style={{ height: 26, width: "auto" }}
+          draggable="false"
+        />
         <b>{formattedDate} {formattedTime}</b> ({dayOfWeek})
       </div>
       <div>

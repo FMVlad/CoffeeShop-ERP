@@ -1,38 +1,57 @@
 import React from "react";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
-import StockStatePage from "./StockStatePage.jsx";
+import MenuCard from "../components/MenuCard";
 
-const menu = [
-  { key: "state", label: "Стан складу", route: "/stock/state" },
-  { key: "price-categories", label: "Категорії цін", route: "/stock/price-categories" },
-  { key: "price-list", label: "Прайс-листи", route: "/stock/price-list" },
-  { key: "revaluation", label: "Переоцінка", route: "/stock/revaluation" },
+const cards = [
+  { key: "back", title: "← На головну", icon: "🏠", route: "/", hint: "Повернутись до головного меню", buttonColor: "from-slate-500 to-slate-600" },
+  { key: "state", title: "Стан складу", icon: "📦", route: "/stock/state", hint: "Залишки, фільтри, пошук", buttonColor: "from-teal-500 to-cyan-500" },
+  { key: "price-categories", title: "Категорії цін", icon: "🏷️", route: "/stock/price-categories", hint: "Категорії, націнки, округлення", buttonColor: "from-amber-500 to-orange-600" },
+  { key: "price-list", title: "Прайс-листи", icon: "🧾", route: "/stock/price-list", hint: "Експорт та друк прайсу", buttonColor: "from-indigo-500 to-purple-600" },
+  { key: "revaluation", title: "Переоцінка", icon: "💹", route: "/stock/revaluation", hint: "Зміна цін по категоріях", buttonColor: "from-rose-500 to-pink-500" },
+  { key: "transfer", title: "Переміщення", icon: "🔁", route: "/stock/transfer", hint: "Переміщення між складами", buttonColor: "from-green-500 to-emerald-600" },
+  { key: "discounts", title: "Документи уцінки", icon: "📝", route: "/stock/discounts", hint: "Створення та облік уцінок", buttonColor: "from-violet-500 to-purple-600" },
 ];
 
 export default function StockPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const current = menu.find(m => location.pathname.endsWith(m.key))?.key || "state";
+  const isBase = location.pathname === "/stock";
 
+  if (!isBase) {
+    // Підсторінки складів рендеряться тут
+    return (
+      <div className="min-h-screen bg-gradient-to-tr from-coffee-50 via-white to-coffee-100 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          <Outlet />
+        </div>
+      </div>
+    );
+  }
+
+  // Хаб карток для розділу "Склади"
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: "linear-gradient(120deg,#f8efe4 0%,#faf7f2 100%)" }}>
-      <nav style={{ width: 240, background: "#f7e7d3", padding: "32px 12px 32px 20px", borderRight: "2px solid #cebba2" }}>
-        <div onClick={() => navigate("/")} style={{ fontWeight: "bold", fontSize: 20, color: "#a64b1a", marginBottom: 32, cursor: "pointer" }}>
-          ← Головна
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-sky-100 flex flex-col">
+      <div className="bg-gradient-to-r from-teal-500 via-cyan-500 to-sky-600 text-white shadow-2xl">
+        <div className="max-w-7xl mx-auto px-8 py-14 text-center">
+          <h1 className="text-6xl font-bold mb-3">Склади</h1>
+          <p className="text-2xl text-sky-100">Оберіть потрібний інструмент для роботи зі складом</p>
         </div>
-        {menu.map(m => (
-          <div key={m.key} onClick={() => navigate(m.route)}
-               style={{ background: current === m.key ? "#fff" : "none", color: current === m.key ? "#a64b1a" : "#333", fontWeight: current === m.key ? "bold" : "normal", fontSize: 17, borderRadius: 8, marginBottom: 6, padding: "10px 14px", cursor: "pointer", transition: "background .12s" }}>
-            {m.label}
-          </div>
-        ))}
-      </nav>
+      </div>
 
-      <main style={{ flex: 1, padding: 24 }}>
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 4px 24px #0001", padding: 20 }}>
-          {current === 'state' ? <StockStatePage /> : <Outlet />}
+      <div className="max-w-7xl mx-auto px-8 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          {cards.map((item) => (
+            <MenuCard
+              key={item.key}
+              title={item.title}
+              icon={item.icon}
+              hint={item.hint}
+              route={item.route}
+              buttonColor={item.buttonColor}
+            />
+          ))}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

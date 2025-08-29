@@ -25,7 +25,7 @@ const mainMenu = [
   { key: "marketing", title: "Маркетинг", icon: "🎯", route: "/marketing", hint: "Акції, ціни" },
   {
     key: "settings",
-    title: "Налаштування",
+    title: "Параметри програми",
     icon: "⚙️",
     hint: "Параметри системи",
     submenu: [
@@ -50,8 +50,8 @@ export default function MainMenuCards() {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-coffee-100">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 select-none">
-            <img src="/webapp/logo.png" alt="VISHNIA" className="h-8 w-auto" />
-            <span className="text-coffee-700 font-semibold">VISHNIA</span>
+            <img src="/webapp/vyshnia_logo.png" alt="VYSHNIA" className="h-8 w-auto" />
+            <span className="text-coffee-700 font-semibold">VYSHNIA</span>
           </div>
         </div>
       </div>

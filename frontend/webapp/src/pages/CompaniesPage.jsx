@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from '../api';
 
 export default function CompaniesPage() {
@@ -7,6 +8,7 @@ export default function CompaniesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyCompany());
   const [editingId, setEditingId] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     refresh();
@@ -60,68 +62,95 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "50px auto", padding: 0 }}>
-      <h2 style={{
-        marginBottom: 18, fontWeight: 800, fontSize: 34, letterSpacing: ".01em"
-      }}>Підприємства</h2>
-
-      <button
-        style={addBtnStyle}
-        onClick={handleAddClick}
-      >
-        + Додати підприємство
-      </button>
-
-      {/* --- ФОРМА ДОДАВАННЯ/РЕДАГУВАННЯ --- */}
-      {showForm && (
-        <div style={modalCardStyle}>
-          <h3 style={{ marginBottom: 18, fontWeight: 700 }}>
-            {editingId ? "Редагувати підприємство" : "Додати підприємство"}
-          </h3>
-          <CompanyForm
-            form={form}
-            setForm={setForm}
-            accounts={accounts}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <button onClick={handleSave} style={saveBtnStyle}>
-              {editingId ? "Зберегти" : "Додати"}
-            </button>
-            <button onClick={handleCloseForm} style={cancelBtnStyle}>Відміна</button>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Заголовок */}
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl shadow-2xl p-8 mb-12">
+          <div className="text-center">
+            <h1 className="text-6xl font-bold text-white mb-4">
+              🏢 Підприємства
+            </h1>
+            <p className="text-2xl text-indigo-100">
+              Управління підприємствами та їх рахунками
+            </p>
           </div>
         </div>
-      )}
 
-      <div style={tableWrapStyle}>
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={headerCellStyle}>Назва</th>
-              <th style={headerCellStyle}>ЄДРПОУ</th>
-              <th style={headerCellStyle}>ІПН</th>
-              <th style={headerCellStyle}>Адреса</th>
-              <th style={headerCellStyle}>Рахунок</th>
-              <th style={{ ...headerCellStyle, textAlign: 'center', minWidth: 110 }}>Дії</th>
-            </tr>
-          </thead>
-          <tbody>
-            {companies.map(c =>
-              <tr key={c.ID} style={rowStyle}>
-                <td style={cellStyle}>{c.Name}</td>
-                <td style={cellStyle}>{c.EDRPOU}</td>
-                <td style={cellStyle}>{c.IPN}</td>
-                <td style={cellStyle}>{c.Address}</td>
-                <td style={cellStyle}>
-                  {accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}
-                </td>
-                <td style={{ ...cellStyle, textAlign: "center" }}>
-                  <button onClick={() => handleEditClick(c)} style={editBtnStyle} title="Редагувати">✏️</button>
-                  <button onClick={() => handleDelete(c.ID)} style={deleteBtnStyle} title="Видалити">🗑️</button>
-                </td>
+        {/* Кнопки управління */}
+        <div className="flex flex-col sm:flex-row gap-6 justify-between items-center mb-12">
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => navigate("/dictionaries")}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              ← Назад до довідників
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              🏠 На головну
+            </button>
+          </div>
+          <button
+            onClick={handleAddClick}
+            className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-10 py-4 rounded-2xl font-bold text-xl hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+          >
+            ✨ + Додати підприємство
+          </button>
+        </div>
+
+        {/* --- ФОРМА ДОДАВАННЯ/РЕДАГУВАННЯ --- */}
+        {showForm && (
+          <div style={modalCardStyle}>
+            <h3 style={{ marginBottom: 18, fontWeight: 700 }}>
+              {editingId ? "Редагувати підприємство" : "Додати підприємство"}
+            </h3>
+            <CompanyForm
+              form={form}
+              setForm={setForm}
+              accounts={accounts}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button onClick={handleSave} style={saveBtnStyle}>
+                {editingId ? "Зберегти" : "Додати"}
+              </button>
+              <button onClick={handleCloseForm} style={cancelBtnStyle}>Відміна</button>
+            </div>
+          </div>
+        )}
+
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={headerCellStyle}>Назва</th>
+                <th style={headerCellStyle}>ЄДРПОУ</th>
+                <th style={headerCellStyle}>ІПН</th>
+                <th style={headerCellStyle}>Адреса</th>
+                <th style={headerCellStyle}>Рахунок</th>
+                <th style={{ ...headerCellStyle, textAlign: 'center', minWidth: 110 }}>Дії</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {companies.map(c =>
+                <tr key={c.ID} style={rowStyle}>
+                  <td style={cellStyle}>{c.Name}</td>
+                  <td style={cellStyle}>{c.EDRPOU}</td>
+                  <td style={cellStyle}>{c.IPN}</td>
+                  <td style={cellStyle}>{c.Address}</td>
+                  <td style={cellStyle}>
+                    {accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "center" }}>
+                    <button onClick={() => handleEditClick(c)} style={editBtnStyle} title="Редагувати">✏️</button>
+                    <button onClick={() => handleDelete(c.ID)} style={deleteBtnStyle} title="Видалити">🗑️</button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -209,6 +238,7 @@ const addBtnStyle = {
   boxShadow: "0 2px 8px #0001",
   marginBottom: 18
 };
+
 const tableWrapStyle = {
   background: '#fff',
   borderRadius: 18,
@@ -218,6 +248,7 @@ const tableWrapStyle = {
   overflow: "hidden",
   marginBottom: 24,
 };
+
 const tableStyle = {
   width: '100%',
   borderCollapse: 'separate',
@@ -228,6 +259,7 @@ const tableStyle = {
   fontFamily: "inherit",
   overflow: "hidden"
 };
+
 const headerCellStyle = {
   textAlign: 'left',
   fontWeight: 700,
@@ -237,6 +269,7 @@ const headerCellStyle = {
   color: "#1a103a",
   border: "2px solid #000",
 };
+
 const cellStyle = {
   padding: '16px 14px',
   border: "2px solid #000",
@@ -244,14 +277,17 @@ const cellStyle = {
   fontSize: 15,
   color: "#22105a"
 };
+
 const rowStyle = {
   background: "#fff"
 };
+
 const labelStyle = {
   fontWeight: 500,
   marginBottom: 3,
   display: "inline-block"
 };
+
 const inputStyle = {
   width: '100%',
   padding: 11,
@@ -261,6 +297,7 @@ const inputStyle = {
   marginTop: 2,
   marginBottom: 0
 };
+
 const modalCardStyle = {
   background: '#fff',
   borderRadius: 16,
@@ -269,6 +306,7 @@ const modalCardStyle = {
   marginBottom: 32,
   maxWidth: 650
 };
+
 const saveBtnStyle = {
   background: '#208f41',
   color: '#fff',
@@ -279,6 +317,7 @@ const saveBtnStyle = {
   fontSize: 16,
   cursor: "pointer"
 };
+
 const cancelBtnStyle = {
   background: '#6c757d',
   color: '#fff',
@@ -290,6 +329,7 @@ const cancelBtnStyle = {
   marginLeft: 12,
   cursor: "pointer"
 };
+
 const editBtnStyle = {
   background: "#fff8c5",
   border: "2px solid #c0b31c",
@@ -301,6 +341,7 @@ const editBtnStyle = {
   fontSize: 20,
   cursor: "pointer"
 };
+
 const deleteBtnStyle = {
   background: "#ffe3e3",
   border: "2px solid #d64040",

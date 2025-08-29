@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
 const roundingOptions = [0.05, 0.25, 0.5, 1, 5, 10];
 
 export default function PriceCategoriesPage() {
+  const navigate = useNavigate();
   // --- Категорії цін ---
   const [priceCategories, setPriceCategories] = useState([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -29,9 +31,19 @@ export default function PriceCategoriesPage() {
   }, []);
 
   function loadAll() {
-    api.getPriceCategories().then(setPriceCategories);
-    api.getCategories().then(setProductCategories);
-    api.getCategoryMargins().then(setMargins);
+    api.getPriceCategories().then(data => {
+      console.log('🔍 PriceCategoriesPage: Отримано категорії цін:', data);
+      // Виправляю: беру data.categories замість data
+      setPriceCategories(Array.isArray(data?.categories) ? data.categories : []);
+    });
+    api.getCategories().then(data => {
+      console.log('🔍 PriceCategoriesPage: Отримано категорії товару:', data);
+      setProductCategories(Array.isArray(data) ? data : []);
+    });
+    api.getCategoryMargins().then(data => {
+      console.log('🔍 PriceCategoriesPage: Отримано націнки:', data);
+      setMargins(Array.isArray(data) ? data : []);
+    });
   }
 
   // --- Категорії цін (CRUD)
@@ -42,7 +54,7 @@ export default function PriceCategoriesPage() {
   }
   function openEditCategory(cat) {
     setEditCategory(cat);
-    setCategoryName(cat.CategoryName);
+    setCategoryName(cat.Name);
     setShowCategoryModal(true);
   }
   function closeCategoryModal() {
@@ -107,55 +119,42 @@ export default function PriceCategoriesPage() {
   }
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',
-      minHeight: '100vh',
-      padding: '32px 0'
-    }}>
-      <div style={{ maxWidth: 950, margin: '0 auto' }}>
-        {/* Категорії цін */}
-        <div style={{
-          background: 'linear-gradient(90deg,#7b6eea 0%,#a37c2d 100%)',
-          borderRadius: 18,
-          padding: '18px 32px',
-          marginBottom: 32,
-          boxShadow: '0 2px 12px #0001',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontSize: 32 }}>🏷️</span>
-            <span style={{ fontWeight: 700, fontSize: 24, color: '#fff' }}>Категорії цін</span>
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Заголовок */}
+        <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl shadow-2xl p-8 mb-12">
+          <div className="text-center">
+            <h1 className="text-6xl font-bold text-white mb-4">
+              🏷️ Категорії цін
+            </h1>
+            <p className="text-2xl text-amber-100">
+              Управління категоріями цін та націнками
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
+        </div>
+
+        {/* Кнопки управління */}
+        <div className="flex flex-col sm:flex-row gap-6 justify-between items-center mb-12">
+          <div className="flex items-center gap-6">
             <button
-              onClick={() => window.location.assign('/webapp')}
-              style={{
-                background: '#e9ecef',
-                color: '#333',
-                border: 'none',
-                borderRadius: 10,
-                padding: '12px 32px',
-                fontWeight: 700,
-                fontSize: 18,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px #0002'
-              }}
-            >← На головну</button>
+              onClick={() => navigate("/stock")}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              ← Назад до довідників
+            </button>
             <button
-              onClick={openAddCategory}
-              style={{
-                background: '#00b894',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 10,
-                padding: '12px 32px',
-                fontWeight: 700,
-                fontSize: 18,
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px #0002'
-              }}
-            >+ Додати категорію</button>
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              🏠 На головну
+            </button>
           </div>
+          <button
+            onClick={openAddCategory}
+            className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-10 py-4 rounded-2xl font-bold text-xl hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+          >
+            ✨ + Додати категорію
+          </button>
         </div>
         <table style={{
           width: '100%',
@@ -180,15 +179,23 @@ export default function PriceCategoriesPage() {
             </tr>
           </thead>
           <tbody>
-            {priceCategories.map(cat => (
-              <tr key={cat.ID} style={{ background: '#f8f6ff' }}>
-                <td style={{ border: '1px solid #d1c4e9', padding: '10px 12px', minWidth: 220 }}>{cat.CategoryName}</td>
-                <td style={{ textAlign: 'center', border: '1px solid #d1c4e9' }}>
-                  <button onClick={() => openEditCategory(cat)} style={{ fontSize: 22, marginRight: 8 }}>✏️</button>
-                  <button onClick={() => handleDeleteCategory(cat.ID)} style={{ fontSize: 22 }}>🗑️</button>
+            {Array.isArray(priceCategories) && priceCategories.length > 0 ? (
+              priceCategories.map(cat => (
+                                 <tr key={cat.ID} style={{ background: '#f8f6ff' }}>
+                   <td style={{ border: '1px solid #d1c4e9', padding: '10px 12px', minWidth: 220 }}>{cat.Name}</td>
+                  <td style={{ textAlign: 'center', border: '1px solid #d1c4e9' }}>
+                    <button onClick={() => openEditCategory(cat)} style={{ fontSize: 22, marginRight: 8 }}>✏️</button>
+                    <button onClick={() => handleDeleteCategory(cat.ID)} style={{ fontSize: 22 }}>🗑️</button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="2" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  {Array.isArray(priceCategories) ? 'Категорії цін не знайдено' : 'Завантаження...'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
         {/* Модалка додавання/редагування категорії */}
@@ -267,28 +274,36 @@ export default function PriceCategoriesPage() {
             </tr>
           </thead>
           <tbody>
-            {margins.map(m => (
-              <tr key={m.ID} style={{ background: '#f8f6ff' }}>
-                <td style={{ border: '1px solid #d1c4e9', padding: '10px 12px', minWidth: 180 }}>
-                  {productCategories.find(c => c.ID === m.CategoryID)?.CategoryName || '—'}
-                </td>
-                <td style={{ border: '1px solid #d1c4e9', minWidth: 180 }}>
-                  {priceCategories.find(pc => pc.ID === m.PriceCategoryID)?.CategoryName || '—'}
-                </td>
-                <td style={{ border: '1px solid #d1c4e9', minWidth: 120 }}>
-                  {m.MarginPercent !== null && m.MarginPercent !== undefined
-                    ? Number(m.MarginPercent).toLocaleString('uk-UA', { minimumFractionDigits: 2 })
-                    : '—'}
-                </td>
-                <td style={{ border: '1px solid #d1c4e9', minWidth: 120 }}>
-                  {m.Rounding ? Number(m.Rounding).toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}
-                </td>
-                <td style={{ textAlign: 'center', border: '1px solid #d1c4e9' }}>
-                  <button onClick={() => openEditMargin(m)} style={{ fontSize: 22, marginRight: 8 }}>✏️</button>
-                  <button onClick={() => handleDeleteMargin(m.ID)} style={{ fontSize: 22 }}>🗑️</button>
+            {Array.isArray(margins) && margins.length > 0 ? (
+              margins.map(m => (
+                <tr key={m.ID} style={{ background: '#f8f6ff' }}>
+                  <td style={{ border: '1px solid #d1c4e9', padding: '10px 12px', minWidth: 180 }}>
+                    {(productCategories || []).find(c => c.ID === m.CategoryID)?.CategoryName || '—'}
+                  </td>
+                                     <td style={{ border: '1px solid #d1c4e9', minWidth: 180 }}>
+                     {(priceCategories || []).find(pc => pc.ID === m.PriceCategoryID)?.Name || '—'}
+                   </td>
+                  <td style={{ border: '1px solid #d1c4e9', minWidth: 120 }}>
+                    {m.MarginPercent !== null && m.MarginPercent !== undefined
+                      ? Number(m.MarginPercent).toLocaleString('uk-UA', { minimumFractionDigits: 2 })
+                      : '—'}
+                  </td>
+                  <td style={{ border: '1px solid #d1c4e9', minWidth: 120 }}>
+                    {m.Rounding ? Number(m.Rounding).toLocaleString('uk-UA', { minimumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td style={{ textAlign: 'center', border: '1px solid #d1c4e9' }}>
+                    <button onClick={() => openEditMargin(m)} style={{ fontSize: 22, marginRight: 8 }}>✏️</button>
+                    <button onClick={() => handleDeleteMargin(m.ID)} style={{ fontSize: 22 }}>🗑️</button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                  {Array.isArray(margins) ? 'Націнки не знайдено' : 'Завантаження...'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
         {/* Модалка додавання/редагування націнки */}
@@ -323,7 +338,7 @@ export default function PriceCategoriesPage() {
               >
                 <option value="">Категорія цін</option>
                 {priceCategories.map(pc => (
-                  <option key={pc.ID} value={pc.ID}>{pc.CategoryName}</option>
+                  <option key={pc.ID} value={pc.ID}>{pc.Name}</option>
                 ))}
               </select>
               <input

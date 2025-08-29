@@ -25,8 +25,12 @@ router = APIRouter(prefix="/arrival-documents", tags=["arrival-documents"])
 # ---------- Helpers ----------
 def _fetch_one(db: pyodbc.Connection, query: str, params: List[Any] | tuple = ()) -> Optional[pyodbc.Row]:
     cursor = db.cursor()
+    print(f"[DEBUG] SQL: {query}")
+    print(f"[DEBUG] Params: {params}")
     cursor.execute(query, params)
-    return cursor.fetchone()
+    result = cursor.fetchone()
+    print(f"[DEBUG] Result: {result}")
+    return result
 
 
 def _fetch_all(db: pyodbc.Connection, query: str, params: List[Any] | tuple = ()) -> List[pyodbc.Row]:
@@ -45,17 +49,24 @@ def _get_tax_rate(db: pyodbc.Connection, tax_rate_id: Optional[int]) -> Decimal:
 
 
 def _resolve_warehouse_id(db: pyodbc.Connection, center_id: int, requested_warehouse_id: Optional[int]) -> int:
+    print(f"[DEBUG] _resolve_warehouse_id: center_id={center_id}, requested_warehouse_id={requested_warehouse_id}")
+    
     # Validate requested warehouse first
     if requested_warehouse_id is not None:
+        print(f"[DEBUG] Checking requested warehouse {requested_warehouse_id} for center {center_id}")
         row = _fetch_one(
             db,
             "SELECT ID FROM Warehouses WHERE ID = ? AND CenterID = ? AND IsActive = 1",
             (requested_warehouse_id, center_id),
         )
         if row:
+            print(f"[DEBUG] Found requested warehouse: {row[0]}")
             return int(row[0])
+        else:
+            print(f"[DEBUG] Requested warehouse {requested_warehouse_id} not found or inactive for center {center_id}")
 
     # Fallback to default main warehouse of center
+    print(f"[DEBUG] Looking for default warehouse for center {center_id}")
     row = _fetch_one(
         db,
         (
@@ -67,10 +78,12 @@ def _resolve_warehouse_id(db: pyodbc.Connection, center_id: int, requested_wareh
         (center_id,),
     )
     if not row:
+        print(f"[ERROR] No warehouses found for center {center_id}")
         raise HTTPException(
             status_code=400,
             detail="Некоректний склад: перевірте, що у вибраному центрі є активний головний склад",
         )
+    print(f"[DEBUG] Found default warehouse: {row[0]}")
     return int(row[0])
 
 
@@ -95,6 +108,8 @@ def _rollback_balances_for_document(db: pyodbc.Connection, doc_id: int) -> None:
     - Delete PartyMovements for this document
     """
     cursor = db.cursor()
+    print(f"[ROLLBACK] Відкатуємо залишки для документу {doc_id}")
+    
     # Sum quantities by product and warehouse via Parties join
     has_sb_company = _table_has_column(db, "StockBalances", "CompanyID")
     # Aggregate qty; include CompanyID when available
@@ -109,14 +124,16 @@ def _rollback_balances_for_document(db: pyodbc.Connection, doc_id: int) -> None:
             (doc_id,),
         )
         rows = cursor.fetchall() or []
+        print(f"[ROLLBACK] Знайдено {len(rows)} комбінацій ProductID+WarehouseID+CompanyID для відкату")
         for prod_id, wh_id, comp_id, qty in rows:
             try:
                 cursor.execute(
                     "UPDATE StockBalances SET Quantity = Quantity - ?, UpdatedAt = GETDATE() WHERE ProductID = ? AND WarehouseID = ? AND CompanyID = ?",
                     (float(qty or 0), int(prod_id), int(wh_id), int(comp_id) if comp_id is not None else None),
                 )
-            except Exception:
-                pass
+                print(f"[ROLLBACK] Відкачено {qty} для товару {prod_id} на складі {wh_id} компанії {comp_id}")
+            except Exception as e:
+                print(f"[ROLLBACK] Помилка відкату залишку для {prod_id}/{wh_id}/{comp_id}: {e}")
     else:
         cursor.execute(
             (
@@ -128,14 +145,17 @@ def _rollback_balances_for_document(db: pyodbc.Connection, doc_id: int) -> None:
             (doc_id,),
         )
         rows = cursor.fetchall() or []
+        print(f"[ROLLBACK] Знайдено {len(rows)} комбінацій ProductID+WarehouseID для відкату")
         for prod_id, wh_id, qty in rows:
             try:
                 cursor.execute(
                     "UPDATE StockBalances SET Quantity = Quantity - ?, UpdatedAt = GETDATE() WHERE ProductID = ? AND WarehouseID = ?",
                     (float(qty or 0), int(prod_id), int(wh_id)),
                 )
-            except Exception:
-                pass
+                print(f"[ROLLBACK] Відкачено {qty} для товару {prod_id} на складі {wh_id}")
+            except Exception as e:
+                print(f"[ROLLBACK] Помилка відкату залишку для {prod_id}/{wh_id}: {e}")
+    
     # Delete cost calculations linked to parties of this document
     try:
         cursor.execute(
@@ -147,10 +167,15 @@ def _rollback_balances_for_document(db: pyodbc.Connection, doc_id: int) -> None:
             ),
             (doc_id,),
         )
-    except Exception:
-        pass
+        deleted_costs = cursor.rowcount
+        print(f"[ROLLBACK] Видалено {deleted_costs} розрахунків собівартості")
+    except Exception as e:
+        print(f"[ROLLBACK] Помилка видалення розрахунків собівартості: {e}")
+    
     # Delete movements for this document
     cursor.execute("DELETE FROM PartyMovements WHERE DocumentType='Arrival' AND DocumentID = ?", (doc_id,))
+    deleted_movements = cursor.rowcount
+    print(f"[ROLLBACK] Видалено {deleted_movements} рухів партій")
 
 def _get_default_currency_id(db: pyodbc.Connection) -> Optional[int]:
     # Try SystemParameters.MainCurrencyID
@@ -393,8 +418,14 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
     header: Dict[str, Any] = payload.get("Header") or payload
     items: List[Dict[str, Any]] = payload.get("Items") or []
 
+    print(f"[DEBUG] _insert_or_update_document called with payload keys: {list(payload.keys())}")
+    print(f"[DEBUG] Header keys: {list(header.keys())}")
+    print(f"[DEBUG] Items count: {len(items)}")
+    print(f"[DEBUG] Raw payload: {payload}")
+
     center_id = int(header.get("CenterID")) if header.get("CenterID") is not None else None
     if not center_id:
+        print(f"[ERROR] CenterID is missing or invalid: {header.get('CenterID')}")
         raise HTTPException(status_code=400, detail="Не вказано центр обліку")
 
     prices_include_vat = bool(header.get("PricesIncludeVAT", False))
@@ -407,8 +438,12 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
     )
 
     # Resolve warehouse
-    resolved_warehouse_id = _resolve_warehouse_id(db, center_id, header.get("WarehouseID"))
-    print(f"[ARRIVAL] resolved warehouse: ID={resolved_warehouse_id} for CenterID={center_id}")
+    try:
+        resolved_warehouse_id = _resolve_warehouse_id(db, center_id, header.get("WarehouseID"))
+        print(f"[ARRIVAL] resolved warehouse: ID={resolved_warehouse_id} for CenterID={center_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to resolve warehouse: {e}")
+        raise HTTPException(status_code=400, detail=f"Помилка визначення складу: {str(e)}")
 
     cursor = db.cursor()
     try:
@@ -452,13 +487,6 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if _table_has_column(db, "ArrivalDocuments", "CompanyID"):
                 cols.append("CompanyID")
                 params.append(company_id)
-            # Currency rate & date if columns exist
-            if _table_has_column(db, "ArrivalDocuments", "CurrencyRate"):
-                cols.append("CurrencyRate")
-                params.append(float(header.get("CurrencyRate") or 1))
-            if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate"):
-                cols.append("CurrencyRateDate")
-                params.append(header.get("CurrencyRateDate") or date_val)
             # Typical operation
             if _table_has_column(db, "ArrivalDocuments", "TypicalOperationID"):
                 cols.append("TypicalOperationID")
@@ -815,6 +843,8 @@ def update_arrival_document(doc_id: int, payload: Dict[str, Any], db: pyodbc.Con
 def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     cursor = db.cursor()
     try:
+        print(f"[DELETE] Починаємо видалення прибуткового документу {doc_id}")
+        
         # Collect PartyIDs linked to this document (before movements are deleted)
         try:
             cursor.execute(
@@ -822,8 +852,42 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                 (doc_id,),
             )
             party_ids = [int(r[0]) for r in (cursor.fetchall() or []) if r and r[0] is not None]
-        except Exception:
+            print(f"[DELETE] Знайдено {len(party_ids)} партій для документу {doc_id}")
+        except Exception as e:
+            print(f"[DELETE] Помилка отримання PartyIDs: {e}")
             party_ids = []
+
+        # Перевіряємо, чи використовуються партії в інших документах
+        if party_ids:
+            placeholders = ", ".join(["?" for _ in party_ids])
+            try:
+                # Перевіряємо продажі
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM PartyMovements WHERE PartyID IN ({placeholders}) AND DocumentType IN ('Sale', 'SALE', 'Продаж')",
+                    tuple(party_ids),
+                )
+                sale_count = cursor.fetchone()[0] or 0
+                
+                # Перевіряємо переміщення
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM PartyMovements WHERE PartyID IN ({placeholders}) AND DocumentType IN ('Transfer', 'TRANSFER', 'Переміщення')",
+                    tuple(party_ids),
+                )
+                transfer_count = cursor.fetchone()[0] or 0
+                
+                # Перевіряємо інші документи (крім прибуткових)
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM PartyMovements WHERE PartyID IN ({placeholders}) AND DocumentType NOT IN ('Arrival', 'ARRIVAL')",
+                    tuple(party_ids),
+                )
+                other_count = cursor.fetchone()[0] or 0
+                
+                print(f"[DELETE] Партії використовуються в: продажах={sale_count}, переміщеннях={transfer_count}, інших={other_count}")
+                
+                if sale_count > 0 or transfer_count > 0 or other_count > 0:
+                    print(f"[DELETE] ⚠️ УВАГА: Партії використовуються в інших документах! Видалення може порушити цілісність даних.")
+            except Exception as e:
+                print(f"[DELETE] Помилка перевірки використання партій: {e}")
 
         # Collect product/warehouse(/company) for potential StockBalances cleanup
         try:
@@ -856,29 +920,43 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                     (doc_id,),
                 )
                 pairs = [(int(r[0]), int(r[1])) for r in (cursor.fetchall() or [])]
-        except Exception:
+            
+            print(f"[DELETE] Знайдено {len(triples) if triples else len(pairs)} комбінацій ProductID+WarehouseID для очищення")
+        except Exception as e:
+            print(f"[DELETE] Помилка збору даних для очищення: {e}")
             triples = []
             pairs = []
 
         # Rollback balances first (decrement quantities that were added by this document) and delete movements
+        print(f"[DELETE] Відкатуємо залишки та рухи...")
         _rollback_balances_for_document(db, doc_id)
 
         # Remove postings
+        print(f"[DELETE] Видаляємо проводки...")
         try:
             cursor.execute("DELETE FROM DocumentPostings WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
-        except Exception:
+            deleted_postings = cursor.rowcount
+            print(f"[DELETE] Видалено {deleted_postings} проводок")
+        except Exception as e:
+            print(f"[DELETE] Помилка видалення проводок (ARRIVAL): {e}")
             try:
                 cursor.execute("DELETE FROM DocumentPostings WHERE DocumentType='Arrival' AND DocumentID=?", (doc_id,))
-            except Exception:
-                pass
+                deleted_postings = cursor.rowcount
+                print(f"[DELETE] Видалено {deleted_postings} проводок (Arrival)")
+            except Exception as e2:
+                print(f"[DELETE] Помилка видалення проводок (Arrival): {e2}")
 
         # Remove movements linked to this document (in case schema differs and rollback did not cover)
+        print(f"[DELETE] Видаляємо рухи партій...")
         try:
             cursor.execute("DELETE FROM PartyMovements WHERE DocumentType = 'Arrival' AND DocumentID = ?", (doc_id,))
-        except Exception:
-            pass
+            deleted_movements = cursor.rowcount
+            print(f"[DELETE] Видалено {deleted_movements} рухів партій")
+        except Exception as e:
+            print(f"[DELETE] Помилка видалення рухів: {e}")
 
         # Remove cost calculations for parties of this document
+        print(f"[DELETE] Видаляємо розрахунки собівартості...")
         try:
             if party_ids:
                 placeholders = ", ".join(["?" for _ in party_ids])
@@ -886,10 +964,13 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                     f"DELETE FROM CostCalculations WHERE PartyID IN ({placeholders})",
                     tuple(party_ids),
                 )
-        except Exception:
-            pass
+                deleted_costs = cursor.rowcount
+                print(f"[DELETE] Видалено {deleted_costs} розрахунків собівартості")
+        except Exception as e:
+            print(f"[DELETE] Помилка видалення розрахунків собівартості: {e}")
 
         # Remove Parties created for this document if they have no other movements left
+        print(f"[DELETE] Видаляємо партії без рухів...")
         try:
             if party_ids:
                 placeholders = ", ".join(["?" for _ in party_ids])
@@ -900,14 +981,21 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                     ),
                     tuple(party_ids),
                 )
-        except Exception:
-            pass
+                deleted_parties = cursor.rowcount
+                print(f"[DELETE] Видалено {deleted_parties} партій (без рухів)")
+        except Exception as e:
+            print(f"[DELETE] Помилка видалення партій: {e}")
 
         # Remove document items and header
+        print(f"[DELETE] Видаляємо позиції та заголовок документа...")
         cursor.execute("DELETE FROM ArrivalDocumentItems WHERE DocID = ?", (doc_id,))
+        deleted_items = cursor.rowcount
         cursor.execute("DELETE FROM ArrivalDocuments WHERE ID = ?", (doc_id,))
+        print(f"[DELETE] Видалено {deleted_items} позицій та заголовок документа")
 
         # Cleanup StockBalances rows that became zero and have no related movements anymore
+        print(f"[DELETE] Очищаємо нульові залишки...")
+        deleted_balances = 0
         try:
             if triples:
                 for prod_id, wh_id, comp_id in triples:
@@ -924,8 +1012,9 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                             ),
                             (prod_id, wh_id, comp_id, prod_id, wh_id, comp_id),
                         )
-                    except Exception:
-                        pass
+                        deleted_balances += cursor.rowcount
+                    except Exception as e:
+                        print(f"[DELETE] Помилка очищення StockBalances для {prod_id}/{wh_id}/{comp_id}: {e}")
             elif pairs:
                 for prod_id, wh_id in pairs:
                     try:
@@ -939,17 +1028,52 @@ def delete_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)
                             ),
                             (prod_id, wh_id, prod_id, wh_id),
                         )
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                        deleted_balances += cursor.rowcount
+                    except Exception as e:
+                        print(f"[DELETE] Помилка очищення StockBalances для {prod_id}/{wh_id}: {e}")
+        except Exception as e:
+            print(f"[DELETE] Помилка очищення StockBalances: {e}")
+        
+        print(f"[DELETE] Видалено {deleted_balances} нульових залишків")
+        
+        # Фінальна перевірка цілісності
+        print(f"[DELETE] Перевіряємо цілісність після видалення...")
+        try:
+            # Перевіряємо, чи залишилися рухи для цього документа
+            remaining_movements = cursor.execute(
+                "SELECT COUNT(*) FROM PartyMovements WHERE DocumentType IN ('Arrival', 'ARRIVAL') AND DocumentID = ?",
+                (doc_id,)
+            ).fetchone()[0] or 0
+            
+            # Перевіряємо, чи залишилися проводки
+            remaining_postings = cursor.execute(
+                "SELECT COUNT(*) FROM DocumentPostings WHERE DocumentType IN ('Arrival', 'ARRIVAL') AND DocumentID = ?",
+                (doc_id,)
+            ).fetchone()[0] or 0
+            
+            # Перевіряємо, чи залишилися позиції
+            remaining_items = cursor.execute(
+                "SELECT COUNT(*) FROM ArrivalDocumentItems WHERE DocID = ?",
+                (doc_id,)
+            ).fetchone()[0] or 0
+            
+            print(f"[DELETE] Перевірка цілісності: рухи={remaining_movements}, проводки={remaining_postings}, позиції={remaining_items}")
+            
+            if remaining_movements > 0 or remaining_postings > 0 or remaining_items > 0:
+                print(f"[DELETE] ⚠️ УВАГА: Залишилися дані після видалення!")
+        except Exception as e:
+            print(f"[DELETE] Помилка перевірки цілісності: {e}")
+        
         db.commit()
-        return {"ok": True}
+        print(f"[DELETE] ✅ Прибутковий документ {doc_id} успішно видалено")
+        return {"ok": True, "deleted_items": deleted_items, "deleted_parties": deleted_parties, "deleted_balances": deleted_balances}
     except Exception as e:
+        print(f"[DELETE] ❌ Помилка видалення документу {doc_id}: {e}")
         try:
             db.rollback()
-        except Exception:
-            pass
+            print(f"[DELETE] Відкат транзакції виконано")
+        except Exception as rollback_error:
+            print(f"[DELETE] Помилка відкату транзакції: {rollback_error}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

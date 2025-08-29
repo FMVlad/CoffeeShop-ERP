@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
 const CURRENCY_EMOJI = {
@@ -10,9 +11,12 @@ export default function CurrenciesAdminPage() {
   const [currencies, setCurrencies] = useState([]);
   const [currencyRates, setCurrencyRates] = useState([]);
   const [editCurrency, setEditCurrency] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [showRateForm, setShowRateForm] = useState(false);
   const [newCurrency, setNewCurrency] = useState({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true });
   const [newRate, setNewRate] = useState({ CurrencyID: '', Rate: '', RateDate: '' });
   const [filter, setFilter] = useState({ currency_id: '', date_from: '', date_to: '' });
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.getCurrencies().then(data => setCurrencies(Array.isArray(data) ? data : []));
@@ -30,16 +34,19 @@ export default function CurrenciesAdminPage() {
     if (!newCurrency.CurrencyCode.trim() || !newCurrency.Name.trim()) return;
     await api.addCurrency(newCurrency);
     setNewCurrency({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true });
+    setShowForm(false);
     api.getCurrencies().then(data => setCurrencies(Array.isArray(data) ? data : []));
   };
   const handleEditCurrency = (currency) => {
     setEditCurrency(currency);
     setNewCurrency(currency);
+    setShowForm(false);
   };
   const handleUpdateCurrency = async () => {
     await api.updateCurrency(editCurrency.ID, newCurrency);
     setEditCurrency(null);
     setNewCurrency({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true });
+    setShowForm(false);
     api.getCurrencies().then(setCurrencies);
   };
   const handleDeleteCurrency = async (id) => {
@@ -54,181 +61,337 @@ export default function CurrenciesAdminPage() {
     await api.addCurrencyRate(newRate);
     setNewRate({ CurrencyID: '', Rate: '', RateDate: '' });
     setFilter(f => ({ ...f, currency_id: newRate.CurrencyID }));
+    setShowRateForm(false);
   };
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',
-      minHeight: '100vh',
-      width: '100vw',
-      padding: '32px 0'
-    }}>
-      <div style={{ maxWidth: 950, margin: '0 auto' }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(90deg,#7b6eea 0%,#a37c2d 100%)',
-          borderRadius: 18,
-          padding: '18px 32px',
-          marginBottom: 32,
-          boxShadow: '0 2px 12px #0001'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontSize: 32 }}>💱</span>
-            <span style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: '#fff',
-              letterSpacing: 0.5
-            }}>
-              Валюти та курси
-            </span>
+    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-100 flex flex-col">
+      <div className="max-w-7xl mx-auto">
+        {/* Заголовок */}
+        <div className="bg-gradient-to-r from-yellow-500 to-amber-600 rounded-3xl shadow-2xl p-8 mb-12">
+          <div className="text-center">
+            <h1 className="text-6xl font-bold text-white mb-4">
+              💱 Валюти та курси
+            </h1>
+            <p className="text-2xl text-yellow-100">
+              Управління валютами та курсами обміну
+            </p>
+          </div>
+        </div>
+        {/* Кнопки управління */}
+        <div className="flex flex-col sm:flex-row gap-6 justify-between items-center mb-12">
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => navigate("/dictionaries")}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              ← Назад до довідників
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              🏠 На головну
+            </button>
           </div>
           <button
-            onClick={() => window.location.assign('/webapp')}
-            style={{
-              background: '#e9ecef',
-              color: '#333',
-              border: 'none',
-              borderRadius: 10,
-              padding: '12px 32px',
-              fontWeight: 700,
-              fontSize: 18,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px #0002'
-            }}
+            onClick={() => { setShowForm(true); setEditCurrency(null); setNewCurrency({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true }); }}
+            className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-10 py-4 rounded-2xl font-bold text-xl hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
           >
-            ← На головну
+            ✨ + Додати валюту
           </button>
         </div>
 
-        {/* Валюти */}
-        <div style={{
-          marginBottom: 36,
-          background: '#fff',
-          padding: 28,
-          borderRadius: 16,
-          boxShadow: '0 4px 24px #0001'
-        }}>
-          <h3 style={{marginBottom: 14, fontWeight: 700, fontSize: 21}}>Довідник валют</h3>
-          <div style={{display: 'flex', gap: 12, marginBottom: 18, alignItems:'center'}}>
-            <input value={newCurrency.CurrencyCode} placeholder="Код" style={{width: 70, padding: 10, fontSize:17}}
-                  onChange={e => setNewCurrency({...newCurrency, CurrencyCode: e.target.value.toUpperCase()})} />
-            <input value={newCurrency.Name} placeholder="Назва" style={{width: 130, padding: 10, fontSize:17}}
-                  onChange={e => setNewCurrency({...newCurrency, Name: e.target.value})} />
-            <input value={newCurrency.Symbol} placeholder="Символ" style={{width: 110, padding: 10, fontSize:17}}
-                  onChange={e => setNewCurrency({...newCurrency, Symbol: e.target.value})} />
-            <label style={{marginLeft: 8, fontSize:16}}>
-              <input type="checkbox" checked={newCurrency.IsActive} onChange={e => setNewCurrency({...newCurrency, IsActive: e.target.checked})}/>
-              <span style={{marginLeft: 4}}>Активна</span>
-            </label>
-            {editCurrency
-              ? <>
-                  <button onClick={handleUpdateCurrency} style={{padding: '10px 20px', borderRadius: 8, background: '#b58900', color: '#fff', fontWeight:700, fontSize:17}}>Оновити</button>
-                  <button onClick={() => { setEditCurrency(null); setNewCurrency({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true }); }} style={{marginLeft: 6, fontSize:16}}>Скасувати</button>
-                </>
-              : <button onClick={handleAddCurrency} style={{padding: '10px 20px', borderRadius: 8, background: '#5ea97e', color: '#fff', fontWeight:700, fontSize:17}}>Додати валюту</button>
-            }
+        {/* Форма додавання/редагування валюти */}
+        {(showForm || editCurrency) && (
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-yellow-200 mb-12 overflow-hidden">
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 px-8 py-6 border-b-2 border-yellow-200">
+              <h3 className="text-3xl font-bold text-yellow-800">
+                {editCurrency ? '✏️ Редагувати валюту' : '✨ Додати валюту'}
+              </h3>
+            </div>
+            <div className="p-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Код валюти *
+                  </label>
+                  <input
+                    type="text"
+                    value={newCurrency.CurrencyCode}
+                    onChange={e => setNewCurrency({ ...newCurrency, CurrencyCode: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                    placeholder="USD, EUR, UAH..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Назва валюти *
+                  </label>
+                  <input
+                    type="text"
+                    value={newCurrency.Name}
+                    onChange={e => setNewCurrency({ ...newCurrency, Name: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                    placeholder="Долар США, Євро, Гривня..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Символ
+                  </label>
+                  <input
+                    type="text"
+                    value={newCurrency.Symbol}
+                    onChange={e => setNewCurrency({ ...newCurrency, Symbol: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                    placeholder="$, €, ₴..."
+                  />
+                </div>
+                <div className="flex items-center gap-4 pt-8">
+                  <input
+                    type="checkbox"
+                    id="isActive"
+                    checked={newCurrency.IsActive}
+                    onChange={e => setNewCurrency({ ...newCurrency, IsActive: e.target.checked })}
+                    className="w-6 h-6 text-yellow-600 border-2 border-gray-300 rounded-lg focus:ring-yellow-500 focus:ring-2"
+                  />
+                  <label htmlFor="isActive" className="text-lg font-semibold text-gray-700">
+                    Активна валюта
+                  </label>
+                </div>
+              </div>
+
+              {/* Кнопки форми */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-end mt-10 pt-8 border-t-2 border-yellow-100">
+                <button
+                  onClick={() => {
+                    setEditCurrency(null);
+                    setShowForm(false);
+                    setNewCurrency({ CurrencyCode: '', Name: '', Symbol: '', IsActive: true });
+                  }}
+                  className="bg-gradient-to-r from-gray-400 to-gray-500 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                >
+                  ❌ Скасувати
+                </button>
+                <button
+                  onClick={editCurrency ? handleUpdateCurrency : handleAddCurrency}
+                  className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-10 py-4 rounded-2xl font-bold text-xl hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                >
+                  💾 {editCurrency ? 'Зберегти' : 'Додати'}
+                </button>
+              </div>
+            </div>
           </div>
-          <table style={{
-            width: '100%',
-            fontSize: 18,
-            borderCollapse: 'separate',
-            borderSpacing: 0,
-            marginTop: 8,
-            borderRadius: 12,
-            overflow: 'hidden',
-            boxShadow: '0 2px 12px #0001'
-          }}>
-            <thead>
-              <tr style={{background: '#ede7fb'}}>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Емодзі</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Код</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Назва</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Символ</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Активна</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Дії</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currencies.map(c => (
-                <tr key={c.ID} style={{background:'#f8f6ff'}}>
-                  <td style={{ fontSize: 25, border: '1px solid #d1c4e9', textAlign: 'center' }}>{CURRENCY_EMOJI[c.CurrencyCode] || "💰"}</td>
-                  <td style={{border: '1px solid #d1c4e9'}}>{c.CurrencyCode}</td>
-                  <td style={{border: '1px solid #d1c4e9'}}>{c.Name}</td>
-                  <td style={{border: '1px solid #d1c4e9'}}>{c.Symbol}</td>
-                  <td style={{border: '1px solid #d1c4e9',textAlign:'center'}}>{c.IsActive ? "✅" : "❌"}</td>
-                  <td style={{border: '1px solid #d1c4e9',textAlign:'center'}}>
-                    <button onClick={() => handleEditCurrency(c)} style={{fontSize:22,marginRight:8}}>✏️</button>
-                    <button onClick={() => handleDeleteCurrency(c.ID)} style={{fontSize:22}}>🗑️</button>
-                  </td>
+        )}
+
+        {/* Таблиця валют */}
+        <div className="bg-white rounded-3xl shadow-2xl border-2 border-yellow-200 mb-12 overflow-hidden">
+          <div className="bg-gradient-to-r from-yellow-50 to-amber-50 px-8 py-6 border-b-2 border-yellow-200">
+            <h3 className="text-2xl font-bold text-yellow-800">
+              📋 Список валют ({currencies.length})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-yellow-100 to-amber-100">
+                <tr>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Код</th>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Назва</th>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Символ</th>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Статус</th>
+                  <th className="px-8 py-4 text-center text-lg font-bold text-yellow-800">Дії</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y-2 divide-yellow-50">
+                {currencies.map((currency) => (
+                  <tr key={currency.ID} className="hover:bg-yellow-50 transition-colors duration-200">
+                    <td className="px-8 py-4 text-lg font-semibold text-gray-800">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{CURRENCY_EMOJI[currency.CurrencyCode] || '💱'}</span>
+                        <span className="font-mono">{currency.CurrencyCode}</span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-4 text-lg text-gray-600">
+                      {currency.Name}
+                    </td>
+                    <td className="px-8 py-4 text-lg text-gray-600 font-mono">
+                      {currency.Symbol || '-'}
+                    </td>
+                    <td className="px-8 py-4 text-lg">
+                      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                        currency.IsActive 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {currency.IsActive ? '✅ Активна' : '❌ Неактивна'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-4 text-center">
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => handleEditCurrency(currency)}
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCurrency(currency.ID)}
+                          className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Курси валют */}
-        <div style={{
-          background: '#fff',
-          padding: 28,
-          borderRadius: 16,
-          marginTop: 0,
-          boxShadow: '0 4px 24px #0001'
-        }}>
-          <h3 style={{marginBottom: 14, fontWeight: 700, fontSize: 21}}>Курси валют</h3>
-          <div style={{display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16}}>
-            <select value={filter.currency_id} style={{padding: 10, fontSize:16}} onChange={e => setFilter(f => ({ ...f, currency_id: e.target.value }))}>
-              <option value="">Всі валюти</option>
-              {currencies.map(c => <option key={c.ID} value={c.ID}>{c.CurrencyCode} — {c.Name}</option>)}
-            </select>
-            <input type="date" value={filter.date_from} onChange={e => setFilter(f => ({ ...f, date_from: e.target.value }))} style={{padding: 10, fontSize:16}} />
-            <input type="date" value={filter.date_to} onChange={e => setFilter(f => ({ ...f, date_to: e.target.value }))} style={{padding: 10, fontSize:16}} />
+        {/* Форма додавання курсу валют */}
+        {showRateForm && (
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-yellow-200 mb-12 overflow-hidden">
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 px-8 py-6 border-b-2 border-yellow-200">
+              <h3 className="text-3xl font-bold text-yellow-800">
+                📈 Додати курс валют
+              </h3>
+            </div>
+            <div className="p-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Валюта *
+                  </label>
+                  <select
+                    value={newRate.CurrencyID}
+                    onChange={e => setNewRate({ ...newRate, CurrencyID: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                  >
+                    <option value="">Виберіть валюту</option>
+                    {currencies.map(c => (
+                      <option key={c.ID} value={c.ID}>
+                        {CURRENCY_EMOJI[c.CurrencyCode] || '💱'} {c.CurrencyCode} - {c.Name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Курс *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={newRate.Rate}
+                    onChange={e => setNewRate({ ...newRate, Rate: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                    placeholder="0.0000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Дата курсу *
+                  </label>
+                  <input
+                    type="date"
+                    value={newRate.RateDate}
+                    onChange={e => setNewRate({ ...newRate, RateDate: e.target.value })}
+                    className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-yellow-400 focus:ring-4 focus:ring-yellow-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Кнопка додавання курсу */}
+              <div className="flex gap-4 justify-end mt-8">
+                <button
+                  onClick={() => {
+                    setShowRateForm(false);
+                    setNewRate({ CurrencyID: '', Rate: '', RateDate: '' });
+                  }}
+                  className="bg-gradient-to-r from-gray-400 to-gray-500 text-white px-6 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                >
+                  ❌ Скасувати
+                </button>
+                <button
+                  onClick={handleAddRate}
+                  className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-10 py-4 rounded-2xl font-bold text-xl hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                >
+                  💾 Додати курс
+                </button>
+              </div>
+            </div>
           </div>
-          <div style={{display: 'flex', gap: 12, marginBottom: 16, alignItems:'center'}}>
-            <select value={newRate.CurrencyID} style={{padding: 10, fontSize:16}}
-                    onChange={e => setNewRate(r => ({ ...r, CurrencyID: e.target.value }))}>
-              <option value="">Валюта</option>
-              {currencies.map(c => <option key={c.ID} value={c.ID}>{c.CurrencyCode}</option>)}
-            </select>
-            <input type="number" value={newRate.Rate} min={0} step="0.0001" placeholder="Курс" style={{padding: 10, width: 120, fontSize:16}}
-                  onChange={e => setNewRate(r => ({ ...r, Rate: e.target.value }))} />
-            <input type="date" value={newRate.RateDate} style={{padding: 10, fontSize:16}}
-                  onChange={e => setNewRate(r => ({ ...r, RateDate: e.target.value }))} />
-            <button onClick={handleAddRate} style={{padding: '10px 20px', borderRadius: 8, background: '#5ea97e', color: '#fff', fontWeight:700, fontSize:17}}>Додати курс</button>
+        )}
+
+        {/* Таблиця курсів валют */}
+        <div className="bg-white rounded-3xl shadow-2xl border-2 border-yellow-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-yellow-50 to-amber-50 px-8 py-6 border-b-2 border-yellow-200">
+            <div className="flex justify-between items-center">
+              <h3 className="text-2xl font-bold text-yellow-800">
+                📊 Курси валют ({currencyRates.length})
+              </h3>
+              <button
+                onClick={() => { setShowRateForm(true); setNewRate({ CurrencyID: '', Rate: '', RateDate: '' }); }}
+                className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-6 py-3 rounded-xl font-bold text-base hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+              >
+                📈 + Додати курс
+              </button>
+            </div>
           </div>
-          <table style={{
-            width: '100%',
-            fontSize: 18,
-            borderCollapse: 'separate',
-            borderSpacing: 0,
-            borderRadius: 12,
-            overflow: 'hidden',
-            marginTop: 8,
-            boxShadow: '0 2px 12px #0001'
-          }}>
-            <thead>
-              <tr style={{background: '#ede7fb'}}>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Валюта</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Курс</th>
-                <th style={{border: '1px solid #d1c4e9', padding: '10px 14px', fontWeight:700, fontSize:18}}>Дата</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currencyRates.map(r => (
-                <tr key={r.ID} style={{background:'#f8f6ff'}}>
-                  <td style={{border: '1px solid #d1c4e9'}}>
-                    {findById(currencies, r.CurrencyID)?.CurrencyCode || r.CurrencyID}
-                  </td>
-                  <td style={{border: '1px solid #d1c4e9'}}>{r.Rate}</td>
-                  <td style={{border: '1px solid #d1c4e9'}}>{r.RateDate}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-yellow-100 to-amber-100">
+                <tr>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Валюта</th>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Курс</th>
+                  <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Дата</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y-2 divide-yellow-50">
+                {currencyRates.map((rate) => {
+                  const currency = findById(currencies, rate.CurrencyID);
+                  return (
+                    <tr key={rate.ID} className="hover:bg-yellow-50 transition-colors duration-200">
+                      <td className="px-8 py-4 text-lg font-semibold text-gray-800">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">
+                            {currency ? CURRENCY_EMOJI[currency.CurrencyCode] || '💱' : '💱'}
+                          </span>
+                          <span className="font-mono">
+                            {currency ? `${currency.CurrencyCode} - ${currency.Name}` : 'Невідома валюта'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-4 text-lg text-gray-600 font-mono">
+                        {rate.Rate}
+                      </td>
+                      <td className="px-8 py-4 text-lg text-gray-600">
+                        {new Date(rate.RateDate).toLocaleDateString('uk-UA')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      {/* Футер */}
+      <footer className="mt-auto border-t-2 border-yellow-200 bg-white/90 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-8 py-8 flex items-center justify-center gap-6">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-yellow-800 tracking-wide">
+              💱 Валюти VYSHNIA
+            </span>
+            <p className="text-yellow-600 text-base mt-1">
+              Система управління валютами та курсами
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

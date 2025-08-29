@@ -5,20 +5,6 @@ import Barcode from 'react-barcode';
 import { useNavigate } from 'react-router-dom';
 import { setSelection } from '../utils/selectionBridge';
 
-const headerStyle = {
-  background: 'linear-gradient(90deg,#7c6aea 0%,#a798f6 70%,#b7862b 100%)',
-  borderRadius: '20px',
-  padding: '24px 36px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 32,
-  minHeight: 60,
-  color: '#fff',
-  boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
-  position: 'relative',
-};
-
 // ——— утиліта для ієрархії
 function getIndentedCategories(categories, parentId = null, level = 0) {
   let result = [];
@@ -74,9 +60,9 @@ export default function ProductsPage() {
       const shouldNotify = localStorage.getItem("__notify_add_product") === "true";
       if (shouldNotify) {
         localStorage.removeItem("__notify_add_product");
-        // Показуємо ненав’язливий банер підказки у верхній частині
+        // Показуємо ненав'язливий банер підказки у верхній частині
         const hint = document.createElement('div');
-        hint.textContent = 'Штрихкод не знайдено. Натисніть “+ Додати”, щоб створити товар.';
+        hint.textContent = 'Штрихкод не знайдено. Натисніть "+ Додати", щоб створити товар.';
         hint.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#856404;border:1px solid #ffeeba;padding:10px 14px;border-radius:8px;z-index:1000;box-shadow:0 2px 8px rgba(0,0,0,0.1);font-weight:600';
         document.body.appendChild(hint);
         setTimeout(() => { try { document.body.removeChild(hint); } catch {} }, 3000);
@@ -149,302 +135,281 @@ export default function ProductsPage() {
   }
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg,#e2c7a6 0%,#c7a77a 100%)',
-      minHeight: '100vh', width: '100vw', padding: '32px 0'
-    }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        {/* --- Шапка --- */}
-        <div style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontSize: 34 }}>📦</span>
-            <span style={{ fontWeight: 700, fontSize: 27, letterSpacing: 0.4 }}>Товари</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={() => navigate('/')}
-              style={{
-                background: '#f2f2f2', color: '#636e72', border: 'none', borderRadius: 8,
-                padding: '12px 22px', fontWeight: 700, cursor: 'pointer', fontSize: 16,
-                marginRight: 4
-              }}
-            >← На головну</button>
-            <button
-              onClick={() => {
-                setEditingProductId(null);
-                setShowProductCard(true);
-              }}
-              style={{
-                background: '#00b894', color: '#fff', border: 'none', borderRadius: 8,
-                padding: '12px 28px', fontWeight: 700, cursor: 'pointer', fontSize: 17,
-                boxShadow: '0 2px 6px #b7862b44'
-              }}
-            >+ Додати</button>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 flex flex-col">
+      {/* Header з градієнтом */}
+      <div className="max-w-7xl mx-auto">
+        {/* Заголовок */}
+        <div className="bg-gradient-to-r from-purple-500 to-violet-600 rounded-3xl shadow-2xl p-8 mb-12">
+          <div className="text-center">
+            <h1 className="text-6xl font-bold text-white mb-4">
+              📦 Товари
+            </h1>
+            <p className="text-2xl text-purple-100">
+              Каталог товарів з характеристиками та цінами
+            </p>
           </div>
         </div>
-        {/* --- Фільтри --- */}
-        <div style={{
-          display: 'flex', gap: 12, marginBottom: 26, alignItems: 'center', justifyContent: 'flex-start',
-        }}>
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Пошук товару…"
-            style={{
-              flex: 2, padding: 12, borderRadius: 8, border: '1px solid #ddd', fontSize: 16,
-            }}
-          />
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            style={{ flex: 1, padding: 12, borderRadius: 8, border: '1px solid #ddd', fontSize: 16 }}
-          >
-            <option value="">Усі категорії</option>
-            {getIndentedCategories(categories).map(cat => (
-              <option key={cat.ID} value={cat.ID}>
-                {cat._level > 0 ? "— ".repeat(cat._level) + "▶ " : ""}
-                {cat.CategoryName}
-              </option>
-          ))}
-        </select>
+        {/* Кнопки управління */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-12">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/dictionaries")}
+              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-base hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              ← Назад до довідників
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-6 py-3 rounded-xl font-bold text-base hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+            >
+              🏠 На головну
+            </button>
+          </div>
           <button
-            onClick={() => { setSearch(''); setCategory(''); }}
-            style={{
-              background: '#636e72', color: '#fff', border: 'none', borderRadius: 8,
-              padding: '12px 24px', fontWeight: 700, cursor: 'pointer'
+            onClick={() => {
+              setEditingProductId(null);
+              setShowProductCard(true);
             }}
-          >Скинути</button>
-          {null}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ color: '#4a4a4a', fontWeight: 600 }}>Вигляд:</span>
-            <button
-              onClick={() => setViewMode('cards')}
-              style={{
-                background: viewMode === 'cards' ? '#4c6ef5' : '#f2f2f2',
-                color: viewMode === 'cards' ? '#fff' : '#636e72',
-                border: 'none', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer'
-              }}
-            >Картки</button>
-            <button
-              onClick={() => setViewMode('rows')}
-              style={{
-                background: viewMode === 'rows' ? '#4c6ef5' : '#f2f2f2',
-                color: viewMode === 'rows' ? '#fff' : '#636e72',
-                border: 'none', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer'
-              }}
-            >Рядки</button>
+            className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
+          >
+            ✨ + Додати товар
+          </button>
+        </div>
+
+        {/* Фільтри та пошук */}
+        <div className="bg-white rounded-3xl shadow-2xl border-2 border-purple-200 mb-12 overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-50 to-violet-50 px-8 py-6 border-b-2 border-purple-200">
+            <h3 className="text-2xl font-bold text-purple-800">
+              🔍 Пошук та фільтрація
+            </h3>
+          </div>
+          <div className="p-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+              <div>
+                <label className="block text-lg font-semibold text-gray-700 mb-3">
+                  Пошук товару
+                </label>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Введіть назву або штрихкод..."
+                  className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-400 focus:ring-4 focus:ring-purple-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-lg font-semibold text-gray-700 mb-3">
+                  Категорія
+                </label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-400 focus:ring-4 focus:ring-purple-100 transition-all duration-300 bg-gray-50 hover:bg-white"
+                >
+                  <option value="">Усі категорії</option>
+                  {getIndentedCategories(categories).map(cat => (
+                    <option key={cat.ID} value={cat.ID}>
+                      {cat._level > 0 ? "— ".repeat(cat._level) + "▶ " : ""}
+                      {cat.CategoryName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => { setSearch(''); setCategory(''); }}
+                  className="bg-gradient-to-r from-gray-400 to-gray-500 text-white px-6 py-3 rounded-xl font-bold text-base hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                >
+                  🔄 Скинути
+                </button>
+                <div className="flex gap-2">
+                  <span className="text-base font-semibold text-gray-700 self-center">Вигляд:</span>
+                  <button
+                    onClick={() => setViewMode('cards')}
+                    className={`px-4 py-3 rounded-xl font-bold text-base transition-all duration-300 ${
+                      viewMode === 'cards' 
+                        ? 'bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg' 
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    🎴 Картки
+                  </button>
+                  <button
+                    onClick={() => setViewMode('rows')}
+                    className={`px-4 py-3 rounded-xl font-bold text-base transition-all duration-300 ${
+                      viewMode === 'rows' 
+                        ? 'bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg' 
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    📋 Рядки
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        {/* --- Список товарів --- */}
+
+        {/* Список товарів */}
         {loading ? (
-          <div style={{
-            textAlign: "center", color: "#636e72", fontSize: 22, padding: 100
-          }}>
-            Завантаження...
-      </div>
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-purple-200 p-16 text-center">
+            <div className="text-4xl mb-4">⏳</div>
+            <div className="text-2xl font-bold text-purple-800 mb-2">Завантаження...</div>
+            <div className="text-lg text-gray-600">Будь ласка, зачекайте</div>
+          </div>
         ) : viewMode === 'cards' ? (
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-            gap: 20
-          }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {products.map(product => {
               const categoryObj = categories.find(c => c.ID === product.CategoryID);
               return (
                 <div
                   key={product.ID}
-                  style={{
-                    background: "linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)",
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                    transition: "all 0.3s",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    height: 420
+                  className="bg-white rounded-3xl shadow-2xl border-2 border-purple-200 overflow-hidden hover:shadow-3xl hover:-translate-y-2 transition-all duration-500 cursor-pointer"
+                  onClick={() => {
+                    setEditingProductId(product.ID);
+                    setShowProductCard(true);
                   }}
                 >
-                  <div style={{ position: "relative", height: 120, width: 120, margin: "0 auto" }}>
+                  {/* Фото товару */}
+                  <div className="relative h-48 w-full bg-gradient-to-br from-purple-50 to-violet-50 p-6">
                     {product.Photo ? (
                       <img
                         src={`http://localhost:8000/api/preview/${product.Photo}`}
                         alt={product.Name}
-                      style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "contain",
-                          borderRadius: 12,
-                          background: "#f8f9fa"
-                        }}
-                    />
-                  ) : (
-                      <div style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "#f8f9fa",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 12
-                      }}>
-                        <div style={{ fontSize: 32, color: "#ccc" }}>📷</div>
+                        className="w-full h-full object-contain rounded-2xl"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-purple-100 to-violet-100 rounded-2xl flex items-center justify-center">
+                        <div className="text-6xl text-purple-300">📷</div>
                       </div>
                     )}
                   </div>
-                  <div style={{ padding: "20px", flex: 1 }}>
-                    <h3 style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: "#2d3436",
-                      margin: "0 0 8px 0",
-                      lineHeight: 1.3
-                    }}>
+                  
+                  {/* Інформація про товар */}
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-3 line-clamp-2">
                       {product.FullName || product.Name}
                     </h3>
-                    <div style={{
-                      color: '#c4282d',
-                      fontWeight: 600,
-                      fontSize: 15,
-                      marginBottom: 6,
-                      letterSpacing: 0.2,
-                      minHeight: 18
-                    }}>
-                      {categoryObj?.CategoryName || '—'}
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-purple-600">Категорія:</span>
+                        <span className="text-sm text-gray-600">
+                          {categoryObj?.CategoryName || 'Не вказана'}
+                        </span>
+                      </div>
+                      {product.Barcode && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-purple-600">Штрихкод:</span>
+                          <span className="text-sm text-gray-600 font-mono">{product.Barcode}</span>
+                        </div>
+                      )}
                     </div>
-                    <div style={{
-                      marginTop: 8,
-                      display: "flex",
-                      alignItems: "center"
-                    }}>
-                      <Barcode
-                        value={product.Barcode || "0000000000000"}
-                        width={2.2}
-                        height={40}
-                        fontSize={18}
-                        displayValue={true}
-                        margin={0}
-                        background="#fff"
-                      />
+                    
+                    {/* Кнопки дій */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingProductId(product.ID);
+                          setShowProductCard(true);
+                        }}
+                        className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-2xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                      >
+                        ✏️ Редагувати
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelection([product]);
+                          navigate('/');
+                        }}
+                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-3 rounded-2xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                      >
+                        ✅ Вибрати
+                      </button>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, marginTop: "auto", justifyContent: "center", padding: 20 }}>
-                    <button
-                      onClick={() => {
-                        const params = new URLSearchParams(window.location.search);
-                        const isSelect = params.get('select') === '1';
-                        const back = params.get('back');
-                        const key = params.get('key') || 'arrival';
-                        if (isSelect) {
-                          setSelection(key, { items: [{ id: product.ID, qty: 1, name: product.FullName || product.Name }], meta: { source: 'products' } });
-                          if (back) window.location.assign(back);
-                          return;
-                        }
-                        setEditingProductId(product.ID);
-                        setShowProductCard(true);
-                      }}
-                      style={{
-                        flex: 1,
-                        background: "#3498db",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 10,
-                        padding: "12px",
-                        fontWeight: 600,
-                        fontSize: 14,
-                        cursor: "pointer"
-                      }}
-                    >
-                      ✏️ Редагувати
-                    </button>
-                  <button
-                      onClick={() => handleDeleteProduct(product)}
-                      style={{
-                        flex: 1,
-                        background: "#e74c3c",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 10,
-                        padding: "12px",
-                        fontWeight: 600,
-                        fontSize: 14,
-                        cursor: "pointer"
-                      }}
-                    >
-                      🗑️ Видалити
-                  </button>
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         ) : (
-          <div style={{ marginTop: 8 }}>
-            <table className="w-full bg-white rounded border">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="p-2 border w-24">Фото</th>
-                  <th className="p-2 border text-left">Повна назва</th>
-                  <th className="p-2 border w-40">Штрихкод</th>
-                  <th className="p-2 border w-40">Артикул</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.length === 0 ? (
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-purple-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-50 to-violet-50 px-8 py-6 border-b-2 border-purple-200">
+              <h3 className="text-2xl font-bold text-purple-800">
+                📋 Список товарів ({products.length})
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-purple-100 to-violet-100">
                   <tr>
-                    <td colSpan={4} className="p-4 text-center text-gray-500">Немає товарів</td>
+                    <th className="px-8 py-4 text-left text-lg font-bold text-purple-800">Назва</th>
+                    <th className="px-8 py-4 text-left text-lg font-bold text-purple-800">Категорія</th>
+                    <th className="px-8 py-4 text-left text-lg font-bold text-purple-800">Штрихкод</th>
+                    <th className="px-8 py-4 text-center text-lg font-bold text-purple-800">Дії</th>
                   </tr>
-                ) : (
-                  products.map((p) => (
-                    <tr key={p.ID} className="hover:bg-gray-50 cursor-pointer" onDoubleClick={() => { setEditingProductId(p.ID); setShowProductCard(true); }}>
-                      <td className="p-2 border">
-                        <div
-                          title={p.Photo ? 'Клік для превʼю' : ''}
-                          style={{ width: 96, height: 96, borderRadius: 8, overflow: 'hidden', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: p.Photo ? 'zoom-in' : 'default' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (p.Photo) setPreviewSrc(`http://localhost:8000/api/preview/${p.Photo}`);
-                          }}
-                        >
-                          {p.Photo ? (
-                            <img
-                              src={`http://localhost:8000/api/preview/${p.Photo}`}
-                              alt={p.Name}
-                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                            />
-                          ) : (
-                            <span style={{ fontSize: 24, color: '#bbb' }}>📷</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-2 border" style={{ fontWeight: 600, color: '#2d3436' }}>{p.FullName || p.Name}</td>
-                      <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{String(p.Barcode || '')}</td>
-                      <td className="p-2 border" style={{ fontFamily: 'monospace' }}>{p.Article || ''}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-            {previewSrc && (
-              <div
-                onClick={() => setPreviewSrc(null)}
-                style={{
-                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 50,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-                }}
-              >
-                <img
-                  src={previewSrc}
-                  alt="preview"
-                  style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.4)' }}
-                />
-              </div>
-            )}
+                </thead>
+                <tbody className="divide-y-2 divide-purple-50">
+                  {products.map((product) => {
+                    const categoryObj = categories.find(c => c.ID === product.CategoryID);
+                    return (
+                      <tr key={product.ID} className="hover:bg-purple-50 transition-colors duration-200">
+                        <td className="px-8 py-4 text-lg font-semibold text-gray-800">
+                          {product.FullName || product.Name}
+                        </td>
+                        <td className="px-8 py-4 text-lg text-gray-600">
+                          {categoryObj?.CategoryName || '-'}
+                        </td>
+                        <td className="px-8 py-4 text-lg text-gray-600 font-mono">
+                          {product.Barcode || '-'}
+                        </td>
+                        <td className="px-8 py-4 text-center">
+                          <div className="flex gap-3 justify-center">
+                            <button
+                              onClick={() => {
+                                setEditingProductId(product.ID);
+                                setShowProductCard(true);
+                              }}
+                              className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelection([product]);
+                                navigate('/');
+                              }}
+                              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
+                            >
+                              ✅
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Футер */}
+      <footer className="mt-auto border-t-2 border-purple-200 bg-white/90 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-8 py-8 flex items-center justify-center gap-6">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-purple-800 tracking-wide">
+              📦 Товари VYSHNIA
+            </span>
+            <p className="text-purple-600 text-base mt-1">
+              Система управління товарами
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

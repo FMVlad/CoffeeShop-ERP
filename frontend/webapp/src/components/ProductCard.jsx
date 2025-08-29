@@ -85,6 +85,10 @@ export default function ProductCard({
 
           // Повна назва (від беку)
           setFullName(product.FullName || "");
+
+          // Спеціальні параметри (можуть бути відсутні у шаблоні)
+          initialFields["DiscountBarcode"] = product.DiscountBarcode || "";
+          initialFields["IsDiscountedAvailable"] = Boolean(product.IsDiscountedAvailable);
         }
       } else {
         const cats = await api.getCategories();
@@ -109,6 +113,9 @@ export default function ProductCard({
             initialFields[field.SqlName] = "";
           }
         });
+        // Значення за замовчуванням для спеціальних параметрів
+        initialFields["DiscountBarcode"] = initialFields["DiscountBarcode"] || "";
+        initialFields["IsDiscountedAvailable"] = false;
         setFields(initialFields);
         setAttributeValues([]);
         setFullName("");
@@ -243,6 +250,10 @@ export default function ProductCard({
         FieldID: attr.FieldID,
         Value: attr.Value
       }));
+
+      // Додамо спеціальні параметри, якщо бек їх підтримує
+      standardData["DiscountBarcode"] = fields["DiscountBarcode"] || "";
+      standardData["IsDiscountedAvailable"] = !!fields["IsDiscountedAvailable"]; 
 
       let response;
       if (isEditMode) {
@@ -441,6 +452,16 @@ export default function ProductCard({
             cursor: "pointer", transition: "all 0.2s"
           }}
         >Ціни</button>
+        <button
+          onClick={() => setActiveTab("special")}
+          style={{
+            flex: 1, padding: "12px 16px", border: "none",
+            background: activeTab === "special" ? "white" : "transparent",
+            borderBottom: activeTab === "special" ? "2px solid #007bff" : "2px solid transparent",
+            fontSize: 14, fontWeight: 600, color: activeTab === "special" ? "#007bff" : "#666",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+        >Спеціальні параметри</button>
       </div>
 
       <div style={{ padding: "24px" }}>
@@ -531,6 +552,53 @@ export default function ProductCard({
             <div>Налаштування цін</div>
             <div style={{ fontSize: 12, marginTop: 4 }}>
               Буде додано у наступних версіях
+            </div>
+          </div>
+        )}
+
+        {activeTab === "special" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div>
+              <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+                Дозволити уцінений товар
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={!!fields.IsDiscountedAvailable}
+                  onChange={e => handleChange("IsDiscountedAvailable", e.target.checked)}
+                />
+                <span style={{ color: "#666" }}>Можна переносити в підсклад «Уцінка»</span>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+                Штрихкод для уціненого товару
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={fields.DiscountBarcode || ""}
+                  onChange={e => handleChange("DiscountBarcode", e.target.value)}
+                  placeholder="Введіть або згенеруйте"
+                  style={{ flex: 1, padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
+                />
+                <button
+                  onClick={async () => {
+                    // Генерація робиться бекендом при переміщенні; тут залишимо місце для ручного генерування у майбутньому
+                    alert("Штрихкод для уціненого генерується при перенесенні на підсклад 'Уцінка'. Тут можна ввести вручну, якщо потрібно.");
+                  }}
+                  style={{
+                    background: "#3498db", color: "#fff", border: "none", borderRadius: 8,
+                    padding: "12px 16px", fontWeight: 600, cursor: "pointer"
+                  }}
+                >Згенерувати</button>
+              </div>
+              <div style={{ fontSize: 12, color: "#777", marginTop: 6 }}>
+                Примітка: при уцінці штрихкод формується з префіксом з `SystemParameters`,
+                після префікса додається ID підскладу «Уцінка».
+              </div>
             </div>
           </div>
         )}

@@ -1,42 +1,51 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
-import MainMenu from './pages/MainMenu';
+import MainMenu from './pages/MainMenu.jsx';
 import UserLoginPage from "./pages/UserLoginPage.jsx";
 import EmployeeSelectPage from "./pages/EmployeeSelectPage.jsx";
 
-import CategoriesPage from './pages/CategoriesPage';
-import PriceCategoriesPage from './pages/PriceCategoriesPage';
-import ProductPricesPage from './pages/ProductPricesPage';
-import PriceListPage from './pages/PriceListPage';
+import CategoriesPage from './pages/CategoriesPage.jsx';
+import PriceCategoriesPage from './pages/PriceCategoriesPage.jsx';
+import ProductPricesPage from './pages/ProductPricesPage.jsx';
+import PriceListPage from './pages/PriceListPage.jsx';
 import StockPage from './pages/StockPage.jsx';
+import StockTransferPage from './pages/StockTransferPage.jsx';
+
+import DiscountDocumentsPage from './pages/DiscountDocumentsPage.jsx';
 import StockStatePage from './pages/StockStatePage.jsx';
-import ProductsPage from './pages/ProductsPage';
+import ProductsPage from './pages/ProductsPage.jsx';
 import SelectProductsPage from './pages/SelectProductsPage.jsx';
 
-import ProgrammParametersPage from './pages/ProgrammParametersPage';
+import ProgrammParametersPage from './pages/ProgrammParametersPage.jsx';
 
-import ManufacturersPage from './pages/ManufacturersPage';
-import CurrenciesAdminPage from './pages/CurrenciesAdminPage';
-import SettlementAccountsPage from './pages/SettlementAccountsPage';
-import CompaniesPage from './pages/CompaniesPage';
-import ChartOfAccountsPage from "./pages/ChartOfAccountsPage";
+import ManufacturersPage from './pages/ManufacturersPage.jsx';
+import CurrenciesAdminPage from './pages/CurrenciesAdminPage.jsx';
+import SettlementAccountsPage from './pages/SettlementAccountsPage.jsx';
+import CompaniesPage from './pages/CompaniesPage.jsx';
+import ChartOfAccountsPage from "./pages/ChartOfAccountsPage.jsx";
 
-import ProductCardTemplatesPage from "./pages/ProductCardTemplatesPage";
-import ProductFullNameFieldsPage from "./pages/ProductNameRulesPage";
-import ProductCardTemplateFields from "./pages/ProductCardTemplateFields";
+import ProductCardTemplatesPage from "./pages/ProductCardTemplatesPage.jsx";
+import ProductFullNameFieldsPage from "./pages/ProductNameRulesPage.jsx";
+import ProductCardTemplateFields from "./pages/ProductCardTemplateFields.js";
 
-import SuppliersPage from "./pages/SuppliersPage";
+import SuppliersPage from "./pages/SuppliersPage.jsx";
 
 // НОВЕ: документи
 import DocumentsPage from "./pages/DocumentsPage.jsx";
 import PurchasesPage from "./pages/PurchasesPage.jsx";
+import OrdersPage from "./pages/OrdersPage.jsx";
+import ReturnsPage from "./pages/ReturnsPage.jsx";
+import RegisterPage from "./pages/RegisterPage.jsx";
 import ArrivalDocumentsPage from "./pages/ArrivalDocumentsPage.jsx";
 import AdminLayout from "./pages/AdminLayout.jsx";
 import AdminServicePage from "./pages/AdminServicePage.jsx";
 import AdminSystemParameters from "./pages/AdminSystemParameters.jsx";
 import AdminBackupPage from "./pages/AdminBackupPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
+import ClientsPage from "./pages/ClientsPage.jsx";
+import SalesPage from "./pages/SalesPage.jsx";
+import RetailSalesPage from "./pages/RetailSalesPage.jsx";
 import AccountingPage from "./pages/AccountingPage.jsx";
 import DictionariesPage from "./pages/DictionariesPage.jsx";
 import FinancePage from "./pages/FinancePage.jsx";
@@ -116,15 +125,14 @@ function AppRoutes() {
                 <Routes>
                   <Route path="/" element={<MainMenu />} />
 
-                  {/* Довідники з лівим меню */}
-                  <Route path="/dictionaries" element={<DictionariesPage />}>
-                    <Route index element={<CategoriesPage />} />
-                    <Route path="categories" element={<CategoriesPage />} />
-                    <Route path="manufacturers" element={<ManufacturersPage />} />
-                    <Route path="suppliers" element={<SuppliersPage />} />
-                    <Route path="products" element={<ProductsPage />} />
-                    <Route path="currencies" element={<CurrenciesAdminPage />} />
-                  </Route>
+                  {/* Довідники - окремі сторінки */}
+                  <Route path="/dictionaries" element={<DictionariesPage />} />
+                  <Route path="/dictionaries/categories" element={<CategoriesPage />} />
+                  <Route path="/dictionaries/manufacturers" element={<ManufacturersPage />} />
+                  <Route path="/dictionaries/suppliers" element={<SuppliersPage />} />
+                  <Route path="/dictionaries/products" element={<ProductsPage />} />
+                  <Route path="/dictionaries/currencies" element={<CurrenciesAdminPage />} />
+                  
                   {/* редиректи зі старих коротких шляхів */}
                   <Route path="/categories" element={<Navigate to="/dictionaries/categories" replace />} />
                   <Route path="/products" element={<Navigate to="/dictionaries/products" replace />} />
@@ -135,21 +143,16 @@ function AppRoutes() {
                   <Route path="/price-categories" element={<Navigate to="/stock/price-categories" replace />} />
                   <Route path="/product-prices" element={<Navigate to="/stock/revaluation" replace />} />
                   <Route path="/price-list" element={<Navigate to="/stock/price-list" replace />} />
-                  <Route path="/products" element={<ProductsPage />} />
-                  <Route path="/manufacturers" element={<ManufacturersPage />} />
-                  <Route path="/suppliers" element={<SuppliersPage />} />
-                  <Route path="/currencies" element={<CurrenciesAdminPage />} />
 
-                  {/* Нові розділи-стаби (поки заглушки) */}
-                  <Route path="/sales" element={<div style={{padding:20}}>Продажі — у розробці</div>} />
-                  {/* Закупівлі: підрозділи */}
-                  <Route path="/purchases" element={<PurchasesPage />} >
-                    <Route index element={<Navigate to="arrivals" replace />} />
-                    <Route path="arrivals" element={<ArrivalDocumentsPage />} />
-                    <Route path="orders" element={<div>Замовлення постачальнику — у розробці</div>} />
-                    <Route path="returns" element={<div>Повернення постачальнику — у розробці</div>} />
-                    <Route path="register" element={<div>Реєстр прибуткових накладних — у розробці</div>} />
-                  </Route>
+                  {/* Продажі */}
+                  <Route path="/sales" element={<SalesPage />} />
+                  <Route path="/sales/retail" element={<RetailSalesPage />} />
+                  {/* Закупівлі: меню з картками */}
+                  <Route path="/purchases" element={<PurchasesPage />} />
+                  <Route path="/arrivals" element={<ArrivalDocumentsPage />} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/returns" element={<ReturnsPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
                   <Route path="/finance" element={<FinancePage />}>
                     <Route index element={<div>Касові операції — у розробці</div>} />
                     <Route path="cash-ops" element={<div>Касові операції — у розробці</div>} />
@@ -175,11 +178,14 @@ function AppRoutes() {
                     <Route path="price-categories" element={<PriceCategoriesPage />} />
                     <Route path="price-list" element={<PriceListPage />} />
                     <Route path="revaluation" element={<ProductPricesPage />} />
+                    <Route path="transfer" element={<StockTransferPage />} />
+            
+                    <Route path="discounts" element={<DiscountDocumentsPage />} />
                   </Route>
                   <Route path="/directions" element={<div style={{padding:20}}>Напрями діяльності — у розробці</div>} />
                   <Route path="/marketing" element={<MarketingPage />}>
-                    <Route index element={<div>Клієнти — у розробці</div>} />
-                    <Route path="clients" element={<div>Клієнти — у розробці</div>} />
+                    <Route index element={<ClientsPage />} />
+                    <Route path="clients" element={<ClientsPage />} />
                     <Route path="promotions" element={<div>Акції та знижки — у розробці</div>} />
                     <Route path="loyalty" element={<div>Програма лояльності — у розробці</div>} />
                     <Route path="coupons" element={<div>Сертифікати і купони — у розробці</div>} />

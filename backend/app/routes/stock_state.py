@@ -198,28 +198,85 @@ def stock_state(
 	effective_price_category_id = price_category_id or _get_default_price_category_id(db)
 
 	def resolve_price(product_id: int) -> Optional[float]:
-		where = ["ProductID=?"]
-		pms: List[Any] = [product_id]
-		if effective_price_category_id:
-			where.append("PriceCategoryID=?")
-			pms.append(effective_price_category_id)
-		if on_date_val:
-			where.append("DateStart <= ?")
-			pms.append(on_date_val)
-			where.append("(DateEnd IS NULL OR DateEnd >= ?)")
-			pms.append(on_date_val)
-		center_priority_sql = ""
+		# Коли модель by_center і задано центр — спочатку шукаємо по центру, далі глобальна
 		if price_model == "by_center" and center_id:
-			# Спочатку по центру, далі глобальна
-			center_priority_sql = " ORDER BY CASE WHEN CenterID=? THEN 0 ELSE 1 END, DateStart DESC, ID DESC"
-			pms.append(center_id)
-		else:
-			center_priority_sql = " ORDER BY DateStart DESC, ID DESC"
-		sql = (
-			"SELECT TOP 1 Price FROM ProductPrices WHERE " + " AND ".join(where) + center_priority_sql
-		)
-		row = cur.execute(sql, tuple(pms)).fetchone()
+			parts = ["ProductID=?"]
+			params: List[Any] = [product_id]
+			if effective_price_category_id:
+				parts.append("PriceCategoryID=?")
+				params.append(effective_price_category_id)
+			if on_date_val:
+				parts.append("DateStart <= ?")
+				params.append(on_date_val)
+				parts.append("(DateEnd IS NULL OR DateEnd >= ?)")
+				params.append(on_date_val)
+			parts.append("ISNULL(CenterID,0)=ISNULL(?,0)")
+			params.append(center_id)
+			sql = "SELECT TOP 1 Price FROM ProductPrices WHERE " + " AND ".join(parts) + " ORDER BY DateStart DESC, ID DESC"
+			row = cur.execute(sql, tuple(params)).fetchone()
+			if row:
+				return float(row[0])
+			# fallback: глобальна
+			parts = ["ProductID=?"]
+			params = [product_id]
+			if effective_price_category_id:
+				parts.append("PriceCategoryID=?")
+				params.append(effective_price_category_id)
+			if on_date_val:
+				parts.append("DateStart <= ?")
+				params.append(on_date_val)
+				parts.append("(DateEnd IS NULL OR DateEnd >= ?)")
+				params.append(on_date_val)
+			parts.append("ISNULL(CenterID,0)=0")
+			sql = "SELECT TOP 1 Price FROM ProductPrices WHERE " + " AND ".join(parts) + " ORDER BY DateStart DESC, ID DESC"
+			row = cur.execute(sql, tuple(params)).fetchone()
+			if row:
+				return float(row[0])
+			# якщо на дату не знайшли, беремо останній глобальний без обмеження по даті
+			parts = ["ProductID=?"]
+			params = [product_id]
+			if effective_price_category_id:
+				parts.append("PriceCategoryID=?")
+				params.append(effective_price_category_id)
+			parts.append("ISNULL(CenterID,0)=0")
+			sql = "SELECT TOP 1 Price FROM ProductPrices WHERE " + " AND ".join(parts) + " ORDER BY DateStart DESC, ID DESC"
+			row = cur.execute(sql, tuple(params)).fetchone()
+			return float(row[0]) if row else None
+		# Всі інші випадки: остання актуальна ціна (без фільтра по центру)
+		parts = ["ProductID=?"]
+		params: List[Any] = [product_id]
+		if effective_price_category_id:
+			parts.append("PriceCategoryID=?")
+			params.append(effective_price_category_id)
+		if on_date_val:
+			parts.append("DateStart <= ?")
+			params.append(on_date_val)
+			parts.append("(DateEnd IS NULL OR DateEnd >= ?)")
+			params.append(on_date_val)
+		sql = "SELECT TOP 1 Price FROM ProductPrices WHERE " + " AND ".join(parts) + " ORDER BY DateStart DESC, ID DESC"
+		row = cur.execute(sql, tuple(params)).fetchone()
 		return float(row[0]) if row else None
+
+	# Підбір записаної ціни зі знижкою (PriceWithDiscount) за тими ж правилами
+	def resolve_discount_price(product_id: int) -> Optional[float]:
+		parts = ["ProductID=?"]
+		params2: List[Any] = [product_id]
+		if effective_price_category_id:
+			parts.append("PriceCategoryID=?")
+			params2.append(effective_price_category_id)
+		if on_date_val:
+			parts.append("DateStart <= ?")
+			params2.append(on_date_val)
+			parts.append("(DateEnd IS NULL OR DateEnd >= ?)")
+			params2.append(on_date_val)
+		order_sql = " ORDER BY DateStart DESC, ID DESC"
+		if price_model == "by_center" and center_id:
+			parts.append("ISNULL(CenterID,0)=ISNULL(?,0)")
+			params2.append(center_id)
+		# читаємо PriceWithDiscount
+		sql2 = "SELECT TOP 1 PriceWithDiscount FROM ProductPrices WHERE " + " AND ".join(parts) + order_sql
+		row2 = cur.execute(sql2, tuple(params2)).fetchone()
+		return (None if (not row2 or row2[0] is None) else float(row2[0]))
 
 	items: List[Dict[str, Any]] = []
 	for r in rows:
@@ -230,6 +287,7 @@ def stock_state(
 		avg_cost = (amount_cost / qty) if qty else 0.0
 		prod = products.get(pid, {})
 		price = resolve_price(pid) or 0.0
+		price_disc = resolve_discount_price(pid)
 		# Визначаємо ваговий товар ТІЛЬКИ за полем у БД, без інференсу з штрихкоду
 		is_weight = bool(prod.get("IsWeight") or prod.get("IsWeighted") or False)
 		base_item = {
@@ -245,6 +303,7 @@ def stock_state(
 			"AvgCost": avg_cost,
 			"Price": price,
 			"Amount": qty * price,
+			"PriceWithDiscount": price_disc,
 		}
 		# Додаємо всі кастомні поля (custom_*) в рядок відповіді
 		try:
