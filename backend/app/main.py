@@ -41,6 +41,7 @@ from app.routes import discount_documents as discount_documents_router
 from app.routes import movements as movements_router
 from app.routes import user_prefs as user_prefs_router
 from app.routes import sales_documents as sales_documents_router
+from app.routes.clients_router import router as clients_router
 
 app = FastAPI(
     title="VYSHNIA API",
@@ -107,6 +108,7 @@ app.include_router(user_prefs_router.router, prefix="/api")
 app.include_router(discount_documents_router.router, prefix="/api")
 app.include_router(movements_router.router, prefix="/api")
 app.include_router(sales_documents_router.router, prefix="/api")
+app.include_router(clients_router, prefix="/api")
 
 @app.get("/")
 def read_root():

@@ -12,6 +12,7 @@ export default function RetailSalesPage() {
   const [items, setItems] = useState([]);
   const [barcode, setBarcode] = useState('');
   const [priceMap, setPriceMap] = useState({});
+  const [customer, setCustomer] = useState(null);
   const handledSelectionRef = useRef(false);
 
   async function reloadItems() {
@@ -33,10 +34,18 @@ export default function RetailSalesPage() {
       if (last) {
         const doc = await api.getSale(last.ID);
         setCurrent(doc);
+        // завантажимо клієнта, якщо є
+        if (doc?.CustomerID) {
+          try { const c = await api.get('/clients/' + doc.CustomerID); setCustomer(c); } catch {}
+        }
       } else {
-        const res = await api.addSale({ Header: { CenterID: Number(activeCenterId) } });
+        // гарантуємо системного роздрібного покупця
+        let retail = null;
+        try { retail = await api.post('/clients/ensure-default-retail'); } catch {}
+        const res = await api.addSale({ Header: { CenterID: Number(activeCenterId), CustomerID: retail?.ID || null } });
         const doc = await api.getSale(res.ID);
         setCurrent(doc);
+        if (retail?.ID) setCustomer(retail);
       }
     })();
   }, [activeCenterId]);
@@ -92,6 +101,14 @@ export default function RetailSalesPage() {
     const s = (barcode || '').trim();
     if (!s || !current?.ID) return;
     try {
+      // Якщо це штрихкод клієнта — встановлюємо покупця
+      const clientPrefix = '990';
+      if (s.startsWith(clientPrefix)) {
+        try {
+          const c = await api.get('/clients/by-barcode/' + encodeURIComponent(s));
+          if (c?.ID) { setCustomer(c); setBarcode(''); return; }
+        } catch {}
+      }
       const p = await api.getProductByBarcode(s);
       if (p && p.ID) {
         const isDisc = !!p.IsDiscountBarcode;
@@ -195,11 +212,11 @@ export default function RetailSalesPage() {
           </div>
 
           <div className="border rounded p-3 mb-3">
-            <div className="text-center font-semibold mb-2">ПІБ Покупця</div>
-            <div className="text-center text-sm text-gray-600">% знижки , сума бонусів</div>
+            <div className="text-center font-semibold mb-1">{customer?.Name || 'Роздрібний покупець'}</div>
+            <div className="text-center text-xs text-gray-600">Категорія цін: Роздрібна</div>
           </div>
 
-          <div className="text-sm mb-2">Кількість рядків</div>
+          <div className="text-sm mb-2">Кількість рядків: <span className="font-semibold">{items.length}</span></div>
           <div className="border rounded p-3 mb-3">
             <div className="flex justify-between mb-2"><span>Всього:</span><span>{totalRetail.toFixed(2)}</span></div>
             <div className="flex justify-between mb-2"><span>Сума знижки:</span><span>{totalDiscount.toFixed(2)}</span></div>
