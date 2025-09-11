@@ -46,12 +46,12 @@ export default function ClientsPage() {
   const loadPriceCategories = async () => {
     try {
       const result = await api.getPriceCategories();
-      setPriceCategories(result.categories || []);
-      
+      const list = Array.isArray(result) ? result : [];
+      setPriceCategories(list);
       // Встановлюємо роздрібну категорію за замовчуванням
-      const defaultCategory = result.categories?.find(c => c.IsDefault) || result.categories?.[0];
-      if (defaultCategory && !formData.PriceCategoryID) {
-        setFormData(prev => ({ ...prev, PriceCategoryID: defaultCategory.ID }));
+      const def = list.find(c => c.IsDefault) || list[0];
+      if (def && !formData.PriceCategoryID) {
+        setFormData(prev => ({ ...prev, PriceCategoryID: def.ID }));
       }
     } catch (error) {
       console.error('Помилка завантаження категорій цін:', error);

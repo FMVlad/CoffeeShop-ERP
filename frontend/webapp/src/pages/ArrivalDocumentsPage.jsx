@@ -100,14 +100,17 @@ export default function ArrivalDocumentsPage() {
       const raw = sessionStorage.getItem("arrival_restore_doc");
       if (raw) {
         const restored = JSON.parse(raw);
-        setDoc(restored);
+        const restoredDoc = restored?.doc && typeof restored.doc === 'object' ? restored.doc : restored;
+        const safeDoc = restoredDoc && Array.isArray(restoredDoc.Items) ? restoredDoc : emptyDoc;
+        if (restored?.editingId != null) setEditingId(restored.editingId);
+        setDoc(safeDoc);
         setShowForm(true);
         sessionStorage.removeItem("arrival_restore_doc");
       }
     } catch (e) {
       console.error("Помилка відновлення форми:", e);
     }
-  }, []);
+  }, [emptyDoc]);
 
   // завантаження списку документів
   const fetchDocs = useCallback(
@@ -130,7 +133,7 @@ export default function ArrivalDocumentsPage() {
 
   // завантаження при зміні документа
   useEffect(() => {
-    if (doc.Items.length > 0) {
+    if (Array.isArray(doc?.Items) && doc.Items.length > 0) {
       fetchDocs(debouncedFilters);
     }
   }, [doc, editingId, fetchDocs, debouncedFilters]);
@@ -310,11 +313,12 @@ export default function ArrivalDocumentsPage() {
     });
   }, []);
 
+  const itemsCount = Array.isArray(doc?.Items) ? doc.Items.length : 0;
   const canSave =
-    doc.Items.length > 0 &&
-    String(doc.SupplierID || "").length > 0 &&
-    String(doc.CompanyID || "").length > 0 &&
-    String(doc.CenterID || "").length > 0;
+    itemsCount > 0 &&
+    String(doc?.SupplierID || "").length > 0 &&
+    String(doc?.CompanyID || "").length > 0 &&
+    String(doc?.CenterID || "").length > 0;
 
   const save = useCallback(async () => {
     if (!canSave) return;
@@ -323,7 +327,7 @@ export default function ArrivalDocumentsPage() {
       if (editingId) {
         await api.updateArrivalDoc(editingId, doc);
       } else {
-        const result = await api.createArrivalDoc(doc);
+        const result = await api.addArrivalDoc(doc);
         setEditingId(result.ID);
       }
       await fetchDocs(debouncedFilters);
@@ -385,7 +389,7 @@ export default function ArrivalDocumentsPage() {
               ← Назад до закупівель
             </button>
             <button
-              onClick={() => navigate('/webapp')}
+              onClick={() => navigate('/')}
               className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
             >
               🏠 На головну
@@ -411,7 +415,7 @@ export default function ArrivalDocumentsPage() {
                 <input
                   type="date"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={fltFrom}
+                  value={fltFrom || ""}
                   onChange={(e) => setFltFrom(e.target.value)}
                 />
               </div>
@@ -420,7 +424,7 @@ export default function ArrivalDocumentsPage() {
                 <input
                   type="date"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={fltTo}
+                  value={fltTo || ""}
                   onChange={(e) => setFltTo(e.target.value)}
                 />
               </div>
@@ -428,7 +432,7 @@ export default function ArrivalDocumentsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Постачальник</label>
                 <select
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  value={fltSupplier}
+                  value={fltSupplier || ""}
                   onChange={(e) => setFltSupplier(e.target.value)}
                 >
                   <option value="">Усі</option>
@@ -537,7 +541,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">№ накладної</label>
                   <input
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.Number}
+                    value={doc.Number || ""}
                     onChange={(e) => setDoc({ ...doc, Number: e.target.value })}
                     placeholder="автонумерація / вручну"
                   />
@@ -547,7 +551,7 @@ export default function ArrivalDocumentsPage() {
                   <input
                     type="date"
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.Date}
+                    value={doc.Date || ""}
                     onChange={(e) => setDoc({ ...doc, Date: e.target.value })}
                   />
                 </div>
@@ -555,7 +559,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Зовнішній номер</label>
                   <input
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.ExternalNumber}
+                    value={doc.ExternalNumber || ""}
                     onChange={(e) => setDoc({ ...doc, ExternalNumber: e.target.value })}
                     placeholder="№ від постачальника"
                   />
@@ -567,7 +571,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Постачальник *</label>
                   <select
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.SupplierID}
+                    value={doc.SupplierID || ""}
                     onChange={(e) => setDoc({ ...doc, SupplierID: e.target.value })}
                   >
                     <option value="">Обрати постачальника</option>
@@ -582,7 +586,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Компанія *</label>
                   <select
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.CompanyID}
+                    value={doc.CompanyID || ""}
                     onChange={(e) => setDoc({ ...doc, CompanyID: e.target.value })}
                   >
                     <option value="">Обрати компанію</option>
@@ -597,7 +601,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Центр *</label>
                   <select
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.CenterID}
+                    value={doc.CenterID || ""}
                     onChange={(e) => setDoc({ ...doc, CenterID: e.target.value })}
                   >
                     <option value="">Обрати центр</option>
@@ -615,7 +619,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Валюта</label>
                   <select
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.CurrencyID}
+                    value={doc.CurrencyID || ""}
                     onChange={(e) => setDoc({ ...doc, CurrencyID: e.target.value })}
                   >
                     <option value="">Обрати валюту</option>
@@ -632,7 +636,7 @@ export default function ArrivalDocumentsPage() {
                     type="number"
                     step="0.0001"
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.CurrencyRate}
+                    value={doc.CurrencyRate ?? ""}
                     onChange={(e) => setDoc({ ...doc, CurrencyRate: e.target.value })}
                   />
                 </div>
@@ -641,7 +645,7 @@ export default function ArrivalDocumentsPage() {
                   <input
                     type="date"
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.CurrencyRateDate}
+                    value={doc.CurrencyRateDate || ""}
                     onChange={(e) => setDoc({ ...doc, CurrencyRateDate: e.target.value })}
                   />
                 </div>
@@ -652,7 +656,7 @@ export default function ArrivalDocumentsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Типова операція</label>
                   <select
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={doc.TypicalOperationID}
+                    value={doc.TypicalOperationID || ""}
                     onChange={(e) => setDoc({ ...doc, TypicalOperationID: e.target.value })}
                   >
                     <option value="">Обрати операцію</option>
@@ -681,7 +685,7 @@ export default function ArrivalDocumentsPage() {
                 <textarea
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows="3"
-                  value={doc.Comment}
+                  value={doc.Comment || ""}
                   onChange={(e) => setDoc({ ...doc, Comment: e.target.value })}
                   placeholder="Додаткові нотатки..."
                 />
@@ -880,7 +884,7 @@ export default function ArrivalDocumentsPage() {
                     disabled={saving || posting}
                     title="Esc"
                   >
-                    {(doc.Postings || []).length > 0 ? "Закрити" : "Відміна"}
+                    Закрити
                   </button>
                 </div>
               </div>

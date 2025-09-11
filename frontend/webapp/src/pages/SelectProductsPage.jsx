@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../api";
+import { setSelection } from "../utils/selectionBridge";
 
 export default function SelectProductsPage() {
   const navigate = useNavigate();
@@ -68,17 +69,20 @@ export default function SelectProductsPage() {
 
   function addToArrival() {
     setSubmitting(true);
+    const params = new URLSearchParams(location.search);
+    const back = params.get('back');
     const selected = products.filter((p) => selectedQty.has(p.ID));
-    const payload = selected.map((p) => ({
-      ID: p.ID,
-      FullName: p.FullName || p.Name || "",
-      Name: p.Name || "",
-      Barcode: p.Barcode || "",
-      Article: p.Article || "",
-      Quantity: Number(selectedQty.get(p.ID) || 1),
+    const items = selected.map((p) => ({
+      id: p.ID,
+      qty: Number(selectedQty.get(p.ID) || 1),
+      name: p.FullName || p.Name || "",
     }));
-    sessionStorage.setItem("arrival_selected_products", JSON.stringify(payload));
+    try { setSelection('arrival', { items, meta: { source: 'directory' } }); } catch {}
+    if (back) {
+      window.location.assign(decodeURIComponent(back));
+    } else {
     navigate(-1);
+    }
   }
 
   function quickAddProduct() {

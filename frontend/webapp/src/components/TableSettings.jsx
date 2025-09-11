@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function TableSettings({ isOpen, onClose, columns, onSave }) {
   const [localColumns, setLocalColumns] = useState(columns);
+
+  // Синхронізуємо стан при відкритті модалки або зміні колонок ззовні
+  useEffect(() => {
+    if (isOpen) setLocalColumns(columns);
+  }, [isOpen, columns]);
 
   if (!isOpen) return null;
 
@@ -11,6 +16,19 @@ export default function TableSettings({ isOpen, onClose, columns, onSave }) {
         col.key === key ? { ...col, visible: !col.visible } : col
       )
     );
+  };
+
+  const moveColumn = (key, dir) => {
+    setLocalColumns(prev => {
+      const idx = prev.findIndex(c => c.key === key);
+      if (idx < 0) return prev;
+      const target = dir === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      next.splice(target, 0, item);
+      return next;
+    });
   };
 
   const handleSave = () => {
@@ -68,7 +86,7 @@ export default function TableSettings({ isOpen, onClose, columns, onSave }) {
 
         {/* Список колонок */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {localColumns.map((column) => (
+          {localColumns.map((column, idx) => (
             <div
               key={column.key}
               className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
@@ -90,6 +108,25 @@ export default function TableSettings({ isOpen, onClose, columns, onSave }) {
                   <div className="font-semibold text-gray-800">{column.title}</div>
                   <div className="text-sm text-gray-600">{column.description}</div>
                 </div>
+                {/* Кнопки порядку */}
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    className={`px-2 py-1 rounded-md text-sm ${idx === 0 ? 'opacity-30 cursor-not-allowed bg-gray-200' : 'bg-white hover:bg-gray-100 border'} `}
+                    onClick={(e) => { e.stopPropagation(); moveColumn(column.key, 'up'); }}
+                    disabled={idx === 0}
+                    title="Вище"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className={`px-2 py-1 rounded-md text-sm ${idx === localColumns.length - 1 ? 'opacity-30 cursor-not-allowed bg-gray-200' : 'bg-white hover:bg-gray-100 border'} `}
+                    onClick={(e) => { e.stopPropagation(); moveColumn(column.key, 'down'); }}
+                    disabled={idx === localColumns.length - 1}
+                    title="Нижче"
+                  >
+                    ↓
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -97,6 +134,12 @@ export default function TableSettings({ isOpen, onClose, columns, onSave }) {
 
         {/* Кнопки */}
         <div className="flex gap-4 justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-gray-300 text-gray-800 rounded-xl font-semibold hover:bg-gray-400 transition-colors duration-200"
+          >
+            ❌ Закрити
+          </button>
           <button
             onClick={handleReset}
             className="px-6 py-3 bg-gray-500 text-white rounded-xl font-semibold hover:bg-gray-600 transition-colors duration-200"

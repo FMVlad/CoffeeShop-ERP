@@ -84,6 +84,63 @@ def _get_warehouse_id(cur, center_id: int, w_type: str) -> Optional[int]:
     return int(r[0]) if r else None
 
 
+def _get_program_param(cur: pyodbc.Cursor, key: str, default: Optional[str] = None) -> Optional[str]:
+    try:
+        row = cur.execute("SELECT ParamValue FROM ProgrammParameters WHERE ParamKey=?", (key,)).fetchone()
+        return str(row[0]) if row and row[0] is not None else default
+    except Exception:
+        return default
+
+
+def _get_default_price_category_id(cur: pyodbc.Cursor) -> Optional[int]:
+    """Визначає ID роздрібної цінової категорії за замовчуванням."""
+    try:
+        v = _get_program_param(cur, "DefaultPriceCategoryID")
+        if v:
+            r = cur.execute("SELECT ID FROM PriceCategories WHERE ID=?", (int(v),)).fetchone()
+            if r:
+                return int(v)
+    except Exception:
+        pass
+    try:
+        r = cur.execute("SELECT TOP 1 ID FROM PriceCategories WHERE IsDefault=1 ORDER BY ID").fetchone()
+        if r:
+            return int(r[0])
+    except Exception:
+        pass
+    try:
+        r = cur.execute("SELECT TOP 1 ID FROM PriceCategories WHERE CategoryName LIKE N'%роздр%' ORDER BY ID").fetchone()
+        if r:
+            return int(r[0])
+    except Exception:
+        pass
+    try:
+        r = cur.execute("SELECT TOP 1 ID FROM PriceCategories ORDER BY ID").fetchone()
+        if r:
+            return int(r[0])
+    except Exception:
+        pass
+    return None
+
+
+def _ensure_product_prices_extra(cur: pyodbc.Cursor) -> None:
+    try:
+        cur.execute(
+            """
+            IF COL_LENGTH('dbo.ProductPrices','PriceWithDiscount') IS NULL
+            BEGIN
+              ALTER TABLE dbo.ProductPrices ADD PriceWithDiscount DECIMAL(18,4) NULL;
+            END;
+            IF COL_LENGTH('dbo.ProductPrices','DiscountRecalcAt') IS NULL
+            BEGIN
+              ALTER TABLE dbo.ProductPrices ADD DiscountRecalcAt DATETIME NULL;
+            END;
+            """
+        )
+    except Exception:
+        pass
+
+
 def _ean13_checksum(body12: str) -> str:
     """
     Простий і надійний алгоритм контрольної суми для EAN-13.
@@ -112,13 +169,11 @@ def _get_or_create_discount_barcode(cur: pyodbc.Cursor, product_id: int, warehou
     
     # Якщо немає - створюємо новий
     if original_barcode and len(original_barcode) >= 13:
-        # Беремо оригінальний штрихкод і формуємо штрихкод уцінки
-        # Формат: 29 + 1 + warehouse_id + останні цифри оригінального
-        # Наприклад: 2900000000025 -> 29136000000025 (склад ID=36)
-        original_body = original_barcode[:12]  # перші 12 цифр без контрольної суми
-        warehouse_part = f"{warehouse_id:04d}"  # ID складу з ведучими нулями
-        remaining_digits = original_body[4:]  # цифри після префіксу 29
-        new_body = f"291{warehouse_part}{remaining_digits}"[:12]  # обрізаємо до 12 цифр
+        # Формат: 29 + {ID складу (4 цифри)} + решта з оригіналу до 12 цифр + checksum
+        original_body = original_barcode[:12]
+        warehouse_part = f"{warehouse_id:04d}"
+        remaining_digits = original_body[2:]
+        new_body = ("29" + warehouse_part + remaining_digits)[:12]
         new_code = new_body + _ean13_checksum(new_body)
         
         # Перевіряємо чи не існує вже такий штрихкод
@@ -139,9 +194,10 @@ def _get_or_create_discount_barcode(cur: pyodbc.Cursor, product_id: int, warehou
         seq = 1
     
     while True:
-        # Формуємо штрихкод: 2936 + warehouse_id + sequence
-        head = f"2936{warehouse_id:04d}"
-        body12 = f"{head}{seq:08d}"[:12]
+        # Формуємо штрихкод: 29 + warehouse_id + sequence (до 12 символів)
+        head = f"29{warehouse_id:04d}"
+        pad = max(0, 12 - len(head))
+        body12 = f"{head}{seq:0{pad}d}"[:12]
         code = body12 + _ean13_checksum(body12)
         
         # Перевіряємо унікальність
@@ -168,11 +224,11 @@ def _generate_discount_barcode(db: pyodbc.Connection, *, prefix: str, warehouse_
     """
     cur = db.cursor()
     if original_barcode and len(original_barcode) >= 13:
-        # Беремо оригінальний штрихкод і змінюємо префікс на уцінку
-        # Наприклад: 2900000000025 -> 2936000000025
-        discount_prefix = "2936"  # префікс для уцінки
-        original_body = original_barcode[:12]  # перші 12 цифр без контрольної суми
-        new_body = discount_prefix + original_body[4:]  # замінюємо перші 4 цифри
+        # Формат для уцінки: 29 + склад(4) + решта з оригіналу
+        original_body = original_barcode[:12]
+        warehouse_part = f"{warehouse_id:04d}"
+        remaining_digits = original_body[2:]
+        new_body = ("29" + warehouse_part + remaining_digits)[:12]
         new_code = new_body + _ean13_checksum(new_body)
         
         # Перевіряємо чи не існує вже такий штрихкод
@@ -186,7 +242,7 @@ def _generate_discount_barcode(db: pyodbc.Connection, *, prefix: str, warehouse_
         seq = int(row[0]) if row and row[0] else 1
     except Exception:
         seq = 1
-    head = f"{prefix}{warehouse_id}"
+    head = f"29{warehouse_id:04d}"
     if len(head) >= 12:
         head = head[:12]
     while True:
@@ -263,9 +319,9 @@ def delete_doc(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     cur = db.cursor(); _ensure_tables(cur)
     
     # Спочатку отримуємо інформацію про документ та його позиції
-    rdoc = cur.execute("SELECT CenterID, WarehouseID FROM dbo.DiscountDocs WHERE ID=?", (doc_id,)).fetchone()
+    rdoc = cur.execute("SELECT CenterID, WarehouseID, Status FROM dbo.DiscountDocs WHERE ID=?", (doc_id,)).fetchone()
     if rdoc:
-        center_id, writeoff_warehouse_id = int(rdoc[0]), int(rdoc[1])
+        center_id, writeoff_warehouse_id, status_str = int(rdoc[0]), int(rdoc[1]), str(rdoc[2] or 'open').lower()
         print(f"DEBUG: Видаляємо документ уцінки {doc_id}, центр {center_id}, склад уцінки {writeoff_warehouse_id}")
         
         # Отримуємо всі позиції документа перед видаленням
@@ -274,47 +330,47 @@ def delete_doc(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             (doc_id,)
         ).fetchall()
         
-        # Повертаємо товари на головний склад
+        # Повертаємо товари лише якщо документ був записаний (posted)
+        # Додатковий захист: перевіряємо, чи є сліди постингу у StockBalances
+        # (коментарі з міткою цього документа на складі уцінки)
+        has_postings = False
+        try:
+            row_chk = cur.execute(
+                "SELECT TOP 1 1 FROM dbo.StockBalances WHERE WarehouseID=? AND Comment LIKE ?",
+                (writeoff_warehouse_id, f"DISCOUNT DOC #{doc_id}%"),
+            ).fetchone()
+            has_postings = bool(row_chk)
+        except Exception:
+            has_postings = (status_str == 'posted')
+
+        if status_str == 'posted' and has_postings:
+            from app.services import inventory
         main_warehouse_id = _get_warehouse_id(cur, center_id, 'main')
         if main_warehouse_id and items:
-            print(f"DEBUG: Повертаємо товари на головний склад {main_warehouse_id}")
-            
             for item in items:
-                product_id, quantity = int(item[0]), float(item[1])
-                print(f"DEBUG: Повертаємо товар {product_id}, кількість {quantity}")
-                
-                # Отримуємо поточну кількість на головному складі
-                current_row = cur.execute(
-                    "SELECT Quantity FROM dbo.StockBalances WHERE ProductID=? AND WarehouseID=?",
-                    (product_id, main_warehouse_id)
-                ).fetchone()
-                
-                if current_row:
-                    # Оновлюємо існуючий запис
-                    new_quantity = float(current_row[0] or 0) + quantity
-                    cur.execute(
-                        "UPDATE dbo.StockBalances SET Quantity=?, UpdatedAt=GETDATE(), Comment='returned from discount' WHERE ProductID=? AND WarehouseID=?",
-                        (new_quantity, product_id, main_warehouse_id)
+                    product_id, quantity = int(item[0]), float(item[1] or 0)
+                    if quantity <= 0:
+                        continue
+                    inventory.upsert_stock_balance(
+                        db,
+                        product_id=product_id,
+                        warehouse_id=main_warehouse_id,
+                        delta_qty=abs(quantity),
+                        comment=f"DISCOUNT DELETE #{doc_id}",
                     )
-                    print(f"DEBUG: Оновлено головний склад: товар {product_id}, нова кількість {new_quantity}")
-                else:
-                    # Створюємо новий запис
-                    cur.execute(
-                        "INSERT INTO dbo.StockBalances (ProductID, WarehouseID, Quantity, UpdatedAt, Comment) VALUES (?, ?, ?, GETDATE(), 'returned from discount')",
-                        (product_id, main_warehouse_id, quantity)
-                    )
-                    print(f"DEBUG: Створено запис на головному складі: товар {product_id}, кількість {quantity}")
-        
-        # Тепер очищаємо записи в StockBalances для складу уцінки
-        cur.execute("DELETE FROM dbo.StockBalances WHERE WarehouseID=? AND Comment LIKE 'DISCOUNT DOC%'", (writeoff_warehouse_id,))
-        deleted_stock = cur.rowcount
-        print(f"DEBUG: Видалено {deleted_stock} записів з StockBalances для складу уцінки {writeoff_warehouse_id}")
-        
-        # Очищаємо записи з нульовою кількістю на головному складі
-        if main_warehouse_id:
-            cur.execute("DELETE FROM dbo.StockBalances WHERE WarehouseID=? AND Quantity=0 AND Comment='arrival'", (main_warehouse_id,))
-            deleted_zero = cur.rowcount
-            print(f"DEBUG: Видалено {deleted_zero} нульових записів з головного складу {main_warehouse_id}")
+                    # Списуємо зі складу уцінки, якщо там є запис
+                    row = cur.execute(
+                        "SELECT Quantity FROM dbo.StockBalances WHERE ProductID=? AND WarehouseID=?",
+                        (product_id, writeoff_warehouse_id)
+                    ).fetchone()
+                    if row:
+                        inventory.upsert_stock_balance(
+                            db,
+                            product_id=product_id,
+                            warehouse_id=writeoff_warehouse_id,
+                            delta_qty=-abs(quantity),
+                            comment=f"DISCOUNT DELETE #{doc_id}",
+                        )
     
     # Видаляємо позиції документа
     cur.execute("DELETE FROM dbo.DiscountDocItems WHERE DocID=?", (doc_id,))
@@ -374,24 +430,40 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
         if not main_warehouse_id:
             raise HTTPException(400, "Для центру не знайдено головний склад")
         
-        # Перевіряємо наявність на головному складі тільки для нових товарів
+        # Перевіряємо наявність у StockBalances
         available_row = cur.execute(
             "SELECT Quantity FROM dbo.StockBalances WHERE ProductID=? AND WarehouseID=?",
             (product_id, main_warehouse_id)
         ).fetchone()
-        available = float(available_row[0] or 0) if available_row else 0.0
-        
-        print(f"DEBUG: main_warehouse_id={main_warehouse_id}, available={available}")
-        
-        # Перевіряємо наявність на головному складі для нового товару
-        if available <= 0:
-            raise HTTPException(400, "Товар відсутній на головному складі центру")
-        
-        # Перевіряємо чи не перевищуємо наявність
-        if qty > available:
+        available_sb = float(available_row[0] or 0) if available_row else 0.0
+
+        # Фолбек: якщо у StockBalances немає — читаємо з Parties
+        available_parties = 0.0
+        try:
+            r1 = cur.execute(
+                "SELECT SUM(RemainingQty) FROM dbo.Parties WHERE ProductID=? AND WarehouseID=?",
+                (product_id, main_warehouse_id)
+            ).fetchone()
+            available_parties = float(r1[0] or 0) if r1 else 0.0
+        except Exception:
+            try:
+                r2 = cur.execute(
+                    "SELECT SUM(Quantity) FROM dbo.Parties WHERE ProductID=? AND WarehouseID=?",
+                    (product_id, main_warehouse_id)
+                ).fetchone()
+                available_parties = float(r2[0] or 0) if r2 else 0.0
+            except Exception:
+                available_parties = 0.0
+
+        available = max(available_sb, available_parties)
+        print(f"DEBUG: main_warehouse_id={main_warehouse_id}, available_sb={available_sb}, available_parties={available_parties}, available_effective={available}")
+
+        # Якщо доступності немає взагалі — не блокуємо додавання (користувач може скорегувати згодом),
+        # але на етапі проведення (postings) буде перевірка фактичного залишку.
+        if available > 0 and qty > available:
             raise HTTPException(400, f"Недостатньо залишку. Доступно: {available}")
         
-        print(f"DEBUG: Додаємо товар з наявності: {available}, кількість: {qty}")
+        print(f"DEBUG: Додаємо товар (перевірка пройдена), кількість: {qty}, доступно: {available}")
     else:
         # Якщо товар вже є в документі - дозволяємо редагувати без перевірки наявності
         # (товар вже може бути переміщений з головного складу)
@@ -473,8 +545,21 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             cur.execute("UPDATE Products SET DiscountBarcode=? WHERE ID=?", (bc, product_id))
         except Exception:
             pass
-        inventory.upsert_stock_balance(db, product_id=product_id, warehouse_id=main_id, delta_qty=-abs(qty), comment=f"DISCOUNT DOC #{doc_id}")
-        inventory.upsert_stock_balance(db, product_id=product_id, warehouse_id=writeoff_id, delta_qty=abs(qty), comment=f"DISCOUNT DOC #{doc_id}")
+        # Переносимо з головного складу на уцінку (мінус на головному, плюс на уцінці)
+        inventory.upsert_stock_balance(
+            db,
+            product_id=product_id,
+            warehouse_id=main_id,
+            delta_qty=-abs(qty),
+            comment=f"DISCOUNT DOC #{doc_id}",
+        )
+        inventory.upsert_stock_balance(
+            db,
+            product_id=product_id,
+            warehouse_id=writeoff_id,
+            delta_qty=abs(qty),
+            comment=f"DISCOUNT DOC #{doc_id}",
+        )
         # Лог уцінок (для аналітики)
         try:
             cur.execute(
@@ -502,8 +587,37 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             )
         except Exception:
             pass
+    # Позначаємо документ як posted
+    try:
+        cur.execute("UPDATE dbo.DiscountDocs SET Status='posted', UpdatedAt=GETDATE() WHERE ID=?", (doc_id,))
+    except Exception:
+        pass
+
+    # Додатково: записуємо PriceWithDiscount у ProductPrices для роздрібної категорії
+    try:
+        _ensure_product_prices_extra(cur)
+        price_category_id = _get_default_price_category_id(cur)
+        if price_category_id is not None:
+            for row in items:
+                product_id, price = int(row[1]), float(row[3] or 0)
+                # шукаємо активний ряд в ProductPrices (центр незалежно, беремо global 0 якщо нема by_center)
+                base = cur.execute(
+                    """
+                    SELECT TOP 1 ID FROM ProductPrices
+                    WHERE ProductID=? AND PriceCategoryID=? AND DateStart<=GETDATE() AND (DateEnd IS NULL OR DateEnd>=GETDATE())
+                    ORDER BY DateStart DESC, ID DESC
+                    """,
+                    (product_id, price_category_id),
+                ).fetchone()
+                if base:
+                    cur.execute(
+                        "UPDATE ProductPrices SET PriceWithDiscount=?, DiscountRecalcAt=GETDATE() WHERE ID=?",
+                        (price, int(base[0]))
+                    )
+    except Exception:
+        pass
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "status": "posted"}
 
 
 @router.post("/discount-documents/{doc_id}/close-if-empty")
@@ -516,7 +630,7 @@ def close_if_empty(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     cur = db.cursor(); _ensure_tables(cur)
     rdoc = cur.execute("SELECT CenterID, WarehouseID, Status FROM dbo.DiscountDocs WHERE ID=?", (doc_id,)).fetchone()
     if not rdoc: raise HTTPException(404, "Документ не знайдено")
-    if str(rdoc[1]).lower() == 'closed':
+    if str(rdoc[2]).lower() == 'closed':
         return {"ok": True, "closed": True}
     
     center_id, writeoff_id = int(rdoc[0]), int(rdoc[1])

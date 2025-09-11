@@ -4,7 +4,6 @@ import { api } from '../api';
 
 export default function ReturnsPage() {
   const navigate = useNavigate();
-  const [returns, setReturns] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [showModal, setShowModal] = useState(false);
 

@@ -20,7 +20,12 @@ def get_categories(db=Depends(get_db)):
 @router.get("/price-categories")
 def get_price_categories(db=Depends(get_db)):
     cursor = db.cursor()
-    cursor.execute("SELECT ID, CategoryName FROM PriceCategories ORDER BY CategoryName")
+    # Повертаємо універсальні імена полів: Name замість CategoryName
+    try:
+        cursor.execute("SELECT ID, CategoryName AS Name FROM PriceCategories ORDER BY CategoryName")
+    except Exception:
+        # На випадок інших схем
+        cursor.execute("SELECT ID, CategoryName FROM PriceCategories ORDER BY CategoryName")
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 

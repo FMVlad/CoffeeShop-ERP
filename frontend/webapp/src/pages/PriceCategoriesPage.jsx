@@ -33,8 +33,7 @@ export default function PriceCategoriesPage() {
   function loadAll() {
     api.getPriceCategories().then(data => {
       console.log('🔍 PriceCategoriesPage: Отримано категорії цін:', data);
-      // Виправляю: беру data.categories замість data
-      setPriceCategories(Array.isArray(data?.categories) ? data.categories : []);
+      setPriceCategories(Array.isArray(data) ? data : []);
     });
     api.getCategories().then(data => {
       console.log('🔍 PriceCategoriesPage: Отримано категорії товару:', data);
@@ -71,12 +70,12 @@ export default function PriceCategoriesPage() {
       await api.addPriceCategory({ CategoryName: categoryName });
     }
     closeCategoryModal();
-    api.getPriceCategories().then(setPriceCategories);
+    api.getPriceCategories().then(d => setPriceCategories(Array.isArray(d)?d:[]));
   }
   async function handleDeleteCategory(id) {
     if (window.confirm("Видалити категорію?")) {
       await api.deletePriceCategory(id);
-      api.getPriceCategories().then(setPriceCategories);
+      api.getPriceCategories().then(d => setPriceCategories(Array.isArray(d)?d:[]));
     }
   }
 

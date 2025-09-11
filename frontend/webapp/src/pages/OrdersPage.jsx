@@ -4,7 +4,6 @@ import { api } from '../api';
 
 export default function OrdersPage() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [showModal, setShowModal] = useState(false);
 

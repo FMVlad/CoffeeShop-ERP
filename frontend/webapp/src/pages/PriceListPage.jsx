@@ -15,23 +15,25 @@ export default function PriceListPage() {
   const [categoryId, setCategoryId] = useState('');
   const [selectedCatId, setSelectedCatId] = useState('');
   const [rounding, setRounding] = useState(1);
+  const [roundingOptions, setRoundingOptions] = useState([0.05, 0.25, 0.5, 1, 5, 10]);
   const [selected, setSelected] = useState(() => new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [showApplyDiscModal, setShowApplyDiscModal] = useState(false);
   const [onlyDiscounted, setOnlyDiscounted] = useState(false);
-  const roundingOptions = [0.05, 0.25, 0.5, 1, 5, 10];
+  useEffect(()=>{ api.getRoundingSteps?.().then(arr=>{ if(Array.isArray(arr) && arr.length){ setRoundingOptions(arr); if(!arr.includes(rounding)) setRounding(arr[0]); } }).catch(()=>{}); },[]);
 
   useEffect(() => {
     api.getPriceCategories().then(data => {
       console.log('🔍 PriceListPage: Отримано категорії цін:', data);
-      // Виправляю: беру data.categories замість data
-      setPriceCategories(Array.isArray(data?.categories) ? data.categories : []);
+      setPriceCategories(Array.isArray(data) ? data : []);
     });
     api.getCategories().then((arr) => setCategories(Array.isArray(arr) ? arr : []));
     api.getCenters().then((arr) => setCenters(Array.isArray(arr) ? arr : []));
     // initial load
     reloadProducts();
     reloadPrices();
+    // preload rounding steps for other pages (global cache)
+    api.getRoundingSteps?.().then(arr=>{ if(Array.isArray(arr)){ window.__roundingSteps = arr; } }).catch(()=>{});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

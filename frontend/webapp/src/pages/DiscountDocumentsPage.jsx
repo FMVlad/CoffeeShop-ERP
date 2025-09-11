@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import StockPickerButton from "../components/StockPickerButton.jsx";
@@ -14,6 +14,11 @@ export default function DiscountDocumentsPage(){
   const [centers, setCenters] = useState([]);
   const [centerId, setCenterId] = useState("");
   const [barcode, setBarcode] = useState("");
+  // Редагування % знижки: локальний стан по рядку, щоб не заважати набору
+  const [pctEdit, setPctEdit] = useState({});
+  // Налаштування заокруглення
+  const [roundStep, setRoundStep] = useState(1); // 1 грн за замовчуванням
+  const [roundMode, setRoundMode] = useState('nearest'); // nearest | up | down
 
   useEffect(() => { api.getCenters().then(setCenters).catch(()=>{}); }, []);
   useEffect(() => { if (activeCenterId && !centerId) setCenterId(String(activeCenterId)); }, [activeCenterId, centerId]);
@@ -105,6 +110,37 @@ export default function DiscountDocumentsPage(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reloadItems(); }, [current?.ID]);
 
+  // Повернення зі сторінки вибору: якщо є вибір і документ не відкрито —
+  // спочатку шукаємо останній відкритий документ по центру, і лише якщо його нема — створюємо новий.
+  const handledSelectionRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      if (handledSelectionRef.current) return;
+      try {
+        const pickedRaw = window.sessionStorage.getItem('selected::discount_doc');
+        if (pickedRaw && !current?.ID) {
+          handledSelectionRef.current = true;
+          // 1) оновлюємо список документів
+          const list = await api.getDiscountDocs();
+          setDocs(Array.isArray(list) ? list : []);
+          // 2) пробуємо знайти останній open по активному центру
+          const cid = Number(centerId || activeCenterId);
+          const existing = (list || [])
+            .filter(d => String(d.Status || 'open').toLowerCase() === 'open' && Number(d.CenterID) === cid)
+            .sort((a,b) => (new Date(a.DocDate) - new Date(b.DocDate)) || (a.ID - b.ID));
+          const last = existing.length ? existing[existing.length - 1] : null;
+          if (last) {
+            const doc = await api.getDiscountDoc(last.ID);
+            setCurrent(doc);
+          } else {
+            await createDoc();
+          }
+        }
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.ID, centerId, activeCenterId]);
+
   async function createDoc(){
     console.log('🔍 DiscountDocumentsPage: Створення документа з CenterID:', Number(centerId || activeCenterId));
     console.log('🔍 DiscountDocumentsPage: centerId:', centerId, 'activeCenterId:', activeCenterId);
@@ -115,6 +151,55 @@ export default function DiscountDocumentsPage(){
     console.log('🔍 DiscountDocumentsPage: Завантажено документ:', doc);
     setCurrent(doc);
   }
+
+  async function closeEditor(){
+    try {
+      if (current?.ID) {
+        const hasItems = Array.isArray(items) && items.length > 0;
+        if (!hasItems) {
+          try { await api.deleteDiscountDoc(current.ID); } catch {}
+          await reloadDocs();
+        }
+      }
+    } finally {
+      setCurrent(null);
+    }
+  }
+
+  // Утиліта заокруглення
+  const roundPrice = (value) => {
+    const step = Number(roundStep) || 0;
+    const v = Number(value) || 0;
+    if (step <= 0) return Number(v.toFixed(2));
+    const scaled = v / step;
+    let r;
+    if (roundMode === 'up') r = Math.ceil(scaled);
+    else if (roundMode === 'down') r = Math.floor(scaled);
+    else r = Math.round(scaled);
+    return Number((r * step).toFixed(2));
+  };
+
+  const applyRoundingAll = async () => {
+    if (!current?.ID) return;
+    for (const it of items) {
+      const newP = roundPrice(it.Price);
+      if (newP !== Number(it.Price)) {
+        updateItemLocal(it.ID, { Price: newP });
+        await persistItem(it.ID, { Price: newP });
+      }
+    }
+  };
+
+  // Застосувати введений % до ціни для конкретного рядка
+  const commitPercentForItem = async (item, pctStr) => {
+    const base = Number(item.PriceBase || item.PriceBase || item.Price || 0) || 0;
+    const pct = Number(pctStr);
+    const priceRaw = base ? (base * (1 - (isNaN(pct) ? 0 : pct) / 100)) : 0;
+    const price = roundPrice(priceRaw);
+    updateItemLocal(item.ID, { Price: price });
+    await persistItem(item.ID, { Price: price });
+    setPctEdit(prev => { const n = { ...prev }; delete n[item.ID]; return n; });
+  };
 
   function centerNameById(id){
     const c = (centers||[]).find(x => String(x.ID) === String(id));
@@ -258,19 +343,39 @@ export default function DiscountDocumentsPage(){
               <div className="text-3xl font-bold text-gray-800">Документ №{current.DocNumber || current.ID}</div>
               <div className="text-lg text-gray-600">{String(current.DocDate).slice(0,10)} · Центр {centerNameById(current.CenterID)}</div>
             </div>
-            <div className="flex gap-4">
-              <button onClick={()=>{ setCurrent(null); }} className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-6 py-3 rounded-2xl font-bold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl">← До списку</button>
+            <div className="flex gap-4 items-center">
+              {/* Заокруглення */}
+              <div className="flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2">
+                <span className="text-sm text-gray-700">Заокруглення</span>
+                <select value={roundStep} onChange={e=>setRoundStep(Number(e.target.value))}
+                        className="text-sm border border-violet-200 rounded-lg px-2 py-1 bg-white">
+                  {([0, ...(window.__roundingSteps || [0.01,0.05,0.1,0.5,1,5,10])]).map(s => (
+                    <option key={s} value={s}>{s===0 ? '—' : s}</option>
+                  ))}
+                </select>
+                <select value={roundMode} onChange={e=>setRoundMode(e.target.value)}
+                        className="text-sm border border-violet-200 rounded-lg px-2 py-1 bg-white">
+                  <option value="nearest">до найближчого</option>
+                  <option value="up">вгору</option>
+                  <option value="down">вниз</option>
+                </select>
+                <button onClick={applyRoundingAll}
+                        className="text-sm bg-gradient-to-r from-violet-500 to-purple-600 text-white px-3 py-1 rounded-lg font-semibold">
+                  Застосувати до всіх
+                </button>
+              </div>
+              <button onClick={closeEditor} className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-6 py-3 rounded-2xl font-bold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl">← До списку</button>
               <button onClick={async()=>{ 
                 try {
                   await persistCurrent({ Comment: current.Comment||'' }); 
                   await api.postDiscountDocPostings(current.ID); 
-                  await reloadItems(); 
                   await reloadDocs(); 
                   setCurrent(null);
                 } catch(e) {
                   alert(e?.message || 'Помилка запису');
                 }
               }} className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-2xl font-bold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl">Записати</button>
+              <button onClick={closeEditor} className="px-6 py-3 bg-gray-200 text-gray-800 rounded-2xl font-bold hover:bg-gray-300 transition-colors duration-200">Закрити</button>
               <button onClick={async()=>{ const r = await api.closeDiscountDocIfEmpty(current.ID); if (r?.closed) { await reloadDocs(); setCurrent(null); } }} className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-2xl font-bold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl">Закрити при 0</button>
               <button onClick={async()=>{ 
                 if (window.confirm('Видалити документ? Товари будуть повернуті на головний склад.')) { 
@@ -357,7 +462,10 @@ export default function DiscountDocumentsPage(){
                   const qty = Number(it.Quantity||0);
                   const newPrice = Number(it.Price||0);
                   const base = Number(it.BasePrice||it.PriceBase||newPrice);
-                  const discountPct = base ? Number(((1 - (newPrice/base)) * 100).toFixed(2)) : 0;
+                  const computedPct = base ? Number(((1 - (newPrice/base)) * 100).toFixed(2)) : 0;
+                  const percentValue = Object.prototype.hasOwnProperty.call(pctEdit, it.ID)
+                    ? pctEdit[it.ID]
+                    : computedPct;
                   const belowCost = typeof it.AvgCost === 'number' ? newPrice < Number(it.AvgCost) : false;
                   return (
                     <tr key={it.ID} className={belowCost ? 'bg-red-50' : 'hover:bg-violet-50'} style={{ background: belowCost ? '#fff2f2' : undefined }}>
@@ -370,15 +478,16 @@ export default function DiscountDocumentsPage(){
                       </td>
                       <td className="p-4 border-b border-violet-100 text-right">{base.toFixed(2)}</td>
                       <td className="p-4 border-b border-violet-100 text-right" style={{ minWidth: 120 }}>
-                        <input type="number" value={discountPct}
-                               onChange={e=>{ const pct = Number(e.target.value)||0; const price = base ? Number((base*(1-pct/100)).toFixed(2)) : 0; updateItemLocal(it.ID, { Price: price }); }}
-                               onBlur={e=>{ const pct = Number(e.target.value)||0; const price = base ? Number((base*(1-pct/100)).toFixed(2)) : 0; persistItem(it.ID, { Price: price }); }}
+                        <input type="number" value={percentValue}
+                               onChange={e=> setPctEdit(prev => ({ ...prev, [it.ID]: e.target.value }))}
+                               onKeyDown={async e=>{ if (e.key === 'Enter') { await commitPercentForItem(it, pctEdit[it.ID]); } }}
+                               onBlur={async e=>{ await commitPercentForItem(it, pctEdit[it.ID]); }}
                                className="w-full p-3 border-2 border-gray-200 rounded-xl text-right focus:border-violet-500 focus:outline-none transition-colors duration-300" />
                       </td>
                       <td className="p-4 border-b border-violet-100 text-right" style={{ minWidth: 120 }}>
                         <input type="number" value={newPrice}
-                               onChange={e=>updateItemLocal(it.ID, { Price: Number(e.target.value)||0 })}
-                               onBlur={e=>persistItem(it.ID, { Price: Number(e.target.value)||0 })}
+                               onChange={e=>{ const v = Number(e.target.value)||0; updateItemLocal(it.ID, { Price: v }); }}
+                               onBlur={e=>{ const v = Number(e.target.value)||0; const price = roundPrice(v); updateItemLocal(it.ID, { Price: price }); persistItem(it.ID, { Price: price }); }}
                                className="w-full p-3 border-2 border-gray-200 rounded-xl text-right focus:border-violet-500 focus:outline-none transition-colors duration-300" />
                       </td>
                       <td className="p-4 border-b border-violet-100 text-right">{(newPrice*qty).toFixed(2)}</td>

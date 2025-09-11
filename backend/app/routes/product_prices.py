@@ -4,6 +4,28 @@ from typing import List, Optional, Dict, Any
 import datetime
 
 router = APIRouter()
+@router.get("/rounding-steps")
+def get_rounding_steps(db=Depends(get_db)):
+    """Повертає список кроків заокруглення з таблиці RoundingSteps (створюється за потреби)."""
+    cur = db.cursor()
+    # ensure table exists
+    cur.execute(
+        """
+        IF OBJECT_ID('dbo.RoundingSteps','U') IS NULL
+        BEGIN
+          CREATE TABLE dbo.RoundingSteps (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            Step DECIMAL(18,4) NOT NULL,
+            SortOrder INT NOT NULL DEFAULT 0,
+            IsActive BIT NOT NULL DEFAULT 1
+          );
+          INSERT INTO dbo.RoundingSteps (Step, SortOrder, IsActive)
+          VALUES (0.01, 10, 1), (0.05, 20, 1), (0.10, 30, 1), (0.50, 40, 1), (1.00, 50, 1), (5.00, 60, 1), (10.00, 70, 1);
+        END
+        """
+    )
+    rows = cur.execute("SELECT Step FROM dbo.RoundingSteps WHERE IsActive=1 ORDER BY SortOrder, Step").fetchall() or []
+    return [float(r[0]) for r in rows]
 
 @router.get("/product-prices")
 def get_product_prices(

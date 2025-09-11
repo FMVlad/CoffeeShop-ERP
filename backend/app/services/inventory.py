@@ -319,45 +319,62 @@ def upsert_stock_balance(
     delta_qty: float,
     user_id: int = 1,
     comment: str | None = None,
-    parent_id: int | None = None
+    parent_id: int | None = None,
+    company_id: int | None = None,
 ) -> None:
     """
     Збільшує/зменшує залишок у dbo.StockBalances (або створює новий запис).
-    """
-
-    # пробуємо оновити
-
-    upd = f"""
-
-      UPDATE {T_STOCK}
-
-         SET Quantity = Quantity + ?,
-
-             UpdatedAt = GETDATE(),
-
-             UpdatedBy = ?
-
-       WHERE ProductID = ? AND WarehouseID = ?
-
+    Підтримує опційний CompanyID (додається в таблицю, якщо відсутній).
     """
 
     cur = conn.cursor()
 
-    cur.execute(upd, (qty(delta_qty), user_id, product_id, warehouse_id))
+    # ensure CompanyID column exists (best-effort)
+    try:
+        cur.execute(
+            "IF COL_LENGTH('dbo.StockBalances','CompanyID') IS NULL ALTER TABLE dbo.StockBalances ADD CompanyID INT NULL;"
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+    # пробуємо оновити з CompanyID
+    try:
+        upd = f"""
+          UPDATE {T_STOCK}
+             SET Quantity = Quantity + ?,
+                 UpdatedAt = GETDATE(),
+                 UpdatedBy = ?
+           WHERE ProductID = ? AND WarehouseID = ? AND ISNULL(CompanyID,0)=ISNULL(?,0)
+        """
+        cur.execute(upd, (qty(delta_qty), user_id, product_id, warehouse_id, company_id or 0))
+    except Exception:
+        # fallback без CompanyID
+        upd = f"""
+          UPDATE {T_STOCK}
+             SET Quantity = Quantity + ?,
+                 UpdatedAt = GETDATE(),
+                 UpdatedBy = ?
+           WHERE ProductID = ? AND WarehouseID = ?
+        """
+        cur.execute(upd, (qty(delta_qty), user_id, product_id, warehouse_id))
 
     if cur.rowcount == 0:
-
-        ins = f"""
-
-          INSERT INTO {T_STOCK}
-
-            (ProductID, WarehouseID, Quantity, UpdatedAt, UpdatedBy, Comment, ParentID)
-
-          VALUES (?, ?, ?, GETDATE(), ?, ?, ?)
-
-        """
-
-        cur.execute(ins, (product_id, warehouse_id, qty(delta_qty), user_id, comment, parent_id))
+        # вставка з CompanyID (якщо колонка є)
+        try:
+            ins = f"""
+              INSERT INTO {T_STOCK}
+                (ProductID, WarehouseID, Quantity, UpdatedAt, UpdatedBy, Comment, ParentID, CompanyID)
+              VALUES (?, ?, ?, GETDATE(), ?, ?, ?, ?)
+            """
+            cur.execute(ins, (product_id, warehouse_id, qty(delta_qty), user_id, comment, parent_id, company_id))
+        except Exception:
+            ins = f"""
+              INSERT INTO {T_STOCK}
+                (ProductID, WarehouseID, Quantity, UpdatedAt, UpdatedBy, Comment, ParentID)
+              VALUES (?, ?, ?, GETDATE(), ?, ?, ?)
+            """
+            cur.execute(ins, (product_id, warehouse_id, qty(delta_qty), user_id, comment, parent_id))
 
     conn.commit()
 

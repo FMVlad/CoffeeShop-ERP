@@ -35,6 +35,11 @@ export default function StockStatePage() {
   const [onlyDiscounted, setOnlyDiscounted] = useState(false);
   const [discountFilter, setDiscountFilter] = useState("");
   const [viewMode, setViewMode] = useState("table"); // "table" | "cards"
+  // Режим вибору товарів (для документів, наприклад уцінки)
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectionKey, setSelectionKey] = useState("");
+  const [backUrl, setBackUrl] = useState("");
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [showTableSettings, setShowTableSettings] = useState(false);
   const [tableColumns, setTableColumns] = useState([
     { key: 'photo', title: 'Фото', description: 'Зображення товару', visible: true },
@@ -56,11 +61,21 @@ export default function StockStatePage() {
   ]);
 
   // Функції для роботи з налаштуваннями таблиці
-  const handleSaveTableSettings = (newColumns) => {
+  const handleSaveTableSettings = async (newColumns) => {
     console.log('🔍 Зберігаємо налаштування таблиці:', newColumns);
     setTableColumns(newColumns);
     localStorage.setItem('stockStateTableSettings', JSON.stringify(newColumns));
-    console.log('✅ Налаштування таблиці збережено в localStorage');
+    try {
+      // Зберігаємо також на бекенді як персональне налаштування
+      const prefKey = 'stock_state_table';
+      const employeeId = employee?.ID || employee?.EmployeeID || null;
+      if (employeeId) {
+        await api.upsertUserTablePref(employeeId, prefKey, JSON.stringify(newColumns));
+        console.log('✅ Налаштування таблиці збережено в UserTablePrefs');
+      }
+    } catch (e) {
+      console.warn('⚠️ Не вдалося зберегти налаштування на сервері:', e?.message);
+    }
   };
 
   const visibleColumns = useMemo(() => {
@@ -202,6 +217,23 @@ export default function StockStatePage() {
   const isDiscountDocMode = (typeof window !== 'undefined') &&
     new URLSearchParams(window.location.search).get('key') === 'discount_doc';
 
+  // Ініціалізація параметрів вибору з URL (?select=1&key=...&back=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const sel = sp.get('select');
+    if (sel === '1') {
+      setSelectionMode(true);
+      setSelectionKey(sp.get('key') || 'stock');
+      const back = sp.get('back');
+      if (back) setBackUrl(back);
+      const c = sp.get('center_id');
+      const w = sp.get('warehouse_id');
+      if (c) setCenterId(String(c));
+      if (w) setWarehouseId(String(w));
+    }
+  }, []);
+
   // Завантаження даних
   useEffect(() => {
     console.log('🔍 StockStatePage: Початкове завантаження даних, employee:', employee);
@@ -227,7 +259,7 @@ export default function StockStatePage() {
           setPriceCategories([]);
         }
         
-        // Автоматично вибираємо центр зі статусбару (UserContext)
+        // 1) Автоматично вибираємо центр зі статусбару (UserContext)
         if (userCenterId) {
           console.log('🔍 StockStatePage: Встановлюємо центр зі статусбару (UserContext):', userCenterId);
           setCenterId(userCenterId);
@@ -236,6 +268,31 @@ export default function StockStatePage() {
           const activeCenter = centersData.find(c => c.IsActive) || centersData[0];
           console.log('🔍 StockStatePage: Fallback - встановлюємо перший активний центр:', activeCenter.ID);
           setCenterId(activeCenter.ID);
+        }
+
+        // 2) Підтягнемо збережені налаштування таблиці для співробітника
+        const prefKey = 'stock_state_table';
+        const employeeId = employee?.ID || employee?.EmployeeID || null;
+        if (employeeId) {
+          try {
+            const resp = await api.getUserTablePrefs(employeeId, prefKey);
+            const saved = resp?.PrefJson ? JSON.parse(resp.PrefJson) : null;
+            if (Array.isArray(saved) && saved.length) {
+              setTableColumns(saved);
+              console.log('✅ Завантажено персональні налаштування таблиці для співробітника');
+            } else {
+              // Фолбек — localStorage
+              const local = localStorage.getItem('stockStateTableSettings');
+              if (local) setTableColumns(JSON.parse(local));
+            }
+          } catch (e) {
+            console.warn('⚠️ Не вдалося завантажити налаштування користувача, використаємо localStorage');
+            const local = localStorage.getItem('stockStateTableSettings');
+            if (local) setTableColumns(JSON.parse(local));
+          }
+        } else {
+          const local = localStorage.getItem('stockStateTableSettings');
+          if (local) setTableColumns(JSON.parse(local));
         }
       } catch (error) {
         console.error('Помилка завантаження даних:', error);
@@ -265,18 +322,8 @@ export default function StockStatePage() {
 
     setLoading(true);
     try {
-      // Логіка для warehouse_id залежно від фільтра
-      let warehouse_id;
-      if (discountFilter === "with_discount") {
-        // Для товарів з уцінкою - передаємо конкретний склад уцінки
-        warehouse_id = warehouseId ? Number(warehouseId) : undefined;
-      } else if (discountFilter === "without_discount") {
-        // Для товарів без уцінки - передаємо конкретний склад (не уцінка)
-        warehouse_id = warehouseId ? Number(warehouseId) : undefined;
-      } else {
-        // Для "Всі товари" - НЕ передаємо warehouse_id, щоб показати всі склади
-        warehouse_id = undefined;
-      }
+      // Логіка складу: більше не залежить від фільтра — використовуємо вибір користувача
+      const warehouse_id = warehouseId ? Number(warehouseId) : undefined;
 
       const params = {
         search: search.trim(),
@@ -286,10 +333,10 @@ export default function StockStatePage() {
         price_category_id: priceCategoryId ? Number(priceCategoryId) : undefined,
         category_id: categoryId ? Number(categoryId) : undefined,
         qty_filter: qtyFilter || undefined,
-        only_weight: onlyWeight || undefined,
-        only_piece: onlyPiece || undefined,
-        only_discounted: onlyDiscounted || undefined,
-        discount_filter: discountFilter || undefined,
+        // Мапимо узагальнений фільтр на параметри
+        only_weight: discountFilter === 'weight' ? true : (onlyWeight || undefined),
+        only_piece: discountFilter === 'piece' ? true : (onlyPiece || undefined),
+        only_service: discountFilter === 'service' ? true : undefined,
         page,
         page_size: pageSize,
         sort_by: sortBy || undefined,
@@ -336,6 +383,36 @@ export default function StockStatePage() {
       setLoading(false);
     }
   }, [search, centerId, warehouseId, date, priceCategoryId, categoryId, qtyFilter, onlyWeight, onlyPiece, onlyDiscounted, discountFilter, page, pageSize, sortBy, sortDir, loading]);
+
+  // Допоміжні дії вибору
+  const toggleRow = (pid) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => setSelectedIds(new Set(rows.map(r => r.ProductID || r.ID)));
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const commitSelection = () => {
+    const items = rows
+      .filter(r => selectedIds.has(r.ProductID || r.ID))
+      .map(r => ({ id: Number(r.ProductID || r.ID), quantity: 1, price: Number(r.PriceWithDiscount ?? r.Price ?? 0) }));
+    try { window.sessionStorage.setItem(`selected::${selectionKey || 'stock'}`, JSON.stringify({ items })); } catch {}
+    if (backUrl) {
+      let url = backUrl;
+      // При використанні basename('/webapp') не можна передавати /webapp/... у navigate
+      try {
+        const BASENAME = '/webapp';
+        if (url.startsWith(BASENAME)) url = url.slice(BASENAME.length) || '/';
+      } catch {}
+      navigate(url);
+    } else {
+      navigate('/stock/discounts');
+    }
+  };
 
      // Автоматичне завантаження при зміні параметрів
    useEffect(() => {
@@ -396,34 +473,27 @@ export default function StockStatePage() {
         const warehousesData = Array.isArray(data) ? data : [];
         setWarehouses(warehousesData);
         
-                          // Автоматично вибираємо склад залежно від фільтра
+        // Автоматичний вибір складу: за замовчуванням Головний (якщо не вибрано)
          if (warehousesData.length > 0 && !warehouseId) {
            if (discountFilter === "with_discount") {
-             // Для товарів з уцінкою - вибираємо склад "Уцінка" (Type = write_off)
-             const discountWarehouse = warehousesData.find(w => 
-               w.IsActive && w.Type === 'write_off'
-             );
-             
+            const discountWarehouse = warehousesData.find(w => w.IsActive && w.Type === 'write_off');
              if (discountWarehouse) {
                console.log('🔍 StockStatePage: Обрано склад уцінки:', discountWarehouse);
                setWarehouseId(discountWarehouse.ID);
-               return;
-             }
-           } else if (discountFilter === "without_discount") {
-             // Для товарів без уцінки - вибираємо головний склад (Type = main)
-             const mainWarehouse = warehousesData.find(w => 
-               w.IsActive && w.Type === 'main'
-             );
-             
+            } else {
+              const mainWarehouse = warehousesData.find(w => w.IsActive && w.Type === 'main');
+              if (mainWarehouse) {
+                console.log('🔍 StockStatePage: Обрано головний склад за замовчуванням:', mainWarehouse);
+                setWarehouseId(mainWarehouse.ID);
+              }
+            }
+          } else {
+            const mainWarehouse = warehousesData.find(w => w.IsActive && w.Type === 'main');
              if (mainWarehouse) {
-               console.log('🔍 StockStatePage: Обрано головний склад:', mainWarehouse);
+              console.log('🔍 StockStatePage: Обрано головний склад за замовчуванням:', mainWarehouse);
                setWarehouseId(mainWarehouse.ID);
-               return;
              }
            }
-           
-           // Для "Всі товари" - НЕ вибираємо склад автоматично, залишаємо warehouseId = "" щоб показати всі склади
-           console.log('🔍 StockStatePage: Для "Всі товари" не вибираємо склад автоматично');
          }
       }).catch((error) => {
         console.error('🔍 StockStatePage: Помилка завантаження складів:', error);
@@ -547,10 +617,10 @@ export default function StockStatePage() {
                 }}
                 className="w-full p-4 border-2 border-gray-200 rounded-2xl text-lg focus:border-blue-500 focus:outline-none transition-colors duration-300"
               >
-                <option value="">Всі склади</option>
                 {warehouses.map(w => (
                   <option key={w.ID} value={w.ID}>{w.Name || w.ID}</option>
                 ))}
+                <option value="">Всі склади</option>
               </select>
             </div>
                          <div>
@@ -563,18 +633,19 @@ export default function StockStatePage() {
                />
              </div>
              <div>
-               <label className="block text-lg font-semibold text-gray-700 mb-3">Фільтр товарів</label>
+               <label className="block text-lg font-semibold text-gray-700 mb-3">Тип товару</label>
                <select
                  value={discountFilter}
                  onChange={(e) => {
-                   console.log('🔍 Зміна фільтра товарів:', e.target.value);
+                  console.log('🔍 Зміна типу товару:', e.target.value);
                    setDiscountFilter(e.target.value);
                  }}
                  className="w-full p-4 border-2 border-gray-200 rounded-2xl text-lg focus:border-blue-500 focus:outline-none transition-colors duration-300"
                >
-                 <option value="">Всі товари (всі склади)</option>
-                 <option value="with_discount">Товари з уцінкою (склад Уцінка)</option>
-                 <option value="without_discount">Товари без уцінки (всі склади крім Уцінка)</option>
+                <option value="">Всі товари</option>
+                <option value="piece">Штучні</option>
+                <option value="weight">Вагові</option>
+                <option value="service">Послуги</option>
                </select>
              </div>
           </div>
@@ -638,6 +709,18 @@ export default function StockStatePage() {
           </div>
         </div>
 
+        {/* Панель дій для режиму вибору */}
+        {selectionMode && (
+          <div className="mb-4 flex items-center justify-end gap-3">
+            <div className="px-4 py-2 bg-white rounded-xl shadow font-semibold text-gray-700">
+              Вибрано: {selectedIds.size}
+            </div>
+            <button onClick={selectAllVisible} className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-5 py-3 rounded-xl font-semibold">Вибрати всі</button>
+            <button onClick={clearSelection} className="px-5 py-3 bg-gray-200 rounded-xl font-semibold">Очистити</button>
+            <button onClick={commitSelection} disabled={selectedIds.size===0} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold disabled:opacity-50">✅ Додати вибране</button>
+          </div>
+        )}
+
         {/* Вміст - таблиця або картки */}
         {viewMode === "table" ? (
           /* Таблиця */
@@ -646,6 +729,9 @@ export default function StockStatePage() {
               <table className="min-w-full">
                 <thead>
                   <tr className="bg-gradient-to-r from-blue-100 to-indigo-100">
+                    {selectionMode && (
+                      <th className="p-4 text-left font-bold text-lg border-b-2 border-blue-200">✔</th>
+                    )}
                     {visibleColumns.map((column) => (
                       <th key={column.key} className="p-4 text-left font-bold text-lg border-b-2 border-blue-200">
                         {column.title}
@@ -656,6 +742,11 @@ export default function StockStatePage() {
                 <tbody>
                   {rows.map((row, idx) => (
                     <tr key={row.ID || idx} className="hover:bg-blue-50 transition-colors duration-200 border-b border-blue-100">
+                      {selectionMode && (
+                        <td className="p-4 text-center">
+                          <input type="checkbox" checked={selectedIds.has(row.ProductID || row.ID)} onChange={() => toggleRow(row.ProductID || row.ID)} />
+                        </td>
+                      )}
                       {visibleColumns.map((column) => (
                         <td key={column.key} className="p-4 text-center">
                           {renderCellValue(row, column.key)}

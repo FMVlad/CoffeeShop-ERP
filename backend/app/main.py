@@ -37,7 +37,10 @@ from app.routes import arrival_documents
 from app.routes import stock_state as stock_state_router
 from app.routes import costing as costing_router
 from app.routes import service_tasks as service_tasks_router
+from app.routes import discount_documents as discount_documents_router
+from app.routes import movements as movements_router
 from app.routes import user_prefs as user_prefs_router
+from app.routes import sales_documents as sales_documents_router
 
 app = FastAPI(
     title="VYSHNIA API",
@@ -49,8 +52,10 @@ app = FastAPI(
 # Для локальної розробки простіше дозволити все. Коли підеш у прод — звузь до конкретних origin-ів.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],              # <-- було ["http://localhost:3000"]
-    allow_credentials=True,
+    # Дозволяємо будь-яке походження у дев-середовищі
+    allow_origins=["*"],
+    allow_origin_regex=".*",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -99,6 +104,9 @@ app.include_router(stock_state_router.router, prefix="/api")
 app.include_router(costing_router.router, prefix="/api")
 app.include_router(service_tasks_router.router, prefix="/api")
 app.include_router(user_prefs_router.router, prefix="/api")
+app.include_router(discount_documents_router.router, prefix="/api")
+app.include_router(movements_router.router, prefix="/api")
+app.include_router(sales_documents_router.router, prefix="/api")
 
 @app.get("/")
 def read_root():

@@ -92,6 +92,18 @@ def _gross_price(net_price: Decimal, vat_rate_percent: Decimal) -> Decimal:
     return (net_price * multiplier).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+# Parse Decimal safely from potentially empty strings/nulls
+def _to_decimal(value: Any, default: str = "0") -> Decimal:
+    try:
+        if value is None:
+            return Decimal(default)
+        s = str(value).strip()
+        if s == "":
+            return Decimal(default)
+        return Decimal(s)
+    except Exception:
+        return Decimal(default)
+
 # Small helper
 def _get_db_name(db: pyodbc.Connection) -> str:
     try:
@@ -544,13 +556,13 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if not product_id:
                 raise HTTPException(status_code=400, detail=f"Рядок {idx}: не вказано товар")
 
-            qty = Decimal(str(it.get("Quantity", 0)))
+            qty = _to_decimal(it.get("Quantity", 0))
             if qty <= 0:
                 raise HTTPException(status_code=400, detail=f"Рядок {idx}: кількість має бути > 0")
 
             # Support FC price input
-            price_fc_input = Decimal(str(it.get("PriceFC", 0)))
-            price_input = Decimal(str(it.get("Price", 0)))
+            price_fc_input = _to_decimal(it.get("PriceFC", 0))
+            price_input = _to_decimal(it.get("Price", 0))
             tax_rate_id = it.get("TaxRateID")
             vat_rate = _get_tax_rate(db, tax_rate_id)
 
@@ -558,7 +570,7 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             working_price = price_input
             try:
                 if price_fc_input and price_fc_input > 0:
-                    rate = Decimal(str(header.get("CurrencyRate") or 1))
+                    rate = _to_decimal(header.get("CurrencyRate") or 1, default="1")
                     working_price = (price_fc_input * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             except Exception:
                 pass

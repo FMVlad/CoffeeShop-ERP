@@ -48,7 +48,7 @@ export default function RegisterPage() {
               ← Назад до закупівель
             </button>
             <button
-              onClick={() => navigate('/webapp')}
+              onClick={() => navigate('/')}
               className="bg-gradient-to-r from-gray-500 to-slate-600 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl"
             >
               🏠 На головну

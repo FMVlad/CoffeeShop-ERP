@@ -55,6 +55,7 @@ def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get
     except Exception:
         pass
     cursor = db.cursor()
+    # 1) Прямий збіг у Products.Barcode / Products.DiscountBarcode
     cursor.execute(
         """
         SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
@@ -64,11 +65,64 @@ def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get
         (barcode, barcode),
     )
     row = cursor.fetchone()
-    if not row:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Товар з цим штрихкодом не знайдено")
-    cols = [c[0] for c in cursor.description]
-    return dict(zip(cols, row))
+    if row:
+        cols = [c[0] for c in cursor.description]
+        return dict(zip(cols, row))
+
+    # 2) Фолбек: уцінені штрихкоди на складах (ProductDiscountBarcodes)
+    try:
+        cursor.execute(
+            """
+            SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+            FROM dbo.ProductDiscountBarcodes b
+            JOIN dbo.Products p ON p.ID = b.ProductID
+            WHERE b.DiscountBarcode = ?
+            """,
+            (barcode,),
+        )
+        row2 = cursor.fetchone()
+        if row2:
+            cols = [c[0] for c in cursor.description]
+            data = dict(zip(cols, row2))
+
+            # Спробуємо визначити склад з коду 29 + {warehouseId (4)} + ...
+            discount_price = None
+            warehouse_id = None
+            try:
+                if len(barcode) >= 6 and str(barcode).startswith("29"):
+                    warehouse_id = int(str(barcode)[2:6])
+            except Exception:
+                warehouse_id = None
+
+            if warehouse_id:
+                try:
+                    # Остання записана ціна уцінки по цьому складу
+                    cursor.execute(
+                        """
+                        SELECT TOP 1 di.Price
+                        FROM DiscountDocItems di
+                        JOIN DiscountDocs d ON d.ID = di.DocID
+                        WHERE d.WarehouseID = ? AND d.Status = 'posted' AND di.ProductID = ?
+                        ORDER BY di.ID DESC
+                        """,
+                        (warehouse_id, data["ID"]),
+                    )
+                    rprice = cursor.fetchone()
+                    if rprice:
+                        discount_price = float(rprice[0])
+                except Exception:
+                    discount_price = None
+
+            data["DiscountPrice"] = discount_price
+            data["IsDiscountBarcode"] = True
+            data["WarehouseIDFromBarcode"] = warehouse_id
+            return data
+    except Exception:
+        # Таблиці може не бути — ігноруємо
+        pass
+
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Товар з цим штрихкодом не знайдено")
 
 
 def generate_ean13_barcode(db, barcode_prefix):

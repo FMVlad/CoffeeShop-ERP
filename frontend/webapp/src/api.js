@@ -45,7 +45,7 @@ function buildQuery(q) {
 // --- Універсальний fetch з таймаутом і нормальними помилками ---
 async function fetchJSON(
   path,
-  { method = "GET", data, query, headers = {}, timeoutMs = 15000 } = {}
+  { method = "GET", data, query, headers = {}, timeoutMs = 30000 } = {}
 ) {
   const controller = new AbortController();
   const t = setTimeout(
@@ -252,6 +252,9 @@ export const updatePriceCategory = (id, data) =>
 export const deletePriceCategory = (id) =>
   fetchJSON(`/price-categories/${id}`, { method: "DELETE" });
 
+// --- Заокруглення ---
+export const getRoundingSteps = () => fetchJSON('/rounding-steps');
+
 // --- Шаблони карток ---
 export const getProductCardTemplates = () => fetchJSON("/product-card-templates");
 export const addProductCardTemplate = (data) =>
@@ -325,6 +328,10 @@ export const getProductCardTemplateVars = () =>
   fetchJSON("/product-name-rule-vars");
 export const generateProductFullName = (data) =>
   fetchJSON("/product-full-name/generate", { method: "POST", data });
+
+// --- User prefs (персональні налаштування таблиць) ---
+export const getUserPrefs = (params) => fetchJSON("/user-prefs", { query: params });
+export const saveUserPref = (data) => fetchJSON("/user-prefs", { method: "POST", data });
 
 // --- План рахунків ---
 export const getChartOfAccounts = () => fetchJSON("/chart-of-accounts");
@@ -614,6 +621,20 @@ export const deleteArrivalDocItem = (docId, itemId) =>
 export const cancelArrivalDocPostings = (id) =>
   fetchJSON(`/arrival-documents/${id}/postings`, { method: 'DELETE' });
 
+// --- Документи уцінки ---
+export const getDiscountDocs = (params = {}) => fetchJSON('/discount-documents', { query: params });
+export const getDiscountDoc = (id) => fetchJSON(`/discount-documents/${id}`);
+export const addDiscountDoc = (data) => fetchJSON('/discount-documents', { method: 'POST', data });
+export const updateDiscountDoc = (id, data) => fetchJSON(`/discount-documents/${id}`, { method: 'PUT', data });
+export const deleteDiscountDoc = (id) => fetchJSON(`/discount-documents/${id}`, { method: 'DELETE' });
+export const getDiscountDocItems = (docId) => fetchJSON(`/discount-documents/${docId}/items`);
+export const addDiscountDocItem = (docId, data) => fetchJSON(`/discount-documents/${docId}/items`, { method: 'POST', data });
+export const updateDiscountDocItem = (docId, itemId, data) => fetchJSON(`/discount-documents/${docId}/items/${itemId}`, { method: 'PUT', data });
+export const deleteDiscountDocItem = (docId, itemId) => fetchJSON(`/discount-documents/${docId}/items/${itemId}`, { method: 'DELETE' });
+export const cleanupStockBalances = () => fetchJSON('/stock/cleanup-balances', { method: 'POST' });
+export const postDiscountDocPostings = (id) => fetchJSON(`/discount-documents/${id}/postings`, { method: 'POST' });
+export const closeDiscountDocIfEmpty = (id) => fetchJSON(`/discount-documents/${id}/close-if-empty`, { method: 'POST' });
+
 // --- Глобальний експорт ---
 export const api = {
   // Глобальні методи для ручних викликів
@@ -784,6 +805,31 @@ export const api = {
   deleteArrivalDocItem,
   postArrivalDocPostings,
   cancelArrivalDocPostings,
+  // Уцінка
+  getDiscountDocs,
+  getDiscountDoc,
+  addDiscountDoc,
+  updateDiscountDoc,
+  deleteDiscountDoc,
+  getDiscountDocItems,
+  addDiscountDocItem,
+  updateDiscountDocItem,
+  deleteDiscountDocItem,
+  cleanupStockBalances,
+  postDiscountDocPostings,
+  closeDiscountDocIfEmpty,
+  // Переміщення
+  async getMovements(params) { return fetchJSON('/movements', { query: params||{} }); },
+  async addMovement(data) { return fetchJSON('/movements', { method: 'POST', data }); },
+  async getMovement(id) { return fetchJSON(`/movements/${id}`); },
+  async updateMovement(id, data) { return fetchJSON(`/movements/${id}`, { method: 'PUT', data }); },
+  async deleteMovement(id) { return fetchJSON(`/movements/${id}`, { method: 'DELETE' }); },
+  async addMovementItem(docId, data) { return fetchJSON(`/movements/${docId}/items`, { method: 'POST', data }); },
+  async shipMovement(id) { return fetchJSON(`/movements/${id}/postings/ship`, { method: 'POST' }); },
+  async receiveMovement(id) { return fetchJSON(`/movements/${id}/postings/receive`, { method: 'POST' }); },
+  async cancelReceiveMovement(id) { return fetchJSON(`/movements/${id}/postings/cancel-receive`, { method: 'POST' }); },
+  async updateMovementItem(docId, itemId, data) { return fetchJSON(`/movements/${docId}/items/${itemId}`, { method: 'PUT', data }); },
+  async deleteMovementItem(docId, itemId) { return fetchJSON(`/movements/${docId}/items/${itemId}`, { method: 'DELETE' }); },
   // Програмні параметри
   getProgrammParameters,
   upsertProgrammParameter,
@@ -795,5 +841,16 @@ export const api = {
   async upsertUserTablePref(employeeId, prefKey, prefJson) {
     return fetchJSON('/user-prefs', { method: 'POST', data: { EmployeeID: employeeId, PrefKey: prefKey, PrefJson: prefJson } });
   },
+
+  // Продажі
+  async getSales(params) { return fetchJSON('/sales-documents', { query: params||{} }); },
+  async getSale(id) { return fetchJSON(`/sales-documents/${id}`); },
+  async addSale(data) { return fetchJSON('/sales-documents', { method: 'POST', data }); },
+  async deleteSale(id) { return fetchJSON(`/sales-documents/${id}`, { method: 'DELETE' }); },
+  async getSaleItems(docId) { return fetchJSON(`/sales-documents/${docId}/items`); },
+  async addSaleItem(docId, data) { return fetchJSON(`/sales-documents/${docId}/items`, { method: 'POST', data }); },
+  async updateSaleItem(docId, itemId, data) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'PUT', data }); },
+  async deleteSaleItem(docId, itemId) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'DELETE' }); },
+  async postSalePostings(id) { return fetchJSON(`/sales-documents/${id}/postings`, { method: 'POST' }); },
 
 };

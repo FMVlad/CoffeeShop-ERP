@@ -1,9 +1,7 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import MenuCard from '../components/MenuCard';
 
 export default function DictionariesPage() {
-  const navigate = useNavigate();
 
   const menu = [
     {

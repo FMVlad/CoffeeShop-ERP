@@ -12,13 +12,16 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const navigate = useNavigate();
 
   const addRow = useCallback(() => {
-    setDoc((d) => ({
-      ...d,
-      Items: [
-        ...d.Items,
-        { ProductID: "", ProductName: "", Quantity: 1, Price: 0, TaxRateID: null },
-      ],
-    }));
+    setDoc((d) => {
+      const baseItems = Array.isArray(d?.Items) ? d.Items : [];
+      return {
+        ...d,
+        Items: [
+          ...baseItems,
+          { ProductID: "", ProductName: "", Quantity: 1, Price: 0, TaxRateID: null },
+        ],
+      };
+    });
   }, [setDoc]);
 
   const onBarcodeResolved = React.useCallback((p) => {
@@ -30,8 +33,9 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const id = p.ID ?? p.Id ?? p.id ?? p.ProductID ?? p.product_id ?? "";
 
   setDoc((d) => {
+    const baseItems = Array.isArray(d?.Items) ? d.Items : [];
     const newItems = [
-      ...d.Items,
+      ...baseItems,
       {
         ProductID: id,
         ProductName: name,
@@ -51,7 +55,8 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const setItem = useCallback(
     (idx, key, val) => {
       setDoc((d) => {
-        let items = d.Items.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
+        const safeItems = Array.isArray(d?.Items) ? d.Items : [];
+        let items = safeItems.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
         // Якщо користувач змінює PriceFC або змінився курс — перерахувати Price у гривні
         if (key === 'PriceFC' || key === 'Quantity' || key === 'Price') {
           const rate = Number(d.CurrencyRate || 1);
@@ -73,7 +78,8 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
   const delItem = useCallback(
     (idx) => {
       setDoc((d) => {
-        const items = d.Items.filter((_, i) => i !== idx);
+        const safeItems = Array.isArray(d?.Items) ? d.Items : [];
+        const items = safeItems.filter((_, i) => i !== idx);
         const total = items.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
         return { ...d, Items: items, TotalAmount: total };
       });
@@ -169,7 +175,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
             </tr>
           </thead>
           <tbody>
-            {doc.Items.map((r, idx) => (
+            {(Array.isArray(doc?.Items) ? doc.Items : []).map((r, idx) => (
               <tr key={idx}>
                 <td className="p-2 border">
                   <ProductPicker
@@ -225,7 +231,7 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                 </td>
               </tr>
             ))}
-            {doc.Items.length === 0 && (
+            {(Array.isArray(doc?.Items) ? doc.Items : []).length === 0 && (
               <tr>
                 <td className="p-3 text-center text-gray-500 border" colSpan={5}>
                   Додайте позиції
@@ -251,7 +257,8 @@ export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFo
                 Price: 0,
                 TaxRateID: null,
               }));
-              const newItems = [...d.Items, ...appended];
+              const baseItems = Array.isArray(d?.Items) ? d.Items : [];
+              const newItems = [...baseItems, ...appended];
               const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
               return { ...d, Items: newItems, TotalAmount: total };
             });

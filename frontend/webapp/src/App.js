@@ -9,8 +9,8 @@ import CategoriesPage from './pages/CategoriesPage.jsx';
 import PriceCategoriesPage from './pages/PriceCategoriesPage.jsx';
 import ProductPricesPage from './pages/ProductPricesPage.jsx';
 import PriceListPage from './pages/PriceListPage.jsx';
+import MovementDocumentsPage from './pages/MovementDocumentsPage.jsx';
 import StockPage from './pages/StockPage.jsx';
-import StockTransferPage from './pages/StockTransferPage.jsx';
 
 import DiscountDocumentsPage from './pages/DiscountDocumentsPage.jsx';
 import StockStatePage from './pages/StockStatePage.jsx';
@@ -46,6 +46,9 @@ import MarketingPage from "./pages/MarketingPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import SalesPage from "./pages/SalesPage.jsx";
 import RetailSalesPage from "./pages/RetailSalesPage.jsx";
+import MobileSalesPage from "./pages/MobileSalesPage.jsx";
+import InvoiceSalesPage from "./pages/InvoiceSalesPage.jsx";
+import SalesRegisterPage from "./pages/SalesRegisterPage.jsx";
 import AccountingPage from "./pages/AccountingPage.jsx";
 import DictionariesPage from "./pages/DictionariesPage.jsx";
 import FinancePage from "./pages/FinancePage.jsx";
@@ -147,6 +150,9 @@ function AppRoutes() {
                   {/* Продажі */}
                   <Route path="/sales" element={<SalesPage />} />
                   <Route path="/sales/retail" element={<RetailSalesPage />} />
+                  <Route path="/sales/mobile" element={<MobileSalesPage />} />
+                  <Route path="/sales/invoices" element={<InvoiceSalesPage />} />
+                  <Route path="/sales/register" element={<SalesRegisterPage />} />
                   {/* Закупівлі: меню з картками */}
                   <Route path="/purchases" element={<PurchasesPage />} />
                   <Route path="/arrivals" element={<ArrivalDocumentsPage />} />
@@ -177,8 +183,9 @@ function AppRoutes() {
                     <Route path="state" element={<StockStatePage />} />
                     <Route path="price-categories" element={<PriceCategoriesPage />} />
                     <Route path="price-list" element={<PriceListPage />} />
+                    <Route path="movements" element={<MovementDocumentsPage />} />
                     <Route path="revaluation" element={<ProductPricesPage />} />
-                    <Route path="transfer" element={<StockTransferPage />} />
+                    <Route path="transfer" element={<MovementDocumentsPage />} />
             
                     <Route path="discounts" element={<DiscountDocumentsPage />} />
                   </Route>
