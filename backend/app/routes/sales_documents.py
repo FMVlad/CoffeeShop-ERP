@@ -6,6 +6,7 @@ import pyodbc
 
 from app.db_connection import get_db
 from app.routes.accounting_periods import is_closed as period_is_closed
+from app.services.typical_ops import get_operation_entries
 
 
 router = APIRouter(prefix="/sales-documents", tags=["sales-documents"])
@@ -299,7 +300,32 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     except Exception:
         pass
 
-    # Простий шаблон проводок: виручка та ПДВ (COGS додамо, коли підв’яжемо FIFO борди)
+    # Спроба сформувати за типовою операцією через TypicalOperationBindings
+    try:
+        bind = cur.execute(
+            "SELECT TOP 1 OperationID FROM TypicalOperationBindings WHERE DocumentType='SALE' AND IsActive=1 ORDER BY IsDefault DESC, Priority, ID DESC"
+        ).fetchone()
+        if bind and bind[0]:
+            entries = get_operation_entries(db, int(bind[0]))
+            for e in entries:
+                debit = int(e.get("DebitAccountID"))
+                credit = int(e.get("CreditAccountID"))
+                amt_type = (e.get("AmountType") or '').lower()
+                if amt_type in ("percent","pct","%"):
+                    amount = (base * Decimal("0.01")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                else:
+                    amount = base
+                cur.execute(
+                    "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CenterID, CreatedAt, CreatedBy, Comment) "
+                    "VALUES (?, 'SALE', ?, ?, ?, ?, ?, GETDATE(), ?, ?)",
+                    (doc_id, on_date, debit, credit, float(amount), head[1], 1, e.get("Notes") or "typical")
+                )
+            db.commit()
+            return {"Postings": "generated from TypicalOperationBindings"}
+    except Exception:
+        pass
+
+    # Fallback: простий шаблон проводок: виручка та ПДВ (COGS додамо згодом)
     center_id = head[1]
     company_id = head[3]
     has_company = _table_has_column(db, "DocumentPostings", "CompanyID")
