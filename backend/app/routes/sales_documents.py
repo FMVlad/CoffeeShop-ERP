@@ -83,6 +83,21 @@ def _ensure_tables(db: pyodbc.Connection) -> None:
         pass
 
 
+def _next_doc_number_for_center(db: pyodbc.Connection, center_id: int) -> str:
+    """Повертає наступний номер документа по центру: MAX(TRY_CONVERT(INT, Number))+1.
+    Якщо номерів немає або нечислові — повертає '1'."""
+    try:
+        cur = db.cursor()
+        row = cur.execute(
+            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments WHERE CenterID=?",
+            (center_id,),
+        ).fetchone()
+        nxt = int(row[0]) if row and row[0] is not None else 1
+        return str(nxt)
+    except Exception:
+        return "1"
+
+
 @router.get("")
 def list_sales(date_from: Optional[str] = Query(None), date_to: Optional[str] = Query(None), db: pyodbc.Connection = Depends(get_db)):
     _ensure_tables(db)
@@ -119,8 +134,13 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
     cur = db.cursor()
     # Заголовок
     # Динамічна вставка з урахуванням CompanyID, якщо така колонка існує
+    # Номер: якщо не переданий — генеруємо по центру обліку
+    number_value = header.get("Number")
+    if not number_value:
+        number_value = _next_doc_number_for_center(db, int(center_id)) if center_id else None
+
     cols = ["Number", "Date", "CustomerID", "CenterID", "PricesIncludeVAT", "TotalAmount", "Status"]
-    vals = [header.get("Number") or None, on_date, customer_id, center_id, 1 if price_includes_vat else 0, 0, 'draft']
+    vals = [number_value, on_date, customer_id, center_id, 1 if price_includes_vat else 0, 0, 'draft']
     if _table_has_column(db, "SalesDocuments", "CompanyID"):
         cols.insert(4, "CompanyID")
         vals.insert(4, company_id)
