@@ -331,3 +331,23 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     ]}
 
 
+
+@router.get("/{doc_id}/postings")
+def list_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
+    """Повертає проводки, прив'язані до документа реалізації."""
+    try:
+        cur = db.cursor()
+        rows = cur.execute(
+            """
+            SELECT PostingDate, DebitAccountID, CreditAccountID, Amount, Comment
+              FROM DocumentPostings
+             WHERE DocumentType = 'SALE' AND DocumentID = ?
+             ORDER BY PostingDate, ID
+            """,
+            (doc_id,),
+        ).fetchall()
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in rows]
+    except Exception:
+        return []
+
