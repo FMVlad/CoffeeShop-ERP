@@ -31,9 +31,10 @@ export default function ClientsPage() {
   const loadClients = async () => {
     setLoading(true);
     try {
-      const result = await api.getClients(search, page, pageSize);
-      setClients(result.clients || []);
-      setTotal(result.total || 0);
+      const result = await api.getClients({ q: search });
+      const list = Array.isArray(result) ? result : [];
+      setClients(list);
+      setTotal(list.length);
     } catch (error) {
       console.error('Помилка завантаження клієнтів:', error);
       alert('Помилка завантаження: ' + error.message);

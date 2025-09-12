@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.db_connection import get_db
+from hashlib import sha256
 
 router = APIRouter()
 
@@ -61,10 +62,19 @@ def delete_user(id: int, db=Depends(get_db)):
 # === ЛОГІН користувача ===
 @router.post("/login")
 def login_user(data: dict, db=Depends(get_db)):
-    username = data.get("username")
+    # Підтримка обох форматів: password_hash або plain password
+    username = data.get("username") or data.get("Username")
     password_hash = data.get("password_hash")
-    if not username or not password_hash:
+    raw_password = data.get("password")
+    if not username or (password_hash is None and raw_password is None):
         raise HTTPException(status_code=400, detail="Логін і пароль обовʼязкові")
+
+    if password_hash is None and raw_password is not None:
+        try:
+            password_hash = sha256(str(raw_password).encode()).hexdigest()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Некоректний пароль")
+
     cursor = db.cursor()
     cursor.execute(
         "SELECT ID, Username, CentersOfAccountingID, IsActive FROM Users WHERE Username = ? AND PasswordHash = ?",
@@ -75,8 +85,4 @@ def login_user(data: dict, db=Depends(get_db)):
         raise HTTPException(status_code=401, detail="Невірний логін або пароль")
     if not user[3]:
         raise HTTPException(status_code=403, detail="Користувач неактивний")
-    return {
-        "id": user[0],
-        "username": user[1],
-        "center_id": user[2]
-    }
+    return {"id": user[0], "username": user[1], "center_id": user[2]}

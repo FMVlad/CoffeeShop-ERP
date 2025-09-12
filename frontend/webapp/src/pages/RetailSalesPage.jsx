@@ -14,6 +14,7 @@ export default function RetailSalesPage() {
   const [priceMap, setPriceMap] = useState({});
   const [customer, setCustomer] = useState(null);
   const handledSelectionRef = useRef(false);
+  const cleanedRef = useRef(false);
 
   async function reloadItems() {
     if (!current?.ID) return;
@@ -130,10 +131,34 @@ export default function RetailSalesPage() {
   }, 0);
   const totalDiscount = Math.max(0, totalRetail - totalByItems);
 
+  // При виході зі сторінки — видаляємо порожню чернетку
+  useEffect(() => {
+    return () => {
+      if (cleanedRef.current) return;
+      cleanedRef.current = true;
+      try {
+        const isDraft = String(current?.Status || 'draft').toLowerCase() === 'draft';
+        if (current?.ID && isDraft && (!Array.isArray(items) || items.length === 0)) {
+          api.deleteSale(current.ID).catch(()=>{});
+        }
+      } catch {}
+    };
+  }, [current?.ID, current?.Status, items?.length]);
+
+  async function handleBack() {
+    try {
+      const isDraft = String(current?.Status || 'draft').toLowerCase() === 'draft';
+      if (current?.ID && isDraft && (!Array.isArray(items) || items.length === 0)) {
+        await api.deleteSale(current.ID);
+      }
+    } catch {}
+    navigate('/sales');
+  }
+
   return (
     <div className="retail-root">
       <header className="retail-header">
-        <button onClick={() => navigate('/sales')} className="px-4 py-2 bg-white/10 rounded-lg">← Назад</button>
+        <button onClick={handleBack} className="px-4 py-2 bg-white/10 rounded-lg">← Назад</button>
         <div className="text-2xl font-bold">🏪 Роздрібні продажі</div>
         <button onClick={() => navigate('/')} className="px-4 py-2 bg-white/10 rounded-lg">🏠 Додому</button>
       </header>
@@ -206,7 +231,7 @@ export default function RetailSalesPage() {
         <aside className="bg-white rounded-2xl shadow p-4 retail-aside">
           <div className="grid grid-cols-2 gap-3 mb-4">
             <label className="text-sm text-gray-600 self-center">№</label>
-            <input className="border rounded px-3 py-2" value={current?.ID || ''} readOnly />
+            <input className="border rounded px-3 py-2" value={current?.Number || ''} readOnly />
             <label className="text-sm text-gray-600 self-center">Дата</label>
             <input className="border rounded px-3 py-2" value={(current?.Date || new Date().toISOString()).slice(0,10)} readOnly />
           </div>

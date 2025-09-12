@@ -99,6 +99,19 @@ def _next_doc_number_for_center(db: pyodbc.Connection, center_id: int) -> str:
         return "1"
 
 
+def _next_doc_number_global(db: pyodbc.Connection) -> str:
+    """Повертає наступний номер документа глобально: MAX(Number)+1."""
+    try:
+        cur = db.cursor()
+        row = cur.execute(
+            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments"
+        ).fetchone()
+        nxt = int(row[0]) if row and row[0] is not None else 1
+        return str(nxt)
+    except Exception:
+        return "1"
+
+
 @router.get("")
 def list_sales(date_from: Optional[str] = Query(None), date_to: Optional[str] = Query(None), db: pyodbc.Connection = Depends(get_db)):
     _ensure_tables(db)
@@ -138,7 +151,8 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
     # Номер: якщо не переданий — генеруємо по центру обліку
     number_value = header.get("Number")
     if not number_value:
-        number_value = _next_doc_number_for_center(db, int(center_id)) if center_id else None
+        # Спочатку по центру, якщо заданий; інакше — глобально
+        number_value = (_next_doc_number_for_center(db, int(center_id)) if center_id else None) or _next_doc_number_global(db)
 
     cols = ["Number", "Date", "CustomerID", "CenterID", "PricesIncludeVAT", "TotalAmount", "Status"]
     vals = [number_value, on_date, customer_id, center_id, 1 if price_includes_vat else 0, 0, 'draft']
@@ -179,7 +193,20 @@ def get_sale(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     if not row:
         raise HTTPException(404, "Документ не знайдено")
     cols = [c[0] for c in cur.description]
-    return dict(zip(cols, row))
+    data = dict(zip(cols, row))
+
+    # Якщо номер не проставлено (старі чернетки) — дозапишемо зараз
+    if not data.get("Number"):
+        try:
+            center_id = data.get("CenterID")
+            new_num = (_next_doc_number_for_center(db, int(center_id)) if center_id else _next_doc_number_global(db))
+            cur.execute("UPDATE SalesDocuments SET Number=? WHERE ID=?", (new_num, doc_id))
+            db.commit()
+            data["Number"] = new_num
+        except Exception:
+            pass
+
+    return data
 
 
 @router.get("/{doc_id}/items")
@@ -310,10 +337,21 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             for e in entries:
                 debit = int(e.get("DebitAccountID"))
                 credit = int(e.get("CreditAccountID"))
-                amt_type = (e.get("AmountType") or '').lower()
-                if amt_type in ("percent","pct","%"):
-                    amount = (base * Decimal("0.01")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                else:
+                amt_raw = (e.get("AmountType") or '').strip().lower()
+                amount: Decimal
+                if amt_raw.startswith("percent") or amt_raw.startswith("pct") or amt_raw.startswith("%"):
+                    # percent[:value] → percent:20 => 20%
+                    try:
+                        parts = amt_raw.split(":", 1)
+                        pct = Decimal(parts[1]) if len(parts) == 2 else Decimal("1")
+                    except Exception:
+                        pct = Decimal("1")
+                    amount = (base * (pct / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                elif amt_raw in ("vat", "пдв"):
+                    amount = vat
+                elif amt_raw in ("gross", "total", "sum"):
+                    amount = total_gross
+                else:  # "base" | "net" | empty
                     amount = base
                 cur.execute(
                     "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CenterID, CreatedAt, CreatedBy, Comment) "

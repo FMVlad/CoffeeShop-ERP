@@ -36,6 +36,7 @@ export default function UserLoginPage() {
             onChange={e => setUsername(e.target.value)}
             style={inputStyle}
             autoFocus
+            autoComplete="username"
           />
         </div>
         <div>
@@ -45,6 +46,7 @@ export default function UserLoginPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             style={inputStyle}
+            autoComplete="current-password"
           />
         </div>
         {error && <div style={{ color: "#c4282d", marginBottom: 16 }}>{error}</div>}

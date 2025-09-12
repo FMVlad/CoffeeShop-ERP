@@ -6,7 +6,9 @@ from hashlib import sha256
 
 router = APIRouter()
 
-@router.post("/login")
+# Уникаємо конфлікту з users.login_user (/api/login)
+# Виносимо цей ендпоїнт на /api/auth/login
+@router.post("/auth/login")
 def login(data: dict, db=Depends(get_db)):
     username = data.get("username")
     password = data.get("password")

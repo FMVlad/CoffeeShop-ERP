@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from typing import List, Dict, Any, Optional
 import pyodbc
 
@@ -29,6 +30,14 @@ def _ensure_clients_table(db: pyodbc.Connection) -> None:
               CREATE INDEX IX_Clients_Barcode ON dbo.Clients(Barcode);
               CREATE INDEX IX_Clients_Code ON dbo.Clients(Code);
             END;
+            -- Гарантуємо унікальність штрихкоду клієнта
+            IF NOT EXISTS (
+                SELECT 1 FROM sys.indexes 
+                WHERE object_id = OBJECT_ID('dbo.Clients') AND name = 'UQ_Clients_Barcode'
+            )
+            BEGIN
+              CREATE UNIQUE INDEX UQ_Clients_Barcode ON dbo.Clients(Barcode);
+            END
             """
         )
     except Exception:
@@ -49,6 +58,40 @@ def _get_default_price_category_id(db: pyodbc.Connection) -> Optional[int]:
         return int(row[0]) if row else None
     except Exception:
         return None
+
+
+def _ean13_checksum(body12: str) -> str:
+    """Коректний EAN-13 checksum для 12-значного тіла."""
+    if not body12 or len(body12) != 12 or not body12.isdigit():
+        return "0"
+    s = 0
+    # позиції з права наліво: 1..12; але простіше зліва: індекси 0..11
+    for i, ch in enumerate(body12):
+        d = int(ch)
+        # парні індекси (0,2,4,...) – вага 1; непарні – вага 3
+        s += d if (i % 2 == 0) else (3 * d)
+    return str((10 - (s % 10)) % 10)
+
+
+def _generate_client_barcode(db: pyodbc.Connection) -> str:
+    """Генерує унікальний EAN-13 клієнта за префіксом SystemParameters.BarcodeClient."""
+    cur = db.cursor()
+    prefix = _get_param(db, 'BarcodeClient', '990') or '990'
+    prefix_digits = ''.join(ch for ch in str(prefix) if ch.isdigit()) or '990'
+    # забезпечимо довжину < 12
+    if len(prefix_digits) >= 12:
+        prefix_digits = prefix_digits[:12]
+    # початкова послідовність
+    row_next = cur.execute("SELECT ISNULL(MAX(ID),0)+1 FROM Clients").fetchone()
+    next_id = int(row_next[0] or 1)
+    while True:
+        fill = max(0, 12 - len(prefix_digits))
+        body12 = (prefix_digits + f"{next_id:0{fill}d}")[:12]
+        code = body12 + _ean13_checksum(body12)
+        r = cur.execute("SELECT COUNT(*) FROM Clients WHERE Barcode=?", (code,)).fetchone()
+        if int(r[0]) == 0:
+            return code
+        next_id += 1
 
 
 def _get_or_create_default_retail_customer(db: pyodbc.Connection) -> int:
@@ -85,6 +128,11 @@ def list_clients(q: Optional[str] = Query(None), db: pyodbc.Connection = Depends
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, r)) for r in rows]
 
+# CORS preflight (інколи у dev оточенні корисно мати явні OPTIONS)
+@router.options("")
+def options_root():
+    return Response()
+
 
 @router.get("/{client_id}")
 def get_client(client_id: int, db: pyodbc.Connection = Depends(get_db)):
@@ -93,6 +141,55 @@ def get_client(client_id: int, db: pyodbc.Connection = Depends(get_db)):
     row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (client_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Клієнта не знайдено")
+    cols = [c[0] for c in cur.description]
+    return dict(zip(cols, row))
+
+@router.options("/{client_id}")
+def options_client_id(client_id: int):
+    return Response()
+
+
+# === Create ===
+@router.post("")
+def create_client(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)):
+    _ensure_clients_table(db)
+    name = (payload.get("Name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Name обов'язкове")
+    barcode = (payload.get("Barcode") or None)
+    code = (payload.get("Code") or None)
+    # Нормалізація типів
+    raw_pcid = payload.get("PriceCategoryID")
+    try:
+        price_category_id = int(raw_pcid) if raw_pcid not in ("", None) else None
+    except Exception:
+        price_category_id = None
+    address = payload.get("Address")
+    phone = payload.get("Phone")
+    email = payload.get("Email")
+    raw_is_vat = payload.get("IsVATPayer")
+    is_vat = (1 if bool(raw_is_vat) else 0) if raw_is_vat is not None else None
+    cur = db.cursor()
+    # Якщо штрихкод не передано, згенеруємо унікальний: <prefix><next_id>
+    if not barcode:
+        try:
+            barcode = _generate_client_barcode(db)
+        except Exception:
+            # Фолбек: хоча б щось валідне за довжиною
+            prefix = _get_param(db, 'BarcodeClient', '990') or '990'
+            body12 = (str(prefix) + "000000000000")[:12]
+            barcode = body12 + _ean13_checksum(body12)
+    cur.execute(
+        """
+        INSERT INTO Clients (Name, Barcode, Code, PriceCategoryID, Address, Phone, Email, IsVATPayer)
+        OUTPUT INSERTED.ID
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (name, barcode, code, price_category_id, address, phone, email, is_vat)
+    )
+    new_id = int(cur.fetchone()[0])
+    db.commit()
+    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (new_id,)).fetchone()
     cols = [c[0] for c in cur.description]
     return dict(zip(cols, row))
 
@@ -142,5 +239,38 @@ def ensure_default_retail(db: pyodbc.Connection = Depends(get_db)):
     row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (cid,)).fetchone()
     cols = [c[0] for c in cur.description]
     return dict(zip(cols, row))
+
+
+# === Update ===
+@router.put("/{client_id}")
+def update_client(client_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)):
+    _ensure_clients_table(db)
+    sets = []
+    vals: list[Any] = []
+    for field in ("Name", "Barcode", "Code", "PriceCategoryID", "Address", "Phone", "Email", "IsVATPayer"):
+        if field in payload:
+            sets.append(f"{field}=?")
+            vals.append(payload.get(field))
+    if not sets:
+        return {"ok": True}
+    vals.extend([client_id])
+    cur = db.cursor()
+    cur.execute(f"UPDATE Clients SET {', '.join(sets)} WHERE ID=?", tuple(vals))
+    db.commit()
+    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (client_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Клієнта не знайдено")
+    cols = [c[0] for c in cur.description]
+    return dict(zip(cols, row))
+
+
+# === Delete ===
+@router.delete("/{client_id}")
+def delete_client(client_id: int, db: pyodbc.Connection = Depends(get_db)):
+    _ensure_clients_table(db)
+    cur = db.cursor()
+    cur.execute("DELETE FROM Clients WHERE ID=?", (client_id,))
+    db.commit()
+    return {"ok": True}
 
 

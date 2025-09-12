@@ -853,4 +853,15 @@ export const api = {
   async deleteSaleItem(docId, itemId) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'DELETE' }); },
   async postSalePostings(id) { return fetchJSON(`/sales-documents/${id}/postings`, { method: 'POST' }); },
 
+  // Клієнти (маркетинг)
+  async getClients(params) { return fetchJSON('/clients', { query: params||{} }); },
+  async getClient(id) { return fetchJSON(`/clients/${id}`); },
+  async addClient(data) { return fetchJSON('/clients', { method: 'POST', data }); },
+  async createClient(data) { return fetchJSON('/clients', { method: 'POST', data }); },
+  async updateClient(id, data) { return fetchJSON(`/clients/${id}`, { method: 'PUT', data }); },
+  async editClient(id, data) { return fetchJSON(`/clients/${id}`, { method: 'PUT', data }); },
+  async deleteClient(id) { return fetchJSON(`/clients/${id}`, { method: 'DELETE' }); },
+  async getClientByBarcode(code) { return fetchJSON(`/clients/by-barcode/${encodeURIComponent(code)}`); },
+  async ensureDefaultRetailClient() { return fetchJSON('/clients/ensure-default-retail', { method: 'POST' }); },
+
 };
