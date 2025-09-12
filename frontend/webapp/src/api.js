@@ -864,4 +864,8 @@ export const api = {
   async getClientByBarcode(code) { return fetchJSON(`/clients/by-barcode/${encodeURIComponent(code)}`); },
   async ensureDefaultRetailClient() { return fetchJSON('/clients/ensure-default-retail', { method: 'POST' }); },
 
+  // Прайс-лист: керування знижками
+  async applyDiscounts(data) { return fetchJSON('/product-prices/apply-discounts', { method: 'POST', data }); },
+  async clearDiscounts(data) { return fetchJSON('/product-prices/clear-discounts', { method: 'POST', data }); },
+
 };

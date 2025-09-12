@@ -13,6 +13,9 @@ export default function RetailSalesPage() {
   const [barcode, setBarcode] = useState('');
   const [priceMap, setPriceMap] = useState({});
   const [customer, setCustomer] = useState(null);
+  const [clientList, setClientList] = useState([]);
+  const [showClientPick, setShowClientPick] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
   const handledSelectionRef = useRef(false);
   const cleanedRef = useRef(false);
 
@@ -72,10 +75,23 @@ export default function RetailSalesPage() {
     })();
   }, [activeCenterId]);
 
+  // Завантаження клієнтів при відкритті модалки
+  useEffect(() => {
+    (async () => {
+      if (!showClientPick) return;
+      try {
+        const res = await api.getClients({ q: clientSearch });
+        setClientList(Array.isArray(res) ? res : []);
+      } catch { setClientList([]); }
+    })();
+  }, [showClientPick, clientSearch]);
+
   // Прийом вибору зі складу (selectionBridge)
   useEffect(() => {
     (async () => {
       if (!current?.ID) return;
+      // Чекаємо поки завантажиться прайс-ліст, щоб не додати позиції з ціною 0
+      if (!priceMap || Object.keys(priceMap).length === 0) return;
       if (handledSelectionRef.current) return;
       const raw = window.sessionStorage.getItem('selected::retail_sale');
       if (!raw) return;
@@ -86,7 +102,8 @@ export default function RetailSalesPage() {
         for (const it of arr) {
           const pid = Number(it.id || it.ProductID);
           const qty = Number(it.quantity || it.Qty || 1);
-          const price = Number(it.price || it.Price || 0);
+          const base = Number(it.price || it.Price || 0);
+          const price = base > 0 ? base : Number(priceMap[pid] || 0);
           if (pid && qty > 0) {
             await api.addSaleItem(current.ID, { ProductID: pid, Quantity: qty, Price: price });
           }
@@ -95,7 +112,7 @@ export default function RetailSalesPage() {
       window.sessionStorage.removeItem('selected::retail_sale');
       await reloadItems();
     })();
-  }, [current?.ID]);
+  }, [current?.ID, priceMap]);
 
   // Додавання по штрихкоду по Enter
   async function addByBarcode() {
@@ -113,7 +130,9 @@ export default function RetailSalesPage() {
       const p = await api.getProductByBarcode(s);
       if (p && p.ID) {
         const isDisc = !!p.IsDiscountBarcode;
-        const priceToUse = isDisc && typeof p.DiscountPrice === 'number' ? Number(p.DiscountPrice) : Number(p.Price || 0);
+        const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
+          ? Number(p.DiscountPrice)
+          : Number(priceMap[p.ID] ?? p.Price ?? 0);
         await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
         setBarcode('');
         await reloadItems();
@@ -180,7 +199,7 @@ export default function RetailSalesPage() {
               label="Знайти на складі"
               className="btn-blue-outline"
             />
-            <button className="btn-blue">Вибрати покупця</button>
+            <button className="btn-blue" onClick={()=> setShowClientPick(true)}>Вибрати покупця</button>
             <input className="retail-action-input" placeholder="Застосована акція" disabled />
           </div>
           <div className="border rounded-xl overflow-hidden">
@@ -258,6 +277,40 @@ export default function RetailSalesPage() {
           <button className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>
         </aside>
       </main>
+
+      {showClientPick && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-4">
+            <div className="flex justify-between items-center mb-3">
+              <div className="text-xl font-bold">Вибір покупця</div>
+              <button onClick={()=> setShowClientPick(false)} className="px-3 py-1 bg-gray-200 rounded">✕</button>
+            </div>
+            <input value={clientSearch} onChange={e=> setClientSearch(e.target.value)} placeholder="Пошук..." className="w-full border rounded px-3 py-2 mb-3" />
+            <div className="max-h-96 overflow-auto border rounded">
+              <table className="min-w-full">
+                <thead className="bg-gray-50"><tr><th className="p-2 text-left">Назва</th><th className="p-2">Штрихкод</th><th className="p-2">Дія</th></tr></thead>
+                <tbody>
+                  {(clientList||[]).map(c=> (
+                    <tr key={c.ID} className="border-t">
+                      <td className="p-2">{c.Name}</td>
+                      <td className="p-2 text-center font-mono">{c.Barcode}</td>
+                      <td className="p-2 text-right">
+                        <button className="px-3 py-1 bg-indigo-600 text-white rounded" onClick={async()=>{
+                          try {
+                            if (current?.ID) await api.updateSale?.(current.ID, { CustomerID: c.ID });
+                          } catch {}
+                          setCustomer(c); setShowClientPick(false);
+                        }}>Обрати</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {clientList.length===0 && (<tr><td className="p-3 text-gray-500" colSpan={3}>Нічого не знайдено</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="retail-footer">
         <div className="text-sm text-gray-500">Готово до роботи</div>
