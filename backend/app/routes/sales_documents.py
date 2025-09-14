@@ -24,6 +24,61 @@ def _table_has_column(db: pyodbc.Connection, table: str, column: str) -> bool:
         return bool(row)
     except Exception:
         return False
+def _resolve_default_warehouse(db: pyodbc.Connection, center_id: int) -> Optional[int]:
+    """Повертає головний (або перший активний) склад центру для роздрібної реалізації."""
+    try:
+        cur = db.cursor()
+        row = cur.execute(
+            (
+                "SELECT TOP 1 ID FROM Warehouses "
+                "WHERE CenterID = ? AND IsActive = 1 "
+                "ORDER BY CASE WHEN ParentID IS NULL THEN 0 ELSE 1 END, "
+                "         CASE WHEN Type = 'main' THEN 0 ELSE 1 END, ID"
+            ),
+            (center_id,),
+        ).fetchone()
+        return int(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _infer_company_for_sale_item(db: pyodbc.Connection, center_id: Optional[int], product_id: int) -> Optional[int]:
+    """Спроба визначити CompanyID для товару з залишків/партій по головному складу центру."""
+    if not center_id:
+        return None
+    wid = _resolve_default_warehouse(db, int(center_id))
+    if not wid:
+        return None
+    cur = db.cursor()
+    # Варіант 1: за StockBalances, якщо є CompanyID
+    try:
+        if _table_has_column(db, "StockBalances", "CompanyID"):
+            row = cur.execute(
+                "SELECT TOP 1 CompanyID, SUM(Quantity) AS Qty "
+                "FROM StockBalances WHERE ProductID=? AND WarehouseID=? "
+                "GROUP BY CompanyID ORDER BY SUM(Quantity) DESC",
+                (product_id, wid),
+            ).fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:
+        pass
+    # Варіант 2: за Parties, якщо є CompanyID і RemainingQty
+    try:
+        has_party_company = _table_has_column(db, "Parties", "CompanyID")
+        if has_party_company:
+            row = cur.execute(
+                "SELECT TOP 1 CompanyID, SUM(ISNULL(RemainingQty, Quantity)) AS Qty "
+                "FROM Parties WHERE ProductID=? AND WarehouseID=? AND CompanyID IS NOT NULL "
+                "GROUP BY CompanyID ORDER BY SUM(ISNULL(RemainingQty, Quantity)) DESC",
+                (product_id, wid),
+            ).fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:
+        pass
+    return None
+
 
 
 def _ensure_tables(db: pyodbc.Connection) -> None:
@@ -175,7 +230,8 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
         pid = it.get("ProductID")
         qty = Decimal(str(it.get("Quantity") or 0))
         price = Decimal(str(it.get("Price") or 0))
-        item_company_id = it.get("CompanyID") or company_id
+        # Визначимо CompanyID рядка: спочатку з payload, потім з заголовка, далі — інференс зі складу
+        item_company_id = it.get("CompanyID") or company_id or _infer_company_for_sale_item(db, center_id, int(pid))
         total += (qty * price)
         # вставка з урахуванням опційного CompanyID у таблиці рядків
         if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
@@ -255,12 +311,15 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
     price = float(payload.get("Price") or 0)
     if product_id <= 0 or qty <= 0:
         raise HTTPException(400, "ProductID і Quantity обов'язкові")
-    # Визначимо CompanyID рядка: спершу з payload, інакше із заголовка документа
+    # Визначимо CompanyID рядка: спершу з payload, інакше із заголовка документа/інференс зі складу
     item_company_id = payload.get("CompanyID")
     if item_company_id is None:
         try:
-            r = _fetch_one(db, "SELECT CompanyID FROM SalesDocuments WHERE ID=?", (doc_id,))
+            r = _fetch_one(db, "SELECT CompanyID, CenterID FROM SalesDocuments WHERE ID=?", (doc_id,))
             item_company_id = r[0] if r else None
+            center_id = int(r[1]) if r and r[1] is not None else None
+            if item_company_id is None:
+                item_company_id = _infer_company_for_sale_item(db, center_id, product_id)
         except Exception:
             item_company_id = None
 
