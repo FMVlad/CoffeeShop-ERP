@@ -25,6 +25,11 @@ router = APIRouter(prefix="/arrival-documents", tags=["arrival-documents"])
 # ---------- Helpers ----------
 def _fetch_one(db: pyodbc.Connection, query: str, params: List[Any] | tuple = ()) -> Optional[pyodbc.Row]:
     cursor = db.cursor()
+    # ensure PartyMovements has CompanyID (best-effort)
+    try:
+        cursor.execute("IF COL_LENGTH('dbo.PartyMovements','CompanyID') IS NULL ALTER TABLE dbo.PartyMovements ADD CompanyID INT NULL;")
+    except Exception:
+        pass
     print(f"[DEBUG] SQL: {query}")
     print(f"[DEBUG] Params: {params}")
     cursor.execute(query, params)
