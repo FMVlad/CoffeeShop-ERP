@@ -71,11 +71,17 @@ def _ensure_tables(db: pyodbc.Connection) -> None:
                 ProductID INT NOT NULL,
                 Quantity DECIMAL(18,6) NOT NULL,
                 Price DECIMAL(18,4) NOT NULL,
+                CompanyID INT NULL,
                 CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
                 CONSTRAINT FK_SalesItems_Doc FOREIGN KEY (DocID) REFERENCES dbo.SalesDocuments(ID) ON DELETE CASCADE
               );
               CREATE INDEX IX_SalesItems_Doc ON dbo.SalesDocumentItems(DocID);
               CREATE INDEX IX_SalesItems_Product ON dbo.SalesDocumentItems(ProductID);
+            END;
+            ELSE
+            BEGIN
+              IF COL_LENGTH('dbo.SalesDocumentItems','CompanyID') IS NULL
+                ALTER TABLE dbo.SalesDocumentItems ADD CompanyID INT NULL;
             END;
             """
         )
@@ -169,11 +175,19 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
         pid = it.get("ProductID")
         qty = Decimal(str(it.get("Quantity") or 0))
         price = Decimal(str(it.get("Price") or 0))
+        item_company_id = it.get("CompanyID") or company_id
         total += (qty * price)
-        cur.execute(
-            "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) VALUES (?, ?, ?, ?)",
-            (doc_id, pid, float(qty), float(price)),
-        )
+        # вставка з урахуванням опційного CompanyID у таблиці рядків
+        if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
+            cur.execute(
+                "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price, CompanyID) VALUES (?, ?, ?, ?, ?)",
+                (doc_id, pid, float(qty), float(price), item_company_id),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) VALUES (?, ?, ?, ?)",
+                (doc_id, pid, float(qty), float(price)),
+            )
         # рухи по партіях: списання FIFO — для MVP просто позначка, детальну реалізацію додамо далі
         # тут же можна зменшити StockBalances за аналогією до прибуткової (у зворотному напрямку)
 
@@ -217,7 +231,8 @@ def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         """
         SELECT i.ID, i.DocID, i.ProductID,
                p.FullName AS ProductName,
-               i.Quantity, i.Price
+               i.Quantity, i.Price,
+               i.CompanyID
           FROM SalesDocumentItems i
           LEFT JOIN Products p ON p.ID = i.ProductID
          WHERE i.DocID = ?
@@ -240,10 +255,25 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
     price = float(payload.get("Price") or 0)
     if product_id <= 0 or qty <= 0:
         raise HTTPException(400, "ProductID і Quantity обов'язкові")
-    cur.execute(
-        "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?)",
-        (doc_id, product_id, qty, price)
-    )
+    # Визначимо CompanyID рядка: спершу з payload, інакше із заголовка документа
+    item_company_id = payload.get("CompanyID")
+    if item_company_id is None:
+        try:
+            r = _fetch_one(db, "SELECT CompanyID FROM SalesDocuments WHERE ID=?", (doc_id,))
+            item_company_id = r[0] if r else None
+        except Exception:
+            item_company_id = None
+
+    if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
+        cur.execute(
+            "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price, CompanyID) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)",
+            (doc_id, product_id, qty, price, item_company_id)
+        )
+    else:
+        cur.execute(
+            "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?)",
+            (doc_id, product_id, qty, price)
+        )
     new_id = int(cur.fetchone()[0])
     cur.execute(
         "UPDATE SalesDocuments SET TotalAmount=(SELECT ISNULL(SUM(Quantity*Price),0) FROM SalesDocumentItems WHERE DocID=?), UpdatedAt=GETDATE() WHERE ID=?",
@@ -263,6 +293,8 @@ def update_item(doc_id: int, item_id: int, payload: Dict[str, Any], db: pyodbc.C
         sets.append("Quantity=?"); vals.append(float(payload.get("Quantity")))
     if payload.get("Price") is not None:
         sets.append("Price=?"); vals.append(float(payload.get("Price")))
+    if payload.get("CompanyID") is not None and _table_has_column(db, "SalesDocumentItems", "CompanyID"):
+        sets.append("CompanyID=?"); vals.append(payload.get("CompanyID"))
     if not sets:
         return {"ok": True}
     cur.execute(f"UPDATE SalesDocumentItems SET {', '.join(sets)} WHERE ID=? AND DocID=?", (*vals, item_id, doc_id))

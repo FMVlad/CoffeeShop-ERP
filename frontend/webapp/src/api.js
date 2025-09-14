@@ -849,6 +849,7 @@ export const api = {
   async deleteSale(id) { return fetchJSON(`/sales-documents/${id}`, { method: 'DELETE' }); },
   async getSaleItems(docId) { return fetchJSON(`/sales-documents/${docId}/items`); },
   async addSaleItem(docId, data) { return fetchJSON(`/sales-documents/${docId}/items`, { method: 'POST', data }); },
+  async updateSale(id, data) { return fetchJSON(`/sales-documents/${id}`, { method: 'PUT', data }); },
   async updateSaleItem(docId, itemId, data) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'PUT', data }); },
   async deleteSaleItem(docId, itemId) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'DELETE' }); },
   async postSalePostings(id) { return fetchJSON(`/sales-documents/${id}/postings`, { method: 'POST' }); },

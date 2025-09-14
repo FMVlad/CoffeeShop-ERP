@@ -13,6 +13,7 @@ export default function RetailSalesPage() {
   const [barcode, setBarcode] = useState('');
   const [priceMap, setPriceMap] = useState({});
   const [customer, setCustomer] = useState(null);
+  const [markdownItemIds, setMarkdownItemIds] = useState(() => new Set());
   const [clientList, setClientList] = useState([]);
   const [showClientPick, setShowClientPick] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
@@ -127,13 +128,28 @@ export default function RetailSalesPage() {
           if (c?.ID) { setCustomer(c); setBarcode(''); return; }
         } catch {}
       }
+
+      // Якщо це спеціальний штрихкод уцінки: 29 + склад(2..4) + решта
+      // Приклад: 2936003600009 → склад 36 (беремо ціну уцінки)
+      let forcedDiscount = false;
+      if (s.startsWith('29') && s.length >= 8) {
+        const w2 = Number(s.slice(2, 4));
+        const w4 = Number(s.slice(2, 6));
+        const warehouseHint = !isNaN(w4) && w4 > 0 ? w4 : (!isNaN(w2) ? w2 : null);
+        if (warehouseHint != null) {
+          forcedDiscount = true; // маркер, що потрібно брати уціночну ціну
+        }
+      }
       const p = await api.getProductByBarcode(s);
       if (p && p.ID) {
-        const isDisc = !!p.IsDiscountBarcode;
+        const isDisc = forcedDiscount || !!p.IsDiscountBarcode;
         const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
           ? Number(p.DiscountPrice)
           : Number(priceMap[p.ID] ?? p.Price ?? 0);
-        await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
+        const res = await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
+        if (forcedDiscount && res?.ID) {
+          setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(res.ID); return ns; });
+        }
         setBarcode('');
         await reloadItems();
       }
@@ -143,6 +159,13 @@ export default function RetailSalesPage() {
   }
 
   const totalByItems = items.reduce((s,it)=> s + Number(it.Quantity||0)*Number(it.Price||0), 0);
+  const totalsByCompany = items.reduce((acc, it) => {
+    const cid = it.CompanyID ?? null;
+    const amt = Number(it.Quantity||0) * Number(it.Price||0);
+    const key = cid == null ? 'no_company' : String(cid);
+    acc[key] = (acc[key] || 0) + amt;
+    return acc;
+  }, {});
   const totalRetail = items.reduce((s,it)=> {
     const pid = Number(it.ProductID || it.ProductId || it.Product || 0);
     const retail = priceMap[pid] ?? Number(it.Price || 0);
@@ -226,18 +249,19 @@ export default function RetailSalesPage() {
                   const pid = Number(it.ProductID || it.ProductId || it.Product || 0);
                   const retail = priceMap[pid] ?? price;
                   const isDiscount = price < retail - 0.0001;
+                  const isMarkdown = markdownItemIds.has(it.ID);
                   return (
-                    <tr key={it.ID} className={isDiscount ? 'bg-rose-50' : undefined}>
+                    <tr key={it.ID} className={isMarkdown ? 'bg-rose-50' : (isDiscount ? 'bg-emerald-50' : undefined)}>
                       <td className="p-3">{idx + 1}</td>
                       <td className="p-3">{/* Фото */}</td>
-                      <td className="p-3 font-semibold" style={{ color: isDiscount ? '#be123c' : undefined }}>{it.ProductName || it.FullName || it.Name || it.ProductID}</td>
+                      <td className="p-3 font-semibold" style={{ color: isMarkdown ? '#be123c' : (isDiscount ? '#047857' : undefined) }}>{it.ProductName || it.FullName || it.Name || it.ProductID}</td>
                       <td className="p-3 text-right">{qty.toFixed(3)}</td>
                       <td className="p-3 text-right">{Number(retail||0).toFixed(2)}</td>
                       <td className="p-3 text-right">{price.toFixed(2)}</td>
                       <td className="p-3 text-right">{(qty*price).toFixed(2)}</td>
-                      <td className="p-3 text-right">{/* ФОП */}</td>
+                      <td className="p-3 text-right">{it.CompanyID ?? ''}</td>
                       <td className="p-3 text-right">
-                        <button onClick={async()=>{ await api.deleteSaleItem(current.ID, it.ID); await reloadItems(); }} className="px-3 py-1 bg-red-500 text-white rounded-lg">✕</button>
+                        <button onClick={async()=>{ await api.deleteSaleItem(current.ID, it.ID); setMarkdownItemIds(prev=>{ const ns=new Set(prev); ns.delete(it.ID); return ns; }); await reloadItems(); }} className="px-3 py-1 bg-red-500 text-white rounded-lg">✕</button>
                       </td>
                     </tr>
                   );
@@ -270,8 +294,15 @@ export default function RetailSalesPage() {
 
           <div className="border rounded p-3 mb-3">
             <div className="font-semibold mb-2">Чеки підприємців:</div>
-            <div className="flex justify-between"><span>ФОП.....</span><span>Сума</span></div>
-            <div className="flex justify-between"><span>ФОП.....</span><span>Сума</span></div>
+            {Object.keys(totalsByCompany).length === 0 && (
+              <div className="text-sm text-gray-500">Немає позицій</div>
+            )}
+            {Object.entries(totalsByCompany).map(([cid, sum]) => (
+              <div key={cid} className="flex justify-between">
+                <span>{cid === 'no_company' ? 'Без компанії' : `ФОП #${cid}`}</span>
+                <span>{Number(sum||0).toFixed(2)}</span>
+              </div>
+            ))}
           </div>
 
           <button className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>

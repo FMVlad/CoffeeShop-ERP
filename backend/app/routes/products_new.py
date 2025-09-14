@@ -69,7 +69,8 @@ def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get
         cols = [c[0] for c in cursor.description]
         return dict(zip(cols, row))
 
-    # 2) Фолбек: уцінені штрихкоди на складах (ProductDiscountBarcodes)
+    # 2) Фолбек: уцінкові штрихкоди
+    # 2.1 Спочатку намагаємось знайти у власній таблиці відповідності ProductDiscountBarcodes
     try:
         cursor.execute(
             """
@@ -84,41 +85,83 @@ def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get
         if row2:
             cols = [c[0] for c in cursor.description]
             data = dict(zip(cols, row2))
-
-            # Спробуємо визначити склад з коду 29 + {warehouseId (4)} + ...
+            # Визначаємо склад з коду: пробуємо 4, 3 та 2 цифри після '29'
             discount_price = None
             warehouse_id = None
             try:
-                if len(barcode) >= 6 and str(barcode).startswith("29"):
-                    warehouse_id = int(str(barcode)[2:6])
+                if str(barcode).startswith("29"):
+                    candidates = set()
+                    if len(barcode) >= 6:
+                        candidates.add(int(str(barcode)[2:6]))
+                    if len(barcode) >= 5:
+                        candidates.add(int(str(barcode)[2:5]))
+                    if len(barcode) >= 4:
+                        candidates.add(int(str(barcode)[2:4]))
+                    for wid in candidates:
+                        cursor.execute(
+                            """
+                            SELECT TOP 1 di.Price
+                            FROM DiscountDocItems di
+                            JOIN DiscountDocs d ON d.ID = di.DocID
+                            WHERE d.WarehouseID = ? AND d.Status = 'posted' AND di.ProductID = ?
+                            ORDER BY di.ID DESC
+                            """,
+                            (wid, data["ID"]),
+                        )
+                        rprice = cursor.fetchone()
+                        if rprice:
+                            warehouse_id = wid
+                            discount_price = float(rprice[0])
+                            break
             except Exception:
-                warehouse_id = None
+                pass
 
-            if warehouse_id:
+            # Якщо по складу ціну не знайшли (наприклад, документ ще не проведено),
+            # пробуємо взяти останню ціну напряму з позицій за штрихкодом уцінки
+            if discount_price is None:
                 try:
-                    # Остання записана ціна уцінки по цьому складу
                     cursor.execute(
                         """
                         SELECT TOP 1 di.Price
-                        FROM DiscountDocItems di
-                        JOIN DiscountDocs d ON d.ID = di.DocID
-                        WHERE d.WarehouseID = ? AND d.Status = 'posted' AND di.ProductID = ?
+                        FROM dbo.DiscountDocItems di
+                        WHERE di.DiscountBarcode = ?
                         ORDER BY di.ID DESC
                         """,
-                        (warehouse_id, data["ID"]),
+                        (barcode,),
                     )
-                    rprice = cursor.fetchone()
-                    if rprice:
-                        discount_price = float(rprice[0])
+                    r2 = cursor.fetchone()
+                    if r2:
+                        discount_price = float(r2[0])
                 except Exception:
-                    discount_price = None
+                    pass
 
             data["DiscountPrice"] = discount_price
             data["IsDiscountBarcode"] = True
             data["WarehouseIDFromBarcode"] = warehouse_id
             return data
     except Exception:
-        # Таблиці може не бути — ігноруємо
+        pass
+
+    # 2.2 Якщо запису немає — шукаємо безпосередньо у позиціях документів уцінки за кодом уцінки
+    try:
+        cursor.execute(
+            """
+            SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID, di.Price
+            FROM dbo.DiscountDocItems di
+            JOIN dbo.Products p ON p.ID = di.ProductID
+            WHERE di.DiscountBarcode = ?
+            ORDER BY di.ID DESC
+            """,
+            (barcode,),
+        )
+        row3 = cursor.fetchone()
+        if row3:
+            cols = [c[0] for c in cursor.description]
+            data = dict(zip(cols, row3))
+            data["DiscountPrice"] = float(data.pop("Price", 0))
+            data["IsDiscountBarcode"] = True
+            return data
+    except Exception:
         pass
 
     from fastapi import HTTPException
