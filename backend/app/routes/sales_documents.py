@@ -5,6 +5,7 @@ from datetime import datetime
 import pyodbc
 
 from app.db_connection import get_db
+from app.services import inventory
 from app.routes.accounting_periods import is_closed as period_is_closed
 from app.services.typical_ops import get_operation_entries
 
@@ -480,6 +481,127 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         cur.execute(insert_sql, (doc_id, on_date, 702, 641, float(vat), center_id, 1, 'VAT'))
 
     db.commit()
+
+    # --- FIFO списання та рухи партій ---
+    try:
+        center_id = head[1]
+        warehouse_id = _resolve_default_warehouse(db, int(center_id)) if center_id else None
+        if warehouse_id:
+            cur = db.cursor()
+            items = cur.execute(
+                "SELECT ID, ProductID, Quantity, CompanyID FROM SalesDocumentItems WHERE DocID=? ORDER BY ID",
+                (doc_id,),
+            ).fetchall()
+
+            has_pm_company = _table_has_column(db, "PartyMovements", "CompanyID")
+            has_party_company = _table_has_column(db, "Parties", "CompanyID")
+            has_party_remaining = _table_has_column(db, "Parties", "RemainingQty")
+            has_party_closed = _table_has_column(db, "Parties", "IsClosed")
+
+            for it in items:
+                pid = int(it[1])
+                need = float(it[2] or 0)
+                item_company = it[3]
+                if need <= 0:
+                    continue
+
+                # Підбираємо партії FIFO
+                where = ["ProductID=?", "WarehouseID=?"]
+                params: list[Any] = [pid, warehouse_id]
+                if has_party_company and item_company is not None:
+                    where.append("ISNULL(CompanyID,0)=ISNULL(?,0)")
+                    params.append(int(item_company))
+                order = "ORDER BY DateReceived, ID"
+
+                if has_party_remaining:
+                    sql = f"SELECT ID, RemainingQty AS Rem, CompanyID FROM Parties WHERE {' AND '.join(where)} AND ISNULL(RemainingQty,0) > 0 {order}"
+                else:
+                    # Обчислимо залишок за рухами, якщо поля RemainingQty немає
+                    sql = (
+                        "SELECT p.ID, p.Quantity - ISNULL((SELECT SUM(m.Quantity) FROM PartyMovements m WHERE m.PartyID=p.ID AND m.MovementType IN ('sale','out')),0) AS Rem, p.CompanyID "
+                        f"FROM Parties p WHERE {' AND '.join(where)} {order}"
+                    )
+                rows = cur.execute(sql, tuple(params)).fetchall()
+
+                for r in rows:
+                    if need <= 0:
+                        break
+                    party_id = int(r[0])
+                    rem = float(r[1] or 0)
+                    party_company = r[2] if len(r) > 2 else item_company
+                    if rem <= 0:
+                        continue
+                    take = rem if rem < need else need
+                    # Рух 'sale'
+                    try:
+                        if has_pm_company:
+                            cur.execute(
+                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID, CompanyID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?, ?)",
+                                (party_id, float(take), on_date, doc_id, warehouse_id, party_company),
+                            )
+                        else:
+                            cur.execute(
+                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
+                                (party_id, float(take), on_date, doc_id, warehouse_id),
+                            )
+                    except Exception:
+                        pass
+
+                    # Оновити залишок партії, якщо є поле
+                    if has_party_remaining:
+                        try:
+                            if has_party_closed:
+                                cur.execute(
+                                    "UPDATE Parties SET RemainingQty = RemainingQty - ?, IsClosed = CASE WHEN RemainingQty - ? <= 0 THEN 1 ELSE IsClosed END WHERE ID=?",
+                                    (float(take), float(take), party_id),
+                                )
+                            else:
+                                cur.execute(
+                                    "UPDATE Parties SET RemainingQty = RemainingQty - ? WHERE ID=?",
+                                    (float(take), party_id),
+                                )
+                        except Exception:
+                            pass
+
+                    # Оновити складські залишки (з CompanyID по можливості)
+                    try:
+                        inventory.upsert_stock_balance(
+                            db,
+                            product_id=pid,
+                            warehouse_id=warehouse_id,
+                            delta_qty=-float(take),
+                            comment=f"SALE #{doc_id}",
+                            parent_id=party_id,
+                            company_id=(int(party_company) if party_company is not None else None),
+                        )
+                    except Exception:
+                        pass
+
+                    need -= float(take)
+
+                # Якщо ще залишилось списати (наприклад, немає партій) — спишемо з балансу загально
+                if need > 0:
+                    try:
+                        inventory.upsert_stock_balance(
+                            db,
+                            product_id=pid,
+                            warehouse_id=warehouse_id,
+                            delta_qty=-float(need),
+                            comment=f"SALE #{doc_id} remainder",
+                            parent_id=None,
+                            company_id=(int(item_company) if item_company is not None else None),
+                        )
+                    except Exception:
+                        pass
+
+            db.commit()
+    except Exception:
+        # інвентарний модуль — best-effort, помилки ігноруємо щоб не ламати проведення
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
     return {"Postings": [
         {"DebitAccount": 361, "CreditAccount": 702, "Amount": float(base), "Comment": "revenue"},
         {"DebitAccount": 702, "CreditAccount": 641, "Amount": float(vat), "Comment": "VAT"},
