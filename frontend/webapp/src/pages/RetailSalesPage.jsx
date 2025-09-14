@@ -17,6 +17,7 @@ export default function RetailSalesPage() {
   const [clientList, setClientList] = useState([]);
   const [showClientPick, setShowClientPick] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
+  const [companiesMap, setCompaniesMap] = useState({});
   const handledSelectionRef = useRef(false);
   const cleanedRef = useRef(false);
 
@@ -56,6 +57,22 @@ export default function RetailSalesPage() {
   }, [activeCenterId]);
 
   useEffect(() => { reloadItems(); }, [current?.ID]);
+
+  // Довідник компаній для відображення повної назви ФОП
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await api.getCompanies?.();
+        const map = {};
+        (Array.isArray(list) ? list : []).forEach(c => {
+          const id = Number(c.ID || c.Id || 0);
+          if (!id) return;
+          map[id] = c.Name || c.ShortName || c.FullName || `ФОП #${id}`;
+        });
+        setCompaniesMap(map);
+      } catch {}
+    })();
+  }, []);
 
   // Прайс поточного центру для відображення «Ціна» (роздріб)
   useEffect(() => {
@@ -166,6 +183,11 @@ export default function RetailSalesPage() {
     acc[key] = (acc[key] || 0) + amt;
     return acc;
   }, {});
+  const companyLabel = (cid) => {
+    if (cid == null) return '';
+    const id = Number(cid);
+    return companiesMap?.[id] || `ФОП #${id}`;
+  };
   const totalRetail = items.reduce((s,it)=> {
     const pid = Number(it.ProductID || it.ProductId || it.Product || 0);
     const retail = priceMap[pid] ?? Number(it.Price || 0);
@@ -259,7 +281,7 @@ export default function RetailSalesPage() {
                       <td className="p-3 text-right">{Number(retail||0).toFixed(2)}</td>
                       <td className="p-3 text-right">{price.toFixed(2)}</td>
                       <td className="p-3 text-right">{(qty*price).toFixed(2)}</td>
-                      <td className="p-3 text-right">{it.CompanyID ?? ''}</td>
+                      <td className="p-3 text-right">{companyLabel(it.CompanyID)}</td>
                       <td className="p-3 text-right">
                         <button onClick={async()=>{ await api.deleteSaleItem(current.ID, it.ID); setMarkdownItemIds(prev=>{ const ns=new Set(prev); ns.delete(it.ID); return ns; }); await reloadItems(); }} className="px-3 py-1 bg-red-500 text-white rounded-lg">✕</button>
                       </td>
@@ -297,12 +319,15 @@ export default function RetailSalesPage() {
             {Object.keys(totalsByCompany).length === 0 && (
               <div className="text-sm text-gray-500">Немає позицій</div>
             )}
-            {Object.entries(totalsByCompany).map(([cid, sum]) => (
-              <div key={cid} className="flex justify-between">
-                <span>{cid === 'no_company' ? 'Без компанії' : `ФОП #${cid}`}</span>
-                <span>{Number(sum||0).toFixed(2)}</span>
-              </div>
-            ))}
+            {Object.entries(totalsByCompany).map(([cid, sum]) => {
+              const label = cid === 'no_company' ? 'Без компанії' : companyLabel(Number(cid));
+              return (
+                <div key={cid} className="flex justify-between">
+                  <span>{label}</span>
+                  <span>{Number(sum||0).toFixed(2)}</span>
+                </div>
+              );
+            })}
           </div>
 
           <button className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>
