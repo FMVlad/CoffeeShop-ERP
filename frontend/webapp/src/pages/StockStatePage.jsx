@@ -717,6 +717,24 @@ export default function StockStatePage() {
             </div>
             <button onClick={selectAllVisible} className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-5 py-3 rounded-xl font-semibold">Вибрати всі</button>
             <button onClick={clearSelection} className="px-5 py-3 bg-gray-200 rounded-xl font-semibold">Очистити</button>
+            <button
+              onClick={() => {
+                // Повертаємося назад без додавання
+                let url = backUrl;
+                if (url) {
+                  try {
+                    const BASENAME = '/webapp';
+                    if (url.startsWith(BASENAME)) url = url.slice(BASENAME.length) || '/';
+                  } catch {}
+                  navigate(url);
+                } else {
+                  navigate('/retail');
+                }
+              }}
+              className="px-6 py-3 bg-gray-300 text-gray-800 rounded-xl font-semibold hover:bg-gray-200"
+            >
+              ❌ Скасувати
+            </button>
             <button onClick={commitSelection} disabled={selectedIds.size===0} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold disabled:opacity-50">✅ Додати вибране</button>
           </div>
         )}
