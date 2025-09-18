@@ -136,17 +136,11 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 flex flex-col">
-      {/* Header з градієнтом */}
       <div className="max-w-7xl mx-auto">
-        {/* Заголовок */}
         <div className="bg-gradient-to-r from-purple-500 to-violet-600 rounded-3xl shadow-2xl p-8 mb-12">
           <div className="text-center">
-            <h1 className="text-6xl font-bold text-white mb-4">
-              📦 Товари
-            </h1>
-            <p className="text-2xl text-purple-100">
-              Каталог товарів з характеристиками та цінами
-            </p>
+            <h1 className="text-6xl font-bold text-white mb-4">📦 Товари</h1>
+            <p className="text-2xl text-purple-100">Каталог товарів з характеристиками та цінами</p>
           </div>
         </div>
         {/* Кнопки управління */}
