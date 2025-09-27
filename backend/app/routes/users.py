@@ -59,21 +59,13 @@ def delete_user(id: int, db=Depends(get_db)):
     db.commit()
     return {"success": True}
 
-# === ЛОГІН користувача ===
+# === ЛОГІН користувача (тільки password_hash) ===
 @router.post("/login")
 def login_user(data: dict, db=Depends(get_db)):
-    # Підтримка обох форматів: password_hash або plain password
     username = data.get("username") or data.get("Username")
     password_hash = data.get("password_hash")
-    raw_password = data.get("password")
-    if not username or (password_hash is None and raw_password is None):
-        raise HTTPException(status_code=400, detail="Логін і пароль обовʼязкові")
-
-    if password_hash is None and raw_password is not None:
-        try:
-            password_hash = sha256(str(raw_password).encode()).hexdigest()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Некоректний пароль")
+    if not username or not password_hash:
+        raise HTTPException(status_code=400, detail="Логін і password_hash обовʼязкові")
 
     cursor = db.cursor()
     cursor.execute(
