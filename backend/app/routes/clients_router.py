@@ -103,7 +103,14 @@ def _get_or_create_default_retail_customer(db: pyodbc.Connection) -> int:
         return int(row[0])
 
     price_cat_id = _get_default_price_category_id(db)
-    cur.execute("INSERT INTO Clients (Name, Code, PriceCategoryID) OUTPUT INSERTED.ID VALUES (N'Роздрібний покупець','RETAIL', ?)", (price_cat_id,))
+    # Генеруємо штрихкод одразу, бо колонка може бути NOT NULL
+    try:
+        barcode = _generate_client_barcode(db)
+    except Exception:
+        prefix = _get_param(db, 'BarcodeClient', '990') or '990'
+        body12 = (str(prefix) + "000000000000")[:12]
+        barcode = body12 + _ean13_checksum(body12)
+    cur.execute("INSERT INTO Clients (Name, Barcode, Code, PriceCategoryID) OUTPUT INSERTED.ID VALUES (N'Роздрібний покупець', ?, 'RETAIL', ?)", (barcode, price_cat_id))
     new_id = int(cur.fetchone()[0])
 
     # Запишемо штрихкод з префіксом, якщо є
