@@ -123,36 +123,36 @@ export default function RetailSalesPage() {
       try {
         const parsed = JSON.parse(raw);
         const arr = Array.isArray(parsed?.items) ? parsed.items : [];
-        // Локальний знімок рядків для коректного мерджу в циклі
-        let localItems = Array.isArray(items) ? [...items] : [];
-        async function mergeOrAdd(pid, qty, price, isMarkdown){
-          // Не мерджимо markdown у звичайні рядки і навпаки, щоби зберегти підсвічування
-          const candidate = (localItems || []).find(r =>
-            Number(r.ProductID) === Number(pid)
-              && Number(r.Price||0).toFixed(2) === Number(price||0).toFixed(2)
-              && (!!markdownItemIds.has(Number(r.ID)) === !!isMarkdown)
-          );
-          if (candidate && candidate.ID){
-            const newQty = Number(candidate.Quantity||0) + Number(qty||0);
-            await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
-            // оновимо локально для наступних ітерацій
-            candidate.Quantity = newQty;
-          } else {
-            const res = await api.addSaleItem(current.ID, { ProductID: pid, Quantity: qty, Price: price });
-            const newId = res?.ID;
-            localItems.push({ ID: newId, ProductID: pid, Quantity: qty, Price: price });
-            if (isMarkdown && newId){
-              setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(newId); return ns; });
-            }
-          }
-        }
+        // 1) Зібрати батчі (pid+price) → сумарна кількість
+        const batches = new Map();
         for (const it of arr) {
           const pid = Number(it.id || it.ProductID);
           const qty = Number(it.quantity || it.Qty || 1);
           const base = Number(it.price || it.Price || 0);
           const price = base > 0 ? base : Number(priceMap[pid] || 0);
-          if (pid && qty > 0) {
-            await mergeOrAdd(pid, qty, price, false);
+          if (!pid || !(qty > 0)) continue;
+          const key = `${pid}|${Number(price||0).toFixed(2)}|md:0`;
+          batches.set(key, (batches.get(key) || 0) + qty);
+        }
+        // 2) Останній стан рядків з бекенду (щоб точно мерджити)
+        const currentRows = await api.getSaleItems(current.ID);
+        const localItems = Array.isArray(currentRows) ? currentRows : [];
+        // 3) Відпрацювати батчі: оновити існуючі або додати нові
+        for (const [key, addQty] of batches.entries()) {
+          const [pidStr, priceStr] = key.split('|');
+          const pid = Number(pidStr);
+          const price = Number(priceStr);
+          const candidate = (localItems || []).find(r =>
+            Number(r.ProductID) === pid && Number(r.Price||0).toFixed(2) === price.toFixed(2)
+            && !markdownItemIds.has(Number(r.ID))
+          );
+          if (candidate && candidate.ID) {
+            const newQty = Number(candidate.Quantity||0) + Number(addQty||0);
+            await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
+            candidate.Quantity = newQty;
+          } else {
+            const res = await api.addSaleItem(current.ID, { ProductID: pid, Quantity: Number(addQty||0), Price: price });
+            if (res?.ID) localItems.push({ ID: res.ID, ProductID: pid, Quantity: Number(addQty||0), Price: price });
           }
         }
       } catch {}
