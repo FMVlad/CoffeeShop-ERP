@@ -21,6 +21,9 @@ export default function RetailSalesPage() {
   const lastSelectionPayloadRef = useRef(null);
   const cleanedRef = useRef(false);
   const [qtyDrafts, setQtyDrafts] = useState({});
+  const [focusedItemId, setFocusedItemId] = useState(null);
+  const barcodeInputRef = useRef(null);
+  const payBtnRef = useRef(null);
 
   async function reloadItems() {
     if (!current?.ID) return;
@@ -157,6 +160,56 @@ export default function RetailSalesPage() {
     })();
   }, [current?.ID, priceMap]);
 
+  // Глобальні гарячі клавіші: Enter → фокус на штрихкод, F9 → оплатити,
+  // +/- змінюють кількість активного рядка, Delete видаляє рядок
+  useEffect(() => {
+    function isTypingInInput(el){
+      return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    }
+    const onKey = async (e) => {
+      const target = e.target;
+      // F9 — оплатити
+      if (e.key === 'F9') {
+        e.preventDefault();
+        try { payBtnRef.current?.click?.(); } catch {}
+        return;
+      }
+      // Enter — фокус на штрихкод (якщо не вводимо текст у полі)
+      if (e.key === 'Enter' && !isTypingInInput(target)) {
+        e.preventDefault();
+        try { barcodeInputRef.current?.focus?.(); } catch {}
+        return;
+      }
+      // Для +/- та Delete потрібен активний рядок
+      const active = (items || []).find(r => r.ID === focusedItemId);
+      if (!active) return;
+      const currentQty = Number(active.Quantity || 0);
+      // + / =
+      if ((e.key === '+' || e.key === '=') && !e.shiftKey) {
+        e.preventDefault();
+        const newQty = Number((currentQty + 1).toFixed(3));
+        try { await api.updateSaleItem(current.ID, active.ID, { Quantity: newQty }); await reloadItems(); } catch {}
+        return;
+      }
+      // -
+      if (e.key === '-') {
+        e.preventDefault();
+        const next = Number((currentQty - 1).toFixed(3));
+        if (next <= 0) { try { await api.deleteSaleItem(current.ID, active.ID); await reloadItems(); } catch {} }
+        else { try { await api.updateSaleItem(current.ID, active.ID, { Quantity: next }); await reloadItems(); } catch {} }
+        return;
+      }
+      // Delete — видалити рядок
+      if (e.key === 'Delete' && !isTypingInInput(target)) {
+        e.preventDefault();
+        try { await api.deleteSaleItem(current.ID, active.ID); await reloadItems(); } catch {}
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [items, focusedItemId, current?.ID]);
+
   // Додавання по штрихкоду по Enter
   async function addByBarcode() {
     const s = (barcode || '').trim();
@@ -275,6 +328,7 @@ export default function RetailSalesPage() {
               value={barcode}
               onChange={e=>setBarcode(e.target.value)}
               onKeyDown={e=>{ if (e.key === 'Enter') addByBarcode(); }}
+              ref={barcodeInputRef}
             />
             <button onClick={addByBarcode} className="btn-blue">Знайти</button>
             <StockPickerButton
@@ -325,6 +379,7 @@ export default function RetailSalesPage() {
                           step="0.001"
                           className="border rounded px-2 py-1 w-24 text-right"
                           value={qtyInputVal}
+                          onFocus={()=> setFocusedItemId(it.ID)}
                           onChange={e=> setQtyDrafts(prev=> ({ ...prev, [it.ID]: e.target.value }))}
                           onKeyDown={async e=>{
                             if (e.key === 'Enter') {
@@ -398,7 +453,7 @@ export default function RetailSalesPage() {
             })}
           </div>
 
-          <button className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>
+          <button ref={payBtnRef} className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>
         </aside>
       </main>
 
@@ -442,3 +497,8 @@ export default function RetailSalesPage() {
     </div>
   );
 }
+
+// Глобальні гарячі клавіші для сторінки роздрібу
+// Enter — фокус на штрихкод, F9 — оплатити, +/− — зміна к-сті активного рядка, Del — видалити
+// Ігноруємо, якщо фокус у текстовому полі (крім +/- у полі кількості, яке вже обробляється)
+export function RetailSalesPageHotkeysBinder() { return null; }
