@@ -79,6 +79,44 @@ def _infer_company_for_sale_item(db: pyodbc.Connection, center_id: Optional[int]
     except Exception:
         pass
     return None
+def _get_available_qty(db: pyodbc.Connection, warehouse_id: int, product_id: int, company_id: Optional[int]) -> Optional[float]:
+    """Returns available stock quantity for a product (optionally per company) in a warehouse.
+    If tables/columns are missing, returns None to skip validation."""
+    try:
+        cur = db.cursor()
+        has_company = _table_has_column(db, "StockBalances", "CompanyID")
+        if has_company:
+            row = cur.execute(
+                "SELECT ISNULL(SUM(Quantity),0) FROM StockBalances WHERE WarehouseID=? AND ProductID=? AND ISNULL(CompanyID,0)=ISNULL(?,0)",
+                (warehouse_id, product_id, (int(company_id) if company_id is not None else 0)),
+            ).fetchone()
+        else:
+            row = cur.execute(
+                "SELECT ISNULL(SUM(Quantity),0) FROM StockBalances WHERE WarehouseID=? AND ProductID=?",
+                (warehouse_id, product_id),
+            ).fetchone()
+        return float(row[0] or 0)
+    except Exception:
+        return None
+
+def _get_existing_qty_in_doc(db: pyodbc.Connection, doc_id: int, product_id: int, company_id: Optional[int]) -> float:
+    try:
+        cur = db.cursor()
+        has_company = _table_has_column(db, "SalesDocumentItems", "CompanyID")
+        if has_company:
+            row = cur.execute(
+                "SELECT ISNULL(SUM(Quantity),0) FROM SalesDocumentItems WHERE DocID=? AND ProductID=? AND ISNULL(CompanyID,0)=ISNULL(?,0)",
+                (doc_id, product_id, (int(company_id) if company_id is not None else 0)),
+            ).fetchone()
+        else:
+            row = cur.execute(
+                "SELECT ISNULL(SUM(Quantity),0) FROM SalesDocumentItems WHERE DocID=? AND ProductID=?",
+                (doc_id, product_id),
+            ).fetchone()
+        return float(row[0] or 0)
+    except Exception:
+        return 0.0
+
 
 
 
@@ -324,6 +362,22 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
         except Exception:
             item_company_id = None
 
+    # Перевірка наявності на складі: не дозволяємо додати більше, ніж доступно (по головному складу центру)
+    try:
+        r = _fetch_one(db, "SELECT CenterID FROM SalesDocuments WHERE ID=?", (doc_id,))
+        center_id = int(r[0]) if r and r[0] is not None else None
+        warehouse_id = _resolve_default_warehouse(db, int(center_id)) if center_id else None
+        if warehouse_id:
+            doc_existing = _get_existing_qty_in_doc(db, doc_id, product_id, item_company_id)
+            available = _get_available_qty(db, int(warehouse_id), product_id, item_company_id)
+            if available is not None:
+                if qty + doc_existing > available + 1e-9:
+                    raise HTTPException(400, f"Недостатньо залишку. На складі: {available:.3f}, у документі вже: {doc_existing:.3f}")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
         cur.execute(
             "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price, CompanyID) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)",
@@ -355,6 +409,28 @@ def update_item(doc_id: int, item_id: int, payload: Dict[str, Any], db: pyodbc.C
         sets.append("Price=?"); vals.append(float(payload.get("Price")))
     if payload.get("CompanyID") is not None and _table_has_column(db, "SalesDocumentItems", "CompanyID"):
         sets.append("CompanyID=?"); vals.append(payload.get("CompanyID"))
+    # Якщо оновлюється кількість — перевіримо на залишок
+    want_qty = None
+    if payload.get("Quantity") is not None:
+        want_qty = float(payload.get("Quantity"))
+        try:
+            r = _fetch_one(db, "SELECT CenterID FROM SalesDocuments WHERE ID=?", (doc_id,))
+            center_id = int(r[0]) if r and r[0] is not None else None
+            warehouse_id = _resolve_default_warehouse(db, int(center_id)) if center_id else None
+            if warehouse_id:
+                row = _fetch_one(db, "SELECT ProductID, ISNULL(CompanyID,0) FROM SalesDocumentItems WHERE ID=? AND DocID=?", (item_id, doc_id))
+                if row:
+                    pid = int(row[0]); cid = int(row[1]) if row[1] is not None else None
+                    # поточна сума по документу без цього рядка
+                    existing_minus_this = _get_existing_qty_in_doc(db, doc_id, pid, cid) - _fetch_one(db, "SELECT Quantity FROM SalesDocumentItems WHERE ID=?", (item_id,))[0]
+                    available = _get_available_qty(db, int(warehouse_id), pid, cid)
+                    if available is not None and (existing_minus_this + want_qty) > available + 1e-9:
+                        raise HTTPException(400, f"Недостатньо залишку. На складі: {available:.3f}, у документі вже: {existing_minus_this:.3f}")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     if not sets:
         return {"ok": True}
     cur.execute(f"UPDATE SalesDocumentItems SET {', '.join(sets)} WHERE ID=? AND DocID=?", (*vals, item_id, doc_id))
