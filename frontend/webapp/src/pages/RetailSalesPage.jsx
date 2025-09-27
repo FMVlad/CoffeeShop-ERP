@@ -20,6 +20,7 @@ export default function RetailSalesPage() {
   const [companiesMap, setCompaniesMap] = useState({});
   const lastSelectionPayloadRef = useRef(null);
   const cleanedRef = useRef(false);
+  const [qtyDrafts, setQtyDrafts] = useState({});
 
   async function reloadItems() {
     if (!current?.ID) return;
@@ -114,6 +115,8 @@ export default function RetailSalesPage() {
       if (!raw) return;
       if (lastSelectionPayloadRef.current === raw) return;
       lastSelectionPayloadRef.current = raw;
+      // Видаляємо з sessionStorage одразу, щоб ефекти, що дублюються (StrictMode), не обробили вдруге
+      try { window.sessionStorage.removeItem('selected::retail_sale'); } catch {}
       try {
         const parsed = JSON.parse(raw);
         const arr = Array.isArray(parsed?.items) ? parsed.items : [];
@@ -150,7 +153,6 @@ export default function RetailSalesPage() {
           }
         }
       } catch {}
-      window.sessionStorage.removeItem('selected::retail_sale');
       await reloadItems();
     })();
   }, [current?.ID, priceMap]);
@@ -309,12 +311,41 @@ export default function RetailSalesPage() {
                   const retail = priceMap[pid] ?? price;
                   const isDiscount = price < retail - 0.0001;
                   const isMarkdown = markdownItemIds.has(it.ID);
+                  const draftVal = qtyDrafts[it.ID];
+                  const qtyInputVal = draftVal != null ? draftVal : qty.toFixed(3);
                   return (
                     <tr key={it.ID} className={isMarkdown ? 'bg-rose-50' : (isDiscount ? 'bg-emerald-50' : undefined)}>
                       <td className="p-3">{idx + 1}</td>
                       <td className="p-3">{/* Фото */}</td>
                       <td className="p-3 font-semibold" style={{ color: isMarkdown ? '#be123c' : (isDiscount ? '#047857' : undefined) }}>{it.ProductName || it.FullName || it.Name || it.ProductID}</td>
-                      <td className="p-3 text-right">{qty.toFixed(3)}</td>
+                      <td className="p-3 text-right">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          className="border rounded px-2 py-1 w-24 text-right"
+                          value={qtyInputVal}
+                          onChange={e=> setQtyDrafts(prev=> ({ ...prev, [it.ID]: e.target.value }))}
+                          onKeyDown={async e=>{
+                            if (e.key === 'Enter') {
+                              const val = Number(String(qtyDrafts[it.ID] ?? qtyInputVal).replace(/,/g,'.'));
+                              const newQty = isFinite(val) && val > 0 ? val : qty;
+                              await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
+                              setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
+                              await reloadItems();
+                            }
+                          }}
+                          onBlur={async ()=>{
+                            const val = Number(String(qtyDrafts[it.ID] ?? qtyInputVal).replace(/,/g,'.'));
+                            const newQty = isFinite(val) && val > 0 ? val : qty;
+                            if (newQty !== qty) {
+                              await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
+                              await reloadItems();
+                            }
+                            setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
+                          }}
+                        />
+                      </td>
                       <td className="p-3 text-right">{Number(retail||0).toFixed(2)}</td>
                       <td className="p-3 text-right">{price.toFixed(2)}</td>
                       <td className="p-3 text-right">{(qty*price).toFixed(2)}</td>
