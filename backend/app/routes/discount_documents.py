@@ -612,7 +612,7 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                 if base:
                     cur.execute(
                         "UPDATE ProductPrices SET PriceWithDiscount=?, DiscountRecalcAt=GETDATE() WHERE ID=?",
-                        (price, int(base[0]))
+                        (price, int(base[0])),
                     )
     except Exception:
         pass
