@@ -114,13 +114,13 @@ def stock_state(
 		)
 	else:
 		has_rem = _has_column(db, "Parties", "RemainingQty")
-		qty_expr = "SUM(p.RemainingQty)" if has_rem else "SUM(p.Quantity)"
-		base_sql = (
-			"SELECT p.ProductID, p.WarehouseID, " + qty_expr + " AS Qty, "
-			"SUM(CASE WHEN " + ("p.RemainingQty" if has_rem else "p.Quantity") + 
-			" > 0 THEN (" + ("p.RemainingQty" if has_rem else "p.Quantity") + ") * ISNULL(p.PurchasePrice,0) ELSE 0 END) AS AmountCost "
-			"FROM Parties p " + join_center + where_sql + " GROUP BY p.ProductID, p.WarehouseID"
-		)
+	qty_expr = "SUM(p.RemainingQty)" if has_rem else "SUM(p.Quantity)"
+	base_sql = (
+		"SELECT p.ProductID, p.WarehouseID, " + qty_expr + " AS Qty, "
+		"SUM(CASE WHEN " + ("p.RemainingQty" if has_rem else "p.Quantity") + 
+		" > 0 THEN (" + ("p.RemainingQty" if has_rem else "p.Quantity") + ") * ISNULL(p.PurchasePrice,0) ELSE 0 END) AS AmountCost "
+		"FROM Parties p " + join_center + where_sql + " GROUP BY p.ProductID, p.WarehouseID"
+	)
 
 	cur = db.cursor()
 	rows = cur.execute(base_sql, tuple(params)).fetchall()
