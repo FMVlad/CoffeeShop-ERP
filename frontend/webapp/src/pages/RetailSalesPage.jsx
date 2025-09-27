@@ -188,21 +188,32 @@ export default function RetailSalesPage() {
       if ((e.key === '+' || e.key === '=') && !e.shiftKey) {
         e.preventDefault();
         const newQty = Number((currentQty + 1).toFixed(3));
-        try { await api.updateSaleItem(current.ID, active.ID, { Quantity: newQty }); await reloadItems(); } catch {}
+        try { await api.updateSaleItem(current.ID, active.ID, { Quantity: newQty }); }
+        catch(err){ alert(err?.message || 'Помилка зміни кількості'); }
+        finally { await reloadItems(); }
         return;
       }
       // -
       if (e.key === '-') {
         e.preventDefault();
         const next = Number((currentQty - 1).toFixed(3));
-        if (next <= 0) { try { await api.deleteSaleItem(current.ID, active.ID); await reloadItems(); } catch {} }
-        else { try { await api.updateSaleItem(current.ID, active.ID, { Quantity: next }); await reloadItems(); } catch {} }
+        if (next <= 0) {
+          try { await api.deleteSaleItem(current.ID, active.ID); }
+          catch(err){ alert(err?.message || 'Помилка видалення рядка'); }
+          finally { await reloadItems(); }
+        } else {
+          try { await api.updateSaleItem(current.ID, active.ID, { Quantity: next }); }
+          catch(err){ alert(err?.message || 'Помилка зміни кількості'); }
+          finally { await reloadItems(); }
+        }
         return;
       }
       // Delete — видалити рядок
       if (e.key === 'Delete' && !isTypingInInput(target)) {
         e.preventDefault();
-        try { await api.deleteSaleItem(current.ID, active.ID); await reloadItems(); } catch {}
+        try { await api.deleteSaleItem(current.ID, active.ID); }
+        catch(err){ alert(err?.message || 'Помилка видалення рядка'); }
+        finally { await reloadItems(); }
         return;
       }
     };
@@ -385,19 +396,29 @@ export default function RetailSalesPage() {
                             if (e.key === 'Enter') {
                               const val = Number(String(qtyDrafts[it.ID] ?? qtyInputVal).replace(/,/g,'.'));
                               const newQty = isFinite(val) && val > 0 ? val : qty;
-                              await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
-                              setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
-                              await reloadItems();
+                              try {
+                                await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
+                              } catch (err) {
+                                alert(err?.message || 'Помилка збереження кількості');
+                              } finally {
+                                setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
+                                await reloadItems();
+                              }
                             }
                           }}
                           onBlur={async ()=>{
                             const val = Number(String(qtyDrafts[it.ID] ?? qtyInputVal).replace(/,/g,'.'));
                             const newQty = isFinite(val) && val > 0 ? val : qty;
-                            if (newQty !== qty) {
-                              await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
+                            try {
+                              if (newQty !== qty) {
+                                await api.updateSaleItem(current.ID, it.ID, { Quantity: newQty });
+                              }
+                            } catch (err) {
+                              alert(err?.message || 'Помилка збереження кількості');
+                            } finally {
+                              setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
                               await reloadItems();
                             }
-                            setQtyDrafts(prev=> { const n = { ...prev }; delete n[it.ID]; return n; });
                           }}
                         />
                       </td>
