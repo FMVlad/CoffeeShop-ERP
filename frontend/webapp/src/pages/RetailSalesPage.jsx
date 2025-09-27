@@ -18,7 +18,7 @@ export default function RetailSalesPage() {
   const [showClientPick, setShowClientPick] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [companiesMap, setCompaniesMap] = useState({});
-  const handledSelectionRef = useRef(false);
+  const lastSelectionPayloadRef = useRef(null);
   const cleanedRef = useRef(false);
 
   async function reloadItems() {
@@ -110,20 +110,43 @@ export default function RetailSalesPage() {
       if (!current?.ID) return;
       // Чекаємо поки завантажиться прайс-ліст, щоб не додати позиції з ціною 0
       if (!priceMap || Object.keys(priceMap).length === 0) return;
-      if (handledSelectionRef.current) return;
       const raw = window.sessionStorage.getItem('selected::retail_sale');
       if (!raw) return;
-      handledSelectionRef.current = true;
+      if (lastSelectionPayloadRef.current === raw) return;
+      lastSelectionPayloadRef.current = raw;
       try {
         const parsed = JSON.parse(raw);
         const arr = Array.isArray(parsed?.items) ? parsed.items : [];
+        // Локальний знімок рядків для коректного мерджу в циклі
+        let localItems = Array.isArray(items) ? [...items] : [];
+        async function mergeOrAdd(pid, qty, price, isMarkdown){
+          // Не мерджимо markdown у звичайні рядки і навпаки, щоби зберегти підсвічування
+          const candidate = (localItems || []).find(r =>
+            Number(r.ProductID) === Number(pid)
+              && Number(r.Price||0).toFixed(2) === Number(price||0).toFixed(2)
+              && (!!markdownItemIds.has(Number(r.ID)) === !!isMarkdown)
+          );
+          if (candidate && candidate.ID){
+            const newQty = Number(candidate.Quantity||0) + Number(qty||0);
+            await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
+            // оновимо локально для наступних ітерацій
+            candidate.Quantity = newQty;
+          } else {
+            const res = await api.addSaleItem(current.ID, { ProductID: pid, Quantity: qty, Price: price });
+            const newId = res?.ID;
+            localItems.push({ ID: newId, ProductID: pid, Quantity: qty, Price: price });
+            if (isMarkdown && newId){
+              setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(newId); return ns; });
+            }
+          }
+        }
         for (const it of arr) {
           const pid = Number(it.id || it.ProductID);
           const qty = Number(it.quantity || it.Qty || 1);
           const base = Number(it.price || it.Price || 0);
           const price = base > 0 ? base : Number(priceMap[pid] || 0);
           if (pid && qty > 0) {
-            await api.addSaleItem(current.ID, { ProductID: pid, Quantity: qty, Price: price });
+            await mergeOrAdd(pid, qty, price, false);
           }
         }
       } catch {}
@@ -163,9 +186,23 @@ export default function RetailSalesPage() {
         const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
           ? Number(p.DiscountPrice)
           : Number(priceMap[p.ID] ?? p.Price ?? 0);
-        const res = await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
-        if (forcedDiscount && res?.ID) {
-          setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(res.ID); return ns; });
+        // Мерджимо з існуючим рядком з тією ж ціною (до 2 знаків); markdown не змішуємо зі звичайними
+        const candidate = (items || []).find(r =>
+          Number(r.ProductID) === Number(p.ID)
+            && Number(r.Price||0).toFixed(2) === Number(priceToUse||0).toFixed(2)
+            && (!!markdownItemIds.has(Number(r.ID)) === !!isDisc)
+        );
+        let newItemId = null;
+        if (candidate && candidate.ID){
+          const newQty = Number(candidate.Quantity||0) + 1;
+          await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
+          newItemId = candidate.ID;
+        } else {
+          const res = await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
+          newItemId = res?.ID || null;
+        }
+        if (isDisc && newItemId) {
+          setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(newItemId); return ns; });
         }
         setBarcode('');
         await reloadItems();
