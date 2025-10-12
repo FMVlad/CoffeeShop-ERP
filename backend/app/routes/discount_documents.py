@@ -597,25 +597,29 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     try:
         _ensure_product_prices_extra(cur)
         price_category_id = _get_default_price_category_id(cur)
-        if price_category_id is not None:
-            for row in items:
-                product_id, price = int(row[1]), float(row[3] or 0)
-                # шукаємо активний ряд в ProductPrices (центр незалежно, беремо global 0 якщо нема by_center)
-                base = cur.execute(
-                    """
-                    SELECT TOP 1 ID FROM ProductPrices
-                    WHERE ProductID=? AND PriceCategoryID=? AND DateStart<=GETDATE() AND (DateEnd IS NULL OR DateEnd>=GETDATE())
-                    ORDER BY DateStart DESC, ID DESC
-                    """,
-                    (product_id, price_category_id),
-                ).fetchone()
-                if base:
+    except Exception:
+        price_category_id = None
+
+    if price_category_id is not None:
+        for row in items:
+            product_id, price = int(row[1]), float(row[3] or 0)
+            # шукаємо активний ряд в ProductPrices (центр незалежно, беремо global 0 якщо нема by_center)
+            base = cur.execute(
+                """
+                SELECT TOP 1 ID FROM ProductPrices
+                WHERE ProductID=? AND PriceCategoryID=? AND DateStart<=GETDATE() AND (DateEnd IS NULL OR DateEnd>=GETDATE())
+                ORDER BY DateStart DESC, ID DESC
+                """,
+                (product_id, price_category_id),
+            ).fetchone()
+            if base:
+                try:
                     cur.execute(
                         "UPDATE ProductPrices SET PriceWithDiscount=?, DiscountRecalcAt=GETDATE() WHERE ID=?",
-                        (price, int(base[0])),
+                        (price, int(base[0]))
                     )
-    except Exception:
-        pass
+                except Exception:
+                    pass
     db.commit()
     return {"ok": True, "status": "posted"}
 

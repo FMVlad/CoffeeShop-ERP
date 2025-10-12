@@ -1,78 +1,58 @@
 import React from "react";
-import { useNavigate, useLocation, Outlet } from "react-router-dom";
+import { useLocation, Outlet } from "react-router-dom";
+import MenuCard from "../components/MenuCard";
 
-const menu = [
-  { key: "cash-ops", label: "Касові операції", route: "/finance/cash-ops" },
-  { key: "noncash", label: "Безготівкові платежі", route: "/finance/noncash" },
-  { key: "balances", label: "Залишки (каси/рахунки)", route: "/finance/balances" },
-  { key: "payments", label: "Платежі / Виписки", route: "/finance/payments" },
-  { key: "reports", label: "Звіти по фінансах", route: "/finance/reports" },
-  { key: "currencies", label: "Валюти та курси", route: "/finance/currencies" },
+const cards = [
+  { key: "back", title: "🏠 Повернутися до головного меню", icon: "🏠", route: "/", hint: "Назад до основного меню системи", buttonColor: "from-gray-500 to-gray-600", buttonText: "← Назад" },
+  { key: "cash-ops", title: "💵 Касові операції", icon: "💵", route: "/finance/cash-ops", hint: "Надходження та видатки по касах", buttonColor: "from-emerald-500 to-green-600" },
+  { key: "noncash", title: "🏦 Безготівкові платежі", icon: "🏦", route: "/finance/noncash", hint: "Платежі по банківських рахунках", buttonColor: "from-sky-500 to-blue-600" },
+  { key: "balances", title: "📊 Залишки (каси/рахунки)", icon: "📊", route: "/finance/balances", hint: "Сальдо кас та банківських рахунків", buttonColor: "from-amber-500 to-orange-600" },
+  { key: "payments", title: "🧾 Платежі / Виписки", icon: "🧾", route: "/finance/payments", hint: "Журнали платежів та банківські виписки", buttonColor: "from-purple-500 to-violet-600" },
+  { key: "reports", title: "📈 Звіти по фінансах", icon: "📈", route: "/finance/reports", hint: "Аналіз руху коштів та фінансові звіти", buttonColor: "from-rose-500 to-pink-500" },
+  { key: "currencies", title: "💱 Валюти та курси", icon: "💱", route: "/finance/currencies", hint: "Довідник валют та управління курсами", buttonColor: "from-teal-500 to-cyan-600" },
 ];
 
 export default function FinancePage() {
-  const navigate = useNavigate();
   const location = useLocation();
-  const current = menu.find(m => location.pathname.endsWith(m.key))?.key || "cash-ops";
+  const isBase = location.pathname === "/finance";
 
-  return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      background: "linear-gradient(120deg,#f8efe4 0%,#faf7f2 100%)"
-    }}>
-      <nav style={{
-        width: 240,
-        background: "#f7e7d3",
-        padding: "32px 12px 32px 20px",
-        borderRight: "2px solid #cebba2"
-      }}>
-        <div
-          onClick={() => navigate("/")}
-          style={{
-            fontWeight: "bold",
-            fontSize: 20,
-            color: "#a64b1a",
-            marginBottom: 32,
-            cursor: "pointer"
-          }}
-        >
-          ← Головна
-        </div>
-
-        {menu.map(m => (
-          <div
-            key={m.key}
-            onClick={() => navigate(m.route)}
-            style={{
-              background: current === m.key ? "#fff" : "none",
-              color: current === m.key ? "#a64b1a" : "#333",
-              fontWeight: current === m.key ? "bold" : "normal",
-              fontSize: 17,
-              borderRadius: 8,
-              marginBottom: 6,
-              padding: "10px 14px",
-              cursor: "pointer",
-              transition: "background .12s"
-            }}
-          >
-            {m.label}
-          </div>
-        ))}
-      </nav>
-
-      <main style={{ flex: 1, padding: 24 }}>
-        <div style={{
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 4px 24px #0001",
-          padding: 20
-        }}>
+  if (!isBase) {
+    // Підсторінки фінансів рендеряться тут у спільному контейнері
+    return (
+      <div className="min-h-screen bg-gradient-to-tr from-amber-50 via-white to-amber-100 p-4 md:p-8">
+        <div className="max-w-7xl mx-auto">
           <Outlet />
         </div>
-      </main>
+      </div>
+    );
+  }
+
+  // Хаб карток для розділу "Фінанси" (уніфікований вигляд як у Склади/Закупівлі)
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100 flex flex-col">
+      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-600 text-white shadow-2xl">
+        <div className="max-w-7xl mx-auto px-8 py-14 text-center">
+          <h1 className="text-6xl font-bold mb-3">Фінанси</h1>
+          <p className="text-2xl text-yellow-100">Оберіть потрібний інструмент для роботи з фінансами</p>
+        </div>
+        </div>
+
+      <div className="max-w-7xl mx-auto px-8 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          {cards.map((item) => (
+            <MenuCard
+              key={item.key}
+              title={item.title}
+              icon={item.icon}
+              hint={item.hint}
+              route={item.route}
+              buttonColor={item.buttonColor}
+              buttonText={item.buttonText}
+            />
+          ))}
+          </div>
+        </div>
     </div>
   );
 }
-
 

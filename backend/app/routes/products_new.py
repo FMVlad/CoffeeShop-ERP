@@ -40,7 +40,7 @@ def search_products(q: str = Query(""), request: Request = None, db=Depends(get_
         SELECT TOP 50 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
         FROM Products p
         WHERE p.Name LIKE ? OR p.FullName LIKE ? OR p.Barcode LIKE ? OR p.DiscountBarcode LIKE ?
-        ORDER BY p.FullName IS NULL, p.FullName, p.Name
+        ORDER BY CASE WHEN p.FullName IS NULL THEN 1 ELSE 0 END, p.FullName, p.Name
         """,
         (like, like, like, like),
     )

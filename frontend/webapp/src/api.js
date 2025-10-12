@@ -853,6 +853,12 @@ export const api = {
   async updateSaleItem(docId, itemId, data) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'PUT', data }); },
   async deleteSaleItem(docId, itemId) { return fetchJSON(`/sales-documents/${docId}/items/${itemId}`, { method: 'DELETE' }); },
   async postSalePostings(id) { return fetchJSON(`/sales-documents/${id}/postings`, { method: 'POST' }); },
+  async clearSaleItems(docId) { return fetchJSON(`/sales-documents/${docId}/items`, { method: 'DELETE' }); },
+
+  // Оплати
+  async addPayment(data) { return fetchJSON('/payments', { method: 'POST', data }); },
+  async postPaymentPostings(paymentId) { return fetchJSON(`/payments/${paymentId}/postings`, { method: 'POST' }); },
+  async deletePayment(id) { return fetchJSON(`/payments/${id}`, { method: 'DELETE' }); },
 
   // Клієнти (маркетинг)
   async getClients(params) { return fetchJSON('/clients', { query: params||{} }); },

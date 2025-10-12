@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import Any, Dict, List, Optional
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
@@ -25,6 +25,37 @@ def _table_has_column(db: pyodbc.Connection, table: str, column: str) -> bool:
         return bool(row)
     except Exception:
         return False
+
+
+def _resolve_account_id(db: pyodbc.Connection, code_or_id) -> Optional[int]:
+    """Повертає ChartOfAccounts.ID за ID або кодом (361, 702, 641 тощо)."""
+    if code_or_id is None:
+        return None
+    try:
+        val = int(code_or_id)
+    except Exception:
+        return None
+    try:
+        row = _fetch_one(db, "SELECT ID FROM ChartOfAccounts WHERE ID=?", (val,))
+        if row and row[0] is not None:
+            return int(row[0])
+        # Підтримка різних назв колонок для коду рахунку
+        if _table_has_column(db, "ChartOfAccounts", "AccountCode"):
+            row = _fetch_one(db, "SELECT TOP 1 ID FROM ChartOfAccounts WHERE TRY_CONVERT(INT, AccountCode)=?", (val,))
+            if row and row[0] is not None:
+                return int(row[0])
+        if _table_has_column(db, "ChartOfAccounts", "Code"):
+            row = _fetch_one(db, "SELECT TOP 1 ID FROM ChartOfAccounts WHERE TRY_CONVERT(INT, Code)=?", (val,))
+            if row and row[0] is not None:
+                return int(row[0])
+        if _table_has_column(db, "ChartOfAccounts", "AccountNumber"):
+            row = _fetch_one(db, "SELECT TOP 1 ID FROM ChartOfAccounts WHERE TRY_CONVERT(INT, AccountNumber)=?", (val,))
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:
+        return None
+    return None
+
 def _resolve_default_warehouse(db: pyodbc.Connection, center_id: int) -> Optional[int]:
     """Повертає головний (або перший активний) склад центру для роздрібної реалізації."""
     try:
@@ -119,67 +150,17 @@ def _get_existing_qty_in_doc(db: pyodbc.Connection, doc_id: int, product_id: int
 
 
 def _ensure_tables(db: pyodbc.Connection) -> None:
-    """Create SalesDocuments and SalesDocumentItems if missing (best-effort)."""
-    cur = db.cursor()
+    """Перевіряє наявність необхідних таблиць без зміни схеми."""
     try:
-        cur.execute(
-            """
-            IF OBJECT_ID('dbo.SalesDocuments','U') IS NULL
-            BEGIN
-              CREATE TABLE dbo.SalesDocuments (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                Number NVARCHAR(50) NULL,
-                [Date] DATE NOT NULL DEFAULT GETDATE(),
-                CustomerID INT NULL,
-                CenterID INT NOT NULL,
-                CompanyID INT NULL,
-                PricesIncludeVAT BIT NOT NULL DEFAULT 1,
-                TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0,
-                Status VARCHAR(16) NOT NULL DEFAULT 'draft',
-                CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
-                UpdatedAt DATETIME NOT NULL DEFAULT GETDATE()
-              );
-              CREATE INDEX IX_SalesDocuments_Date ON dbo.SalesDocuments([Date]);
-            END;
-            ELSE
-            BEGIN
-              IF COL_LENGTH('dbo.SalesDocuments','UpdatedAt') IS NULL
-                ALTER TABLE dbo.SalesDocuments ADD UpdatedAt DATETIME NULL;
-              IF COL_LENGTH('dbo.SalesDocuments','PricesIncludeVAT') IS NULL
-                ALTER TABLE dbo.SalesDocuments ADD PricesIncludeVAT BIT NOT NULL DEFAULT 1;
-              IF COL_LENGTH('dbo.SalesDocuments','TotalAmount') IS NULL
-                ALTER TABLE dbo.SalesDocuments ADD TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0;
-              IF COL_LENGTH('dbo.SalesDocuments','Status') IS NULL
-                ALTER TABLE dbo.SalesDocuments ADD Status VARCHAR(16) NOT NULL DEFAULT 'draft';
-              IF COL_LENGTH('dbo.SalesDocuments','CompanyID') IS NULL
-                ALTER TABLE dbo.SalesDocuments ADD CompanyID INT NULL;
-            END;
-
-            IF OBJECT_ID('dbo.SalesDocumentItems','U') IS NULL
-            BEGIN
-              CREATE TABLE dbo.SalesDocumentItems (
-                ID INT IDENTITY(1,1) PRIMARY KEY,
-                DocID INT NOT NULL,
-                ProductID INT NOT NULL,
-                Quantity DECIMAL(18,6) NOT NULL,
-                Price DECIMAL(18,4) NOT NULL,
-                CompanyID INT NULL,
-                CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
-                CONSTRAINT FK_SalesItems_Doc FOREIGN KEY (DocID) REFERENCES dbo.SalesDocuments(ID) ON DELETE CASCADE
-              );
-              CREATE INDEX IX_SalesItems_Doc ON dbo.SalesDocumentItems(DocID);
-              CREATE INDEX IX_SalesItems_Product ON dbo.SalesDocumentItems(ProductID);
-            END;
-            ELSE
-            BEGIN
-              IF COL_LENGTH('dbo.SalesDocumentItems','CompanyID') IS NULL
-                ALTER TABLE dbo.SalesDocumentItems ADD CompanyID INT NULL;
-            END;
-            """
-        )
+        cur = db.cursor()
+        t1 = cur.execute("SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SalesDocuments') AND type='U'").fetchone()
+        t2 = cur.execute("SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.SalesDocumentItems') AND type='U'").fetchone()
+        if not t1 or not t2:
+            raise HTTPException(500, "Відсутні таблиці SalesDocuments/SalesDocumentItems. Створіть їх у БД.")
+    except HTTPException:
+        raise
     except Exception:
-        # ignore errors in ensure
-        pass
+        raise HTTPException(500, "Помилка перевірки наявності таблиць SalesDocuments/SalesDocumentItems")
 
 
 def _next_doc_number_for_center(db: pyodbc.Connection, center_id: int) -> str:
@@ -316,6 +297,54 @@ def get_sale(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     return data
 
 
+@router.put("/{doc_id}")
+def update_sale(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)):
+    """Оновлює шапку документа реалізації. Дозволяємо змінювати Number, Date, CustomerID, CenterID,
+    CompanyID (якщо є така колонка), PricesIncludeVAT, Status. TotalAmount перераховується рядками
+    окремо і тут не оновлюється.
+    """
+    _ensure_tables(db)
+    cur = db.cursor()
+    head = _fetch_one(db, "SELECT [Date] FROM SalesDocuments WHERE ID=?", (doc_id,))
+    if not head:
+        raise HTTPException(404, "Документ не знайдено")
+
+    # Перевірка періоду (використовуємо нову дату, якщо передано, інакше поточну дату документа)
+    new_date = str(payload.get("Date") or head[0])[:10]
+    if period_is_closed(db, new_date):
+        raise HTTPException(400, "Період закритий для проведень")
+
+    sets: List[str] = []
+    vals: List[Any] = []
+
+    if payload.get("Number") is not None:
+        sets.append("Number=?"); vals.append(payload.get("Number"))
+    if payload.get("Date") is not None:
+        sets.append("[Date]=?"); vals.append(str(payload.get("Date"))[:10])
+    if payload.get("CustomerID") is not None:
+        sets.append("CustomerID=?"); vals.append(payload.get("CustomerID"))
+    if payload.get("CenterID") is not None:
+        sets.append("CenterID=?"); vals.append(payload.get("CenterID"))
+    # CompanyID — лише якщо така колонка існує
+    if payload.get("CompanyID") is not None and _table_has_column(db, "SalesDocuments", "CompanyID"):
+        sets.append("CompanyID=?"); vals.append(payload.get("CompanyID"))
+    if payload.get("PricesIncludeVAT") is not None:
+        sets.append("PricesIncludeVAT=?"); vals.append(1 if payload.get("PricesIncludeVAT") else 0)
+    if payload.get("Status") is not None:
+        sets.append("Status=?"); vals.append(payload.get("Status"))
+
+    if not sets:
+        # Все одно оновимо UpdatedAt, щоб відмітити редагування
+        cur.execute("UPDATE SalesDocuments SET UpdatedAt=GETDATE() WHERE ID=?", (doc_id,))
+        db.commit(); return {"ok": True}
+
+    sets.append("UpdatedAt=GETDATE()")
+    sql = f"UPDATE SalesDocuments SET {', '.join(sets)} WHERE ID=?"
+    cur.execute(sql, (*vals, doc_id))
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/{doc_id}/items")
 def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     _ensure_tables(db)
@@ -335,6 +364,19 @@ def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     ).fetchall()
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, r)) for r in rows]
+
+
+@router.delete("/{doc_id}/items")
+def clear_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
+    _ensure_tables(db)
+    cur = db.cursor()
+    cur.execute("DELETE FROM SalesDocumentItems WHERE DocID=?", (doc_id,))
+    cur.execute(
+        "UPDATE SalesDocuments SET TotalAmount=0, UpdatedAt=GETDATE() WHERE ID=?",
+        (doc_id,)
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{doc_id}/items")
@@ -534,27 +576,45 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     # Fallback: простий шаблон проводок: виручка та ПДВ (COGS додамо згодом)
     center_id = head[1]
     company_id = head[3]
+    has_center = _table_has_column(db, "DocumentPostings", "CenterID")
     has_company = _table_has_column(db, "DocumentPostings", "CompanyID")
+
+    # Динамічна побудова INSERT під наявні колонки
+    base_cols = [
+        "DocumentID", "DocumentType", "PostingDate",
+        "DebitAccountID", "CreditAccountID", "Amount"
+    ]
+    if has_center:
+        base_cols.append("CenterID")
     if has_company:
-        insert_sql = (
-            "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CenterID, CompanyID, CreatedAt, CreatedBy, Comment) "
-            "VALUES (?, 'SALE', ?, ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
+        base_cols.append("CompanyID")
+    base_cols.extend(["CreatedAt", "CreatedBy", "Comment"])
+
+    def insert_posting(debit: int, credit: int, amount_val: Decimal, comment: str) -> None:
+        debit_id = _resolve_account_id(db, debit)
+        credit_id = _resolve_account_id(db, credit)
+        if debit_id is None or credit_id is None:
+            raise HTTPException(400, f"Не знайдено рахунки в Плані рахунків (Дт {debit}, Кт {credit}). Додайте їх у довідник")
+        cols_str = ", ".join(base_cols)
+        placeholders = ", ".join(["?"] * len(base_cols))
+        params: list[Any] = [
+            doc_id, 'SALE', on_date,
+            int(debit_id), int(credit_id), float(amount_val)
+        ]
+        if has_center:
+            params.append(center_id)
+        if has_company:
+            params.append(company_id)
+        params.extend([datetime.now(), 1, comment])
+        cur.execute(
+            f"INSERT INTO DocumentPostings ({cols_str}) VALUES ({placeholders})",
+            tuple(params)
         )
-    else:
-        insert_sql = (
-            "INSERT INTO DocumentPostings (DocumentID, DocumentType, PostingDate, DebitAccountID, CreditAccountID, Amount, CenterID, CreatedAt, CreatedBy, Comment) "
-            "VALUES (?, 'SALE', ?, ?, ?, ?, ?, GETDATE(), ?, ?)"
-        )
+
     # Дт 361 Кт 702 — на суму без ПДВ
-    if has_company:
-        cur.execute(insert_sql, (doc_id, on_date, 361, 702, float(base), center_id, company_id, 1, 'revenue'))
-    else:
-        cur.execute(insert_sql, (doc_id, on_date, 361, 702, float(base), center_id, 1, 'revenue'))
+    insert_posting(361, 702, base, 'revenue')
     # Дт 702 Кт 641 — ПДВ
-    if has_company:
-        cur.execute(insert_sql, (doc_id, on_date, 702, 641, float(vat), center_id, company_id, 1, 'VAT'))
-    else:
-        cur.execute(insert_sql, (doc_id, on_date, 702, 641, float(vat), center_id, 1, 'VAT'))
+    insert_posting(702, 641, vat, 'VAT')
 
     db.commit()
 
@@ -682,7 +742,6 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         {"DebitAccount": 361, "CreditAccount": 702, "Amount": float(base), "Comment": "revenue"},
         {"DebitAccount": 702, "CreditAccount": 641, "Amount": float(vat), "Comment": "VAT"},
     ]}
-
 
 
 @router.get("/{doc_id}/postings")

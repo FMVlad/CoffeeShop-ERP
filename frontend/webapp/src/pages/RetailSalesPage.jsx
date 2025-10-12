@@ -24,6 +24,14 @@ export default function RetailSalesPage() {
   const [focusedItemId, setFocusedItemId] = useState(null);
   const barcodeInputRef = useRef(null);
   const payBtnRef = useRef(null);
+  const [showPay, setShowPay] = useState(false);
+  const [payMethod, setPayMethod] = useState('cash'); // cash | bank | card
+  const [cashboxes, setCashboxes] = useState([]);
+  const [cashboxId, setCashboxId] = useState(null);
+  const [payAmount, setPayAmount] = useState(0);
+  const [cashReceived, setCashReceived] = useState(0);
+  const [splitByCompany, setSplitByCompany] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
 
   async function reloadItems() {
     if (!current?.ID) return;
@@ -96,6 +104,38 @@ export default function RetailSalesPage() {
       }
     })();
   }, [activeCenterId]);
+
+  // Підготовка модалки оплати при відкритті
+  useEffect(() => {
+    (async () => {
+      if (!showPay) return;
+      try {
+        // Локальні підрахунки від поточного списку позицій
+        const localTotal = (Array.isArray(items) ? items : []).reduce((s, it) => s + Number(it.Quantity||0)*Number(it.Price||0), 0);
+        setPayAmount(Number(localTotal || 0));
+        setCashReceived(Number(localTotal || 0));
+        const companiesSet = new Set((Array.isArray(items) ? items : []).map(it => (it.CompanyID ?? 'no_company')));
+        setSplitByCompany(companiesSet.size > 1);
+        // Підтягнути каси для центру
+        if (activeCenterId) {
+          const list = await api.getCashboxes(Number(activeCenterId));
+          setCashboxes(Array.isArray(list) ? list : []);
+          const first = (Array.isArray(list) && list.length) ? list[0] : null;
+          setCashboxId(first ? (first.ID || first.Id) : null);
+        }
+      } catch {
+        setCashboxes([]);
+      }
+    })();
+  }, [showPay, activeCenterId, items]);
+
+  // Якщо перемикнули спосіб на готівку — підставляємо внесену суму як до сплати
+  useEffect(() => {
+    if (!showPay) return;
+    if (payMethod === 'cash') {
+      setCashReceived(Number(payAmount || 0));
+    }
+  }, [payMethod, payAmount, showPay]);
 
   // Завантаження клієнтів при відкритті модалки
   useEffect(() => {
@@ -350,6 +390,21 @@ export default function RetailSalesPage() {
             />
             <button className="btn-blue" onClick={()=> setShowClientPick(true)}>Вибрати покупця</button>
             <input className="retail-action-input" placeholder="Застосована акція" disabled />
+            <button
+              className="ml-auto px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded"
+              onClick={async()=>{
+                if (!current?.ID) return;
+                const confirmClear = window.confirm('Очистити всі позиції реалізації?');
+                if (!confirmClear) return;
+                try {
+                  await api.clearSaleItems(current.ID);
+                  setItems([]);
+                  setMarkdownItemIds(new Set());
+                } catch (e) {
+                  alert(e?.message || 'Не вдалося очистити реалізацію');
+                }
+              }}
+            >Відмінити реалізацію</button>
           </div>
           <div className="border rounded-xl overflow-hidden">
             <table className="min-w-full">
@@ -473,8 +528,11 @@ export default function RetailSalesPage() {
               );
             })}
           </div>
-
-          <button ref={payBtnRef} className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold">Оплатити</button>
+          <button
+            ref={payBtnRef}
+            onClick={() => setShowPay(true)}
+            className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold"
+          >Оплатити</button>
         </aside>
       </main>
 
@@ -507,6 +565,187 @@ export default function RetailSalesPage() {
                   {clientList.length===0 && (<tr><td className="p-3 text-gray-500" colSpan={3}>Нічого не знайдено</td></tr>)}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPay && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xl font-bold">Оплата реалізації</div>
+              <button className="px-3 py-1 bg-gray-200 rounded" onClick={() => setShowPay(false)}>✕</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Спосіб оплати</label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  value={payMethod}
+                  onChange={(e)=> setPayMethod(e.target.value)}
+                >
+                  <option value="cash">Готівка</option>
+                  <option value="card">Картка</option>
+                  <option value="bank">Безготівково</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Сума до сплати</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="w-full border rounded px-3 py-2 text-right"
+                  value={String(payAmount)}
+                  onChange={(e)=> setPayAmount(Number(e.target.value||0))}
+                />
+              </div>
+              {payMethod === 'cash' && (
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Внесено</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full border rounded px-3 py-2 text-right"
+                      value={String(cashReceived)}
+                      onChange={(e)=> setCashReceived(Number(e.target.value||0))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Решта</label>
+                    <input
+                      type="number"
+                      className="w-full border rounded px-3 py-2 text-right bg-gray-50"
+                      disabled
+                      value={String((Number(payAmount||0) - Number(cashReceived||0)).toFixed(2))}
+                    />
+                  </div>
+                </div>
+              )}
+              {payMethod === 'cash' && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-600 mb-1">Каса</label>
+                  <select
+                    className="w-full border rounded px-3 py-2"
+                    value={cashboxId ?? ''}
+                    onChange={(e)=> setCashboxId(Number(e.target.value)||null)}
+                  >
+                    {(cashboxes||[]).map(cb=> (
+                      <option key={cb.ID||cb.Id} value={cb.ID||cb.Id}>{cb.Name || cb.Title || `Каса #${cb.ID||cb.Id}`}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="md:col-span-2">
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" checked={splitByCompany} onChange={e=> setSplitByCompany(e.target.checked)} />
+                  <span>Розподілити оплату по ФОП/компаніях</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="border rounded p-3 my-4">
+              <div className="flex justify-between"><span>Разом до сплати:</span><span className="font-bold">{Number(payAmount||0).toFixed(2)}</span></div>
+              {payMethod === 'cash' && (
+                <>
+                  <div className="flex justify-between mt-1 text-sm"><span>Внесено:</span><span>{Number(cashReceived||0).toFixed(2)}</span></div>
+                  <div className="flex justify-between mt-1 text-sm"><span>Решта:</span><span>{(Number(payAmount||0) - Number(cashReceived||0)).toFixed(2)}</span></div>
+                </>
+              )}
+              {Object.keys(totalsByCompany||{}).length > 0 && (
+                <div className="mt-2 text-sm text-gray-700">
+                  {Object.entries(totalsByCompany).map(([cid, sum]) => (
+                    <div key={cid} className="flex justify-between">
+                      <span>{cid==='no_company' ? 'Без компанії' : companyLabel(Number(cid))}</span>
+                      <span>{Number(sum||0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button className="px-4 py-2 bg-gray-200 rounded" onClick={async()=>{ if (isPaying) return; try { await handleBack(); } catch {} }} disabled={isPaying}>Скасувати</button>
+              <button
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded disabled:opacity-60"
+                disabled={isPaying || Number(totalByItems||0) <= 0}
+                onClick={async()=>{
+                  if (!current?.ID) return;
+                  if (!Array.isArray(items) || items.length === 0) { alert('Немає позицій для оплати'); return; }
+                  setIsPaying(true);
+                  try {
+                    // 1) Підготувати платежі (CREATE), без проведення
+                    const createdPaymentIds = [];
+                    const payments = [];
+                    if (splitByCompany && Object.keys(totalsByCompany||{}).length > 0) {
+                      for (const [cid, sum] of Object.entries(totalsByCompany)) {
+                        payments.push({
+                          DocumentType: 'SALE',
+                          DocumentID: current.ID,
+                          PaymentMethod: payMethod,
+                          Amount: Number(sum||0),
+                          Date: new Date().toISOString().slice(0,10),
+                          CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
+                          AccountID: payMethod!=='cash' ? null : null,
+                          CompanyID: cid==='no_company' ? null : Number(cid),
+                          IsAuto: true
+                        });
+                      }
+                    } else {
+                      payments.push({
+                        DocumentType: 'SALE',
+                        DocumentID: current.ID,
+                        PaymentMethod: payMethod,
+                        Amount: Number(payAmount||0) || Number(totalByItems||0),
+                        Date: new Date().toISOString().slice(0,10),
+                        CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
+                        AccountID: payMethod!=='cash' ? null : null,
+                        CompanyID: current?.CompanyID ?? null,
+                        IsAuto: true
+                      });
+                    }
+
+                    // Створюємо платежі, збираємо їх ID
+                    for (const p of payments) {
+                      if (!(p.Amount > 0)) continue;
+                      const res = await api.addPayment(p);
+                      const payId = res?.ID;
+                      if (payId) createdPaymentIds.push(payId);
+                    }
+
+                    // 2) Провести продаж (списання/проводки). Якщо впаде — відкочуємо платежі
+                    try {
+                      await api.postSalePostings(current.ID);
+                    } catch (errPost) {
+                      // Відкатити створені платежі
+                      for (const id of createdPaymentIds) {
+                        try { await api.deletePayment(id); } catch {}
+                      }
+                      throw errPost;
+                    }
+
+                    // 3) Провести платежі
+                    for (const id of createdPaymentIds) {
+                      try { await api.postPaymentPostings(id); } catch {}
+                    }
+
+                    // 4) Оновити статус документа
+                    try { await api.updateSale?.(current.ID, { Status: 'paid', TotalAmount: Number(totalByItems||0) }); } catch {}
+
+                    alert('Оплату проведено успішно');
+                    setShowPay(false);
+                    navigate('/sales');
+                  } catch (err) {
+                    alert(err?.message || 'Помилка під час проведення оплати');
+                  } finally {
+                    setIsPaying(false);
+                  }
+                }}
+              >Провести оплату</button>
             </div>
           </div>
         </div>

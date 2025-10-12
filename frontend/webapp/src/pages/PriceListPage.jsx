@@ -193,10 +193,18 @@ export default function PriceListPage() {
                   const pcid = Number(selectedCatId || (priceCategories[0]?.ID || 0));
                   if (!pcid) return alert('Оберіть категорію цін');
                   const pids = Array.from(selected);
-                  const payload = { price_category_id: pcid, product_ids: pids };
-                  if (centerId !== '') payload.center_id = Number(centerId) || 0;
-                  const res = await api.clearDiscounts(payload);
-                  alert(`Знято знижку у записах: ${res.cleared}`);
+                  // Якщо вибрано "усі/глобальні" — чистимо для глобальних і ДЛЯ КОЖНОГО центру
+                  const centerTargets = (centerId === '')
+                    ? [null, ...(centers||[]).map(c=>c.ID)]
+                    : [Number(centerId) || 0];
+                  let totalCleared = 0;
+                  for (const cid of centerTargets){
+                    const payload = { price_category_id: pcid, product_ids: pids };
+                    if (cid != null) payload.center_id = Number(cid);
+                    const res = await api.clearDiscounts(payload);
+                    totalCleared += Number(res?.cleared || 0);
+                  }
+                  alert(`Знято знижку у записах: ${totalCleared}`);
                   await reloadPrices();
                 }catch(e){ alert('Помилка зняття знижки'); }
               }}
@@ -384,7 +392,9 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
           if (!ok) return;
         }
       }
-      const targets = (allCenters || !centerIds.size) ? [null] : Array.from(centerIds);
+      // Якщо обрано «Усі центри» — запускаємо і для глобальних, і для кожного центру
+      const allCenterIds = (centers || []).map(c => c.ID);
+      const targets = allCenters ? [null, ...allCenterIds] : (centerIds.size ? Array.from(centerIds) : [null]);
       for (const cid of targets){
         const payload = {
           price_category_id: catId,

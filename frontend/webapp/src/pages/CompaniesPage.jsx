@@ -40,7 +40,7 @@ export default function CompaniesPage() {
   async function handleSave() {
     if (!form.Name) return;
     if (editingId) {
-      await api.updateCompany({ ...form, ID: editingId });
+      await api.updateCompany(editingId, { ...form });
     } else {
       await api.addCompany(form);
     }
