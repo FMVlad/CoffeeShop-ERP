@@ -40,7 +40,7 @@ export default function CompaniesPage() {
   async function handleSave() {
     if (!form.Name) return;
     if (editingId) {
-      await api.updateCompany(editingId, { ...form });
+      await api.updateCompany({ ...form, ID: editingId });
     } else {
       await api.addCompany(form);
     }
@@ -117,39 +117,39 @@ export default function CompaniesPage() {
               </button>
               <button onClick={handleCloseForm} style={cancelBtnStyle}>Відміна</button>
             </div>
-          </div>
+      </div>
         )}
 
         <div style={tableWrapStyle}>
           <table style={tableStyle}>
-            <thead>
-              <tr>
+        <thead>
+          <tr>
                 <th style={headerCellStyle}>Назва</th>
                 <th style={headerCellStyle}>ЄДРПОУ</th>
                 <th style={headerCellStyle}>ІПН</th>
                 <th style={headerCellStyle}>Адреса</th>
                 <th style={headerCellStyle}>Рахунок</th>
                 <th style={{ ...headerCellStyle, textAlign: 'center', minWidth: 110 }}>Дії</th>
-              </tr>
-            </thead>
-            <tbody>
-              {companies.map(c =>
+          </tr>
+        </thead>
+        <tbody>
+          {companies.map(c =>
                 <tr key={c.ID} style={rowStyle}>
                   <td style={cellStyle}>{c.Name}</td>
                   <td style={cellStyle}>{c.EDRPOU}</td>
                   <td style={cellStyle}>{c.IPN}</td>
                   <td style={cellStyle}>{c.Address}</td>
                   <td style={cellStyle}>
-                    {accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}
-                  </td>
+                {accounts.find(a => a.ID === c.MainAccountID)?.AccountNumber || ''}
+              </td>
                   <td style={{ ...cellStyle, textAlign: "center" }}>
                     <button onClick={() => handleEditClick(c)} style={editBtnStyle} title="Редагувати">✏️</button>
                     <button onClick={() => handleDelete(c.ID)} style={deleteBtnStyle} title="Видалити">🗑️</button>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
         </div>
       </div>
     </div>

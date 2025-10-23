@@ -15,25 +15,28 @@ export default function PriceListPage() {
   const [categoryId, setCategoryId] = useState('');
   const [selectedCatId, setSelectedCatId] = useState('');
   const [rounding, setRounding] = useState(1);
-  const [roundingOptions, setRoundingOptions] = useState([0.05, 0.25, 0.5, 1, 5, 10]);
   const [selected, setSelected] = useState(() => new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [showApplyDiscModal, setShowApplyDiscModal] = useState(false);
   const [onlyDiscounted, setOnlyDiscounted] = useState(false);
-  useEffect(()=>{ api.getRoundingSteps?.().then(arr=>{ if(Array.isArray(arr) && arr.length){ setRoundingOptions(arr); if(!arr.includes(rounding)) setRounding(arr[0]); } }).catch(()=>{}); },[]);
+  const roundingOptions = [0.05, 0.25, 0.5, 1, 5, 10];
 
   useEffect(() => {
     api.getPriceCategories().then(data => {
       console.log('🔍 PriceListPage: Отримано категорії цін:', data);
+      console.log('🔍 PriceListPage: Тип даних:', typeof data);
+      console.log('🔍 PriceListPage: Чи є масивом:', Array.isArray(data));
+      // API повертає масив безпосередньо
       setPriceCategories(Array.isArray(data) ? data : []);
+    }).catch(error => {
+      console.error('❌ PriceListPage: Помилка завантаження категорій цін:', error);
+      setPriceCategories([]);
     });
     api.getCategories().then((arr) => setCategories(Array.isArray(arr) ? arr : []));
     api.getCenters().then((arr) => setCenters(Array.isArray(arr) ? arr : []));
     // initial load
     reloadProducts();
     reloadPrices();
-    // preload rounding steps for other pages (global cache)
-    api.getRoundingSteps?.().then(arr=>{ if(Array.isArray(arr)){ window.__roundingSteps = arr; } }).catch(()=>{});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function PriceListPage() {
   const reloadProducts = async () => {
     if (!api.getProducts) return;
     const data = await api.getProducts(search, categoryId);
-    setProducts(Array.isArray(data) ? data : []);
+      setProducts(Array.isArray(data) ? data : []);
   };
 
   const reloadPrices = async () => {
@@ -193,18 +196,10 @@ export default function PriceListPage() {
                   const pcid = Number(selectedCatId || (priceCategories[0]?.ID || 0));
                   if (!pcid) return alert('Оберіть категорію цін');
                   const pids = Array.from(selected);
-                  // Якщо вибрано "усі/глобальні" — чистимо для глобальних і ДЛЯ КОЖНОГО центру
-                  const centerTargets = (centerId === '')
-                    ? [null, ...(centers||[]).map(c=>c.ID)]
-                    : [Number(centerId) || 0];
-                  let totalCleared = 0;
-                  for (const cid of centerTargets){
-                    const payload = { price_category_id: pcid, product_ids: pids };
-                    if (cid != null) payload.center_id = Number(cid);
-                    const res = await api.clearDiscounts(payload);
-                    totalCleared += Number(res?.cleared || 0);
-                  }
-                  alert(`Знято знижку у записах: ${totalCleared}`);
+                  const payload = { price_category_id: pcid, product_ids: pids };
+                  if (centerId !== '') payload.center_id = Number(centerId) || 0;
+                  const res = await api.clearDiscounts(payload);
+                  alert(`Знято знижку у записах: ${res.cleared}`);
                   await reloadPrices();
                 }catch(e){ alert('Помилка зняття знижки'); }
               }}
@@ -271,9 +266,9 @@ export default function PriceListPage() {
                     </React.Fragment>
                   );
                 })}
-              </tr>
-            </thead>
-            <tbody>
+          </tr>
+        </thead>
+        <tbody>
               {(function(){
                 const currentCatId = Number(selectedCatId || (priceCategories[0]?.ID || 0));
                 const list = onlyDiscounted
@@ -348,10 +343,10 @@ export default function PriceListPage() {
                   <td colSpan={1 + priceCategories.length} style={{ textAlign: 'center', padding: 30, color: '#bbb', fontSize: 18 }}>
                     Жодного товару ще не додано.
                   </td>
-                </tr>
+            </tr>
               )}
-            </tbody>
-          </table>
+        </tbody>
+      </table>
         </div>
       </div>
       {showApplyDiscModal && (
@@ -392,9 +387,7 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
           if (!ok) return;
         }
       }
-      // Якщо обрано «Усі центри» — запускаємо і для глобальних, і для кожного центру
-      const allCenterIds = (centers || []).map(c => c.ID);
-      const targets = allCenters ? [null, ...allCenterIds] : (centerIds.size ? Array.from(centerIds) : [null]);
+      const targets = (allCenters || !centerIds.size) ? [null] : Array.from(centerIds);
       for (const cid of targets){
         const payload = {
           price_category_id: catId,
@@ -470,4 +463,4 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
       </div>
     </div>
   );
-}
+} 

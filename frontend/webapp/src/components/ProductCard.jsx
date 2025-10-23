@@ -166,6 +166,7 @@ export default function ProductCard({
     return () => clearTimeout(timeout);
     // eslint-disable-next-line
   }, [fields, attributeValues, templateFields]);
+
   // --- Категорія змінює шаблон і поля, але НЕ витирає значення якщо є ---
   const handleCategoryChange = async (categoryId) => {
     handleChange("CategoryID", categoryId);
@@ -192,6 +193,8 @@ export default function ProductCard({
       return prevAttrs.filter(a => allowedFieldIDs.includes(a.FieldID));
     });
   };
+
+  // --- Для стандартних полів (Products) ---
   const handleChange = (sqlName, value) => {
     setFields(prev => ({
       ...prev,
@@ -524,12 +527,15 @@ export default function ProductCard({
             </div>
           </div>
         )}
+
         {activeTab === "attributes" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div>
             {additionalFields.length > 0 ? (
-              additionalFields.map(renderField)
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {additionalFields.map(renderField)}
+              </div>
             ) : (
-              <div style={{ textAlign: "center", color: "#999", padding: 40, gridColumn: "1/3" }}>
+              <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
                 <div>Додаткові поля не налаштовані</div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>
@@ -539,6 +545,7 @@ export default function ProductCard({
             )}
           </div>
         )}
+
         {activeTab === "pricing" && (
           <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>

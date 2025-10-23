@@ -201,8 +201,8 @@ export default function CurrenciesAdminPage() {
                   <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Символ</th>
                   <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Статус</th>
                   <th className="px-8 py-4 text-center text-lg font-bold text-yellow-800">Дії</th>
-                </tr>
-              </thead>
+            </tr>
+          </thead>
               <tbody className="divide-y-2 divide-yellow-50">
                 {currencies.map((currency) => (
                   <tr key={currency.ID} className="hover:bg-yellow-50 transition-colors duration-200">
@@ -242,12 +242,12 @@ export default function CurrenciesAdminPage() {
                           🗑️
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
         </div>
 
         {/* Форма додавання курсу валют */}
@@ -275,7 +275,7 @@ export default function CurrenciesAdminPage() {
                         {CURRENCY_EMOJI[c.CurrencyCode] || '💱'} {c.CurrencyCode} - {c.Name}
                       </option>
                     ))}
-                  </select>
+          </select>
                 </div>
                 <div>
                   <label className="block text-lg font-semibold text-gray-700 mb-3">
@@ -339,7 +339,7 @@ export default function CurrenciesAdminPage() {
                 📈 + Додати курс
               </button>
             </div>
-          </div>
+        </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gradient-to-r from-yellow-100 to-amber-100">
@@ -347,8 +347,8 @@ export default function CurrenciesAdminPage() {
                   <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Валюта</th>
                   <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Курс</th>
                   <th className="px-8 py-4 text-left text-lg font-bold text-yellow-800">Дата</th>
-                </tr>
-              </thead>
+            </tr>
+          </thead>
               <tbody className="divide-y-2 divide-yellow-50">
                 {currencyRates.map((rate) => {
                   const currency = findById(currencies, rate.CurrencyID);
@@ -370,12 +370,12 @@ export default function CurrenciesAdminPage() {
                       <td className="px-8 py-4 text-lg text-gray-600">
                         {new Date(rate.RateDate).toLocaleDateString('uk-UA')}
                       </td>
-                    </tr>
+              </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+          </tbody>
+        </table>
+      </div>
         </div>
       </div>
 

@@ -82,23 +82,23 @@ export default function SettlementAccountsPage() {
               <button onClick={handleCloseForm} style={cancelBtnStyle}>Відміна</button>
             </div>
           </div>
-        </div>
+      </div>
       )}
 
       <div style={tableWrapStyle}>
         <table style={tableStyle}>
-          <thead>
-            <tr>
+        <thead>
+          <tr>
               <th style={headerCellStyle}>Назва</th>
               <th style={headerCellStyle}>Рахунок</th>
               <th style={headerCellStyle}>Банк</th>
               <th style={headerCellStyle}>Місто</th>
               <th style={headerCellStyle}>МФО</th>
               <th style={{ ...headerCellStyle, textAlign: 'center', minWidth: 110 }}>Дії</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map(a =>
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map(a =>
               <tr key={a.ID} style={rowStyle}>
                 <td style={cellStyle}>{a.AccountName}</td>
                 <td style={cellStyle}>{a.AccountNumber}</td>
@@ -109,11 +109,11 @@ export default function SettlementAccountsPage() {
                   <button onClick={() => handleEditClick(a)} style={editBtnStyle} title="Редагувати">✏️</button>
                   <button onClick={() => handleDelete(a.ID)} style={deleteBtnStyle} title="Видалити">🗑️</button>
                 </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
     </div>
   );
 }

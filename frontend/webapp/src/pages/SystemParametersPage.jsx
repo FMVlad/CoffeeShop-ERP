@@ -108,7 +108,7 @@ export default function SystemParametersPage() {
   return (
     <div style={pageStyle}>
       {/* Кнопка "На головну" */}
-      <button style={mainBtnStyle} onClick={() => window.location.href = "/"}>
+      <button style={mainBtnStyle} onClick={() => window.location.href = "/webapp"}>
         ⬅️ На головну
       </button>
 

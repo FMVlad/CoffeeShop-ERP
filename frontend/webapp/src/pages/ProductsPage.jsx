@@ -136,11 +136,17 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 flex flex-col">
+      {/* Header з градієнтом */}
       <div className="max-w-7xl mx-auto">
+      {/* Заголовок */}
         <div className="bg-gradient-to-r from-purple-500 to-violet-600 rounded-3xl shadow-2xl p-8 mb-12">
           <div className="text-center">
-            <h1 className="text-6xl font-bold text-white mb-4">📦 Товари</h1>
-            <p className="text-2xl text-purple-100">Каталог товарів з характеристиками та цінами</p>
+            <h1 className="text-6xl font-bold text-white mb-4">
+              📦 Товари
+          </h1>
+            <p className="text-2xl text-purple-100">
+              Каталог товарів з характеристиками та цінами
+            </p>
           </div>
         </div>
         {/* Кнопки управління */}
@@ -257,34 +263,34 @@ export default function ProductsPage() {
             {products.map(product => {
               const categoryObj = categories.find(c => c.ID === product.CategoryID);
               return (
-                <div
-                  key={product.ID}
+            <div
+              key={product.ID}
                   className="bg-white rounded-3xl shadow-2xl border-2 border-purple-200 overflow-hidden hover:shadow-3xl hover:-translate-y-2 transition-all duration-500 cursor-pointer"
                   onClick={() => {
                     setEditingProductId(product.ID);
                     setShowProductCard(true);
-                  }}
-                >
-                  {/* Фото товару */}
+              }}
+            >
+              {/* Фото товару */}
                   <div className="relative h-48 w-full bg-gradient-to-br from-purple-50 to-violet-50 p-6">
-                    {product.Photo ? (
-                      <img
-                        src={`http://localhost:8000/api/preview/${product.Photo}`}
-                        alt={product.Name}
+                {product.Photo ? (
+                  <img
+                    src={`http://localhost:8000/api/preview/${product.Photo}`}
+                    alt={product.Name}
                         className="w-full h-full object-contain rounded-2xl"
-                      />
-                    ) : (
+                    />
+                  ) : (
                       <div className="w-full h-full bg-gradient-to-br from-purple-100 to-violet-100 rounded-2xl flex items-center justify-center">
                         <div className="text-6xl text-purple-300">📷</div>
-                      </div>
-                    )}
                   </div>
-                  
-                  {/* Інформація про товар */}
+                )}
+              </div>
+
+              {/* Інформація про товар */}
                   <div className="p-6">
                     <h3 className="text-xl font-bold text-gray-800 mb-3 line-clamp-2">
                       {product.FullName || product.Name}
-                    </h3>
+                </h3>
                     <div className="space-y-2 mb-4">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-purple-600">Категорія:</span>
@@ -298,8 +304,8 @@ export default function ProductsPage() {
                           <span className="text-sm text-gray-600 font-mono">{product.Barcode}</span>
                         </div>
                       )}
-                    </div>
-                    
+                  </div>
+                  
                     {/* Кнопки дій */}
                     <div className="flex gap-3">
                       <button
@@ -361,11 +367,11 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-8 py-4 text-center">
                           <div className="flex gap-3 justify-center">
-                            <button
-                              onClick={() => {
-                                setEditingProductId(product.ID);
-                                setShowProductCard(true);
-                              }}
+                <button
+                  onClick={() => {
+                    setEditingProductId(product.ID);
+                    setShowProductCard(true);
+                  }}
                               className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
                             >
                               ✏️
@@ -378,8 +384,8 @@ export default function ProductsPage() {
                               className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transform hover:scale-105 active:scale-95 transition-all duration-300"
                             >
                               ✅
-                            </button>
-                          </div>
+                  </button>
+                </div>
                         </td>
                       </tr>
                     );

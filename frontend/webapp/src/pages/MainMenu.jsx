@@ -76,20 +76,20 @@ export default function MainMenu() {
             >
               Прибуткові накладні
             </button>
-            <button
+                    <button
               onClick={() => navigate("/sales/retail")}
               className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all duration-200 shadow-md w-full sm:w-auto"
             >
               Роздрібна торгівля
-            </button>
-            <button
+                    </button>
+                  <button
               onClick={() => navigate("/stock/state")}
               className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white px-8 py-3 rounded-xl font-semibold text-lg hover:shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all duration-200 shadow-md w-full sm:w-auto"
-            >
+                  >
               Стан складу
-            </button>
-          </div>
-        </div>
+                  </button>
+                </div>
+              </div>
       </div>
 
       {/* Футер */}
@@ -104,7 +104,7 @@ export default function MainMenu() {
           <span className="text-3xl md:text-4xl font-bold text-gray-800 tracking-wide">
             VYSHNIA
           </span>
-        </div>
+      </div>
       </footer>
     </div>
   );

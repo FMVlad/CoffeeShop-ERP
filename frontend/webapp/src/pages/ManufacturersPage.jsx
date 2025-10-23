@@ -24,7 +24,7 @@ export default function ManufacturersPage() {
 
   const remove = async (id) => {
     if (window.confirm("Видалити виробника?")) {
-      await api.deleteManufacturer(id);
+    await api.deleteManufacturer(id);
       api.getManufacturers().then(setItems);
     }
   };

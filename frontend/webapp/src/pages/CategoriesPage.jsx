@@ -156,7 +156,7 @@ export default function CategoriesPage() {
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
                       Назва категорії *
                     </label>
-                    <input
+          <input
                       type="text"
                       value={(editing ? editing.CategoryName : newCategory.CategoryName) || ""}
                       onChange={e => handleFormChange('CategoryName', e.target.value)}
@@ -169,7 +169,7 @@ export default function CategoriesPage() {
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
                       Тип товару
                     </label>
-                    <select
+          <select
                       value={(editing ? editing.ProductType : newCategory.ProductType) || ""}
                       onChange={e => handleFormChange('ProductType', e.target.value)}
                       className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-300 bg-gray-50 hover:bg-white"
@@ -177,14 +177,14 @@ export default function CategoriesPage() {
                       {PRODUCT_TYPES.map(pt => (
                         <option key={pt.value} value={pt.value}>{pt.label}</option>
                       ))}
-                    </select>
+          </select>
                   </div>
 
                   <div>
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
                       Одиниця виміру
                     </label>
-                    <select
+          <select
                       value={(editing ? editing.UnitID : newCategory.UnitID) ?? ""}
                       onChange={e => handleFormChange('UnitID', Number(e.target.value))}
                       className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-300 bg-gray-50 hover:bg-white"
@@ -195,8 +195,8 @@ export default function CategoriesPage() {
                           {u.UnitName} ({u.ShortName})
                         </option>
                       ))}
-                    </select>
-                  </div>
+          </select>
+        </div>
 
                   <div>
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
@@ -218,14 +218,14 @@ export default function CategoriesPage() {
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
                       Батьківська категорія
                     </label>
-                    <select
+          <select
                       value={(editing ? editing.ParentID : newCategory.ParentID) ?? ""}
                       onChange={e => handleFormChange('ParentID', e.target.value ? Number(e.target.value) : null)}
                       className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-300 bg-gray-50 hover:bg-white"
-                    >
-                      <option value="">Без батьківської категорії</option>
+          >
+            <option value="">Без батьківської категорії</option>
                       {mainCategories.map(cat => (
-                        <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
+              <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
                       ))}
                     </select>
                   </div>
@@ -245,26 +245,26 @@ export default function CategoriesPage() {
                           {t.IsDefault ? '⭐ ' : ''}{t.Name}
                         </option>
                       ))}
-                    </select>
+          </select>
                   </div>
 
                   <div>
                     <label className="block text-lg font-semibold text-gray-700 mb-3">
                       Порядок відображення
                     </label>
-                    <input
-                      type="number"
+          <input
+            type="number"
                       value={(editing ? editing.DisplayOrder : newCategory.DisplayOrder) || 0}
                       onChange={e => handleFormChange('DisplayOrder', Number(e.target.value))}
                       className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:ring-4 focus:ring-blue-100 transition-all duration-300 bg-gray-50 hover:bg-white"
                       placeholder="0"
-                    />
-                  </div>
+          />
+        </div>
 
                   <div className="space-y-4 pt-4">
                     <div className="flex items-center gap-4">
-                      <input
-                        type="checkbox"
+            <input
+              type="checkbox"
                         id="vat"
                         checked={!!(editing ? editing.IsVAT : newCategory.IsVAT)}
                         onChange={e => handleFormChange('IsVAT', e.target.checked)}
@@ -272,11 +272,11 @@ export default function CategoriesPage() {
                       />
                       <label htmlFor="vat" className="text-lg font-semibold text-gray-700">
                         Платник ПДВ
-                      </label>
+          </label>
                     </div>
                     <div className="flex items-center gap-4">
-                      <input
-                        type="checkbox"
+            <input
+              type="checkbox"
                         id="excise"
                         checked={!!(editing ? editing.IsExcise : newCategory.IsExcise)}
                         onChange={e => handleFormChange('IsExcise', e.target.checked)}
@@ -284,7 +284,7 @@ export default function CategoriesPage() {
                       />
                       <label htmlFor="excise" className="text-lg font-semibold text-gray-700">
                         Акцизний товар
-                      </label>
+          </label>
                     </div>
                   </div>
                 </div>

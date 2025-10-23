@@ -192,7 +192,14 @@ def _next_doc_number_global(db: pyodbc.Connection) -> str:
 
 
 @router.get("")
-def list_sales(date_from: Optional[str] = Query(None), date_to: Optional[str] = Query(None), db: pyodbc.Connection = Depends(get_db)):
+def list_sales(
+    date_from: Optional[str] = Query(None), 
+    date_to: Optional[str] = Query(None),
+    customer: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
+    company: Optional[str] = Query(None),
+    db: pyodbc.Connection = Depends(get_db)
+):
     _ensure_tables(db)
     cur = db.cursor()
     where = []
@@ -201,7 +208,31 @@ def list_sales(date_from: Optional[str] = Query(None), date_to: Optional[str] = 
         where.append("d.[Date]>=?"); p.append(date_from)
     if date_to:
         where.append("d.[Date]<=?"); p.append(date_to)
-    sql = "SELECT d.ID, d.Number, d.[Date], d.CustomerID, d.CenterID, d.TotalAmount, d.Status FROM SalesDocuments d "
+    if customer:
+        where.append("c.Name LIKE ?"); p.append(f"%{customer}%")
+    if payment_method:
+        where.append("COALESCE(m.PaymentMethod, 'cash') = ?"); p.append(payment_method)
+    # Фільтрація по підприємству поки що відключена
+    # if company:
+    #     if company == "multiple":
+    #         where.append("comp_count.CompanyCount > 1")
+    #     else:
+    #         where.append("comp.Name LIKE ?"); p.append(f"%{company}%")
+    # Отримуємо форму оплати з MoneyMovements
+    sql = """
+    SELECT d.ID, d.Number, d.[Date], d.CustomerID, d.CenterID, d.TotalAmount, d.Status, 
+           COALESCE(m.PaymentMethod, 'cash') as PaymentMethod, 
+           c.Name as CustomerName,
+           'Без підприємства' as CompanyName
+    FROM SalesDocuments d 
+    LEFT JOIN Clients c ON c.ID = d.CustomerID
+    LEFT JOIN (
+        SELECT RelatedObjectID, PaymentMethod, 
+               ROW_NUMBER() OVER (PARTITION BY RelatedObjectID ORDER BY DateTime DESC) as rn
+        FROM MoneyMovements 
+        WHERE RelatedObjectType = 'SALE'
+    ) m ON m.RelatedObjectID = d.ID AND m.rn = 1
+    """
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY d.[Date] DESC, d.ID DESC"
@@ -332,6 +363,7 @@ def update_sale(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = De
         sets.append("PricesIncludeVAT=?"); vals.append(1 if payload.get("PricesIncludeVAT") else 0)
     if payload.get("Status") is not None:
         sets.append("Status=?"); vals.append(payload.get("Status"))
+    # PaymentMethod зберігається в MoneyMovements, не в SalesDocuments
 
     if not sets:
         # Все одно оновимо UpdatedAt, щоб відмітити редагування
