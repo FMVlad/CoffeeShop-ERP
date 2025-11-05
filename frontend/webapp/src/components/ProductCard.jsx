@@ -20,7 +20,7 @@ function renderCategoryOptions(tree, level = 0) {
   ]);
 }
 
-export default function ProductCard({
+export default function ProductCard({ 
   templateId = null,
   productId = null,
   onSave = () => {},
@@ -58,7 +58,7 @@ export default function ProductCard({
       let initialFields = {};
       let templateIdToUse = templateId;
 
-      if (isEditMode) {
+        if (isEditMode) {
         const products = await api.getProducts();
         const product = products.find(p => p.ID === productId);
         if (product) {
@@ -225,8 +225,8 @@ export default function ProductCard({
       try {
         const result = await api.uploadProductPhoto(productId, file);
         setPhotoPreview(`http://localhost:8000/api/preview/${result.filename}`);
-        handleChange('Photo', result.filename);
-        alert('✅ Фото та прев\'ю збережено!');
+          handleChange('Photo', result.filename);
+          alert('✅ Фото та прев\'ю збережено!');
       } catch (error) {
         alert('❌ Помилка завантаження фото');
       }
@@ -332,7 +332,7 @@ export default function ProductCard({
               </option>
             ))}
           </select>
-        </div>
+            </div>
       );
     }
 
@@ -352,7 +352,7 @@ export default function ProductCard({
         </div>
       );
     }
-
+    
     const attrValue = attributeValues.find(a => a.FieldID === FieldID)?.Value ?? "";
     return (
       <div key={SqlName} style={{ marginBottom: 16 }}>
@@ -379,10 +379,10 @@ export default function ProductCard({
 
   if (loading) {
     return (
-      <div style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
         minHeight: "400px",
         fontSize: 18,
         color: "#666"
@@ -408,7 +408,7 @@ export default function ProductCard({
       <div style={{ background: "#f7ede2", color: "#6d4c2b", padding: "28px 40px", textAlign: "center" }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>🛒 Деталі товару</h1>
         {fullName && (
-          <div style={{
+      <div style={{
             marginTop: 12, fontSize: 20, fontWeight: 700,
             color: "#c4282d", textShadow: "0 1px 2px #fff8"
           }}>
@@ -467,14 +467,14 @@ export default function ProductCard({
       <div style={{ padding: "24px" }}>
         {activeTab === "details" && (
           <div style={{ display: "flex", gap: 24 }}>
-                       <div style={{ flex: "0 0 200px" }}>
+            <div style={{ flex: "0 0 200px" }}>
               <div style={{ marginBottom: 12, fontWeight: 600, fontSize: 14 }}>Фото</div>
               {getPhotoUrl() ? (
                 <div style={{ position: "relative" }}>
-                  <img
+                  <img 
                     src={getPhotoUrl()}
                     alt="Товар"
-                    style={{
+                    style={{ 
                       width: 200, height: 200, objectFit: "cover",
                       borderRadius: 12, border: "1px solid #ddd"
                     }}
@@ -497,7 +497,7 @@ export default function ProductCard({
                   >✕</button>
                 </div>
               ) : (
-                <div
+                <div 
                   style={{
                     width: 200, height: 200, border: "2px dashed #ddd",
                     borderRadius: 12, display: "flex", flexDirection: "column",
@@ -531,18 +531,18 @@ export default function ProductCard({
         {activeTab === "attributes" && (
           <div>
             {additionalFields.length > 0 ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 {additionalFields.map(renderField)}
               </div>
-            ) : (
-              <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
-                <div>Додаткові поля не налаштовані</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Додайте поля через "Налаштування → Поля шаблонів"
+              ) : (
+                <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
+                  <div>Додаткові поля не налаштовані</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    Додайте поля через "Налаштування → Поля шаблонів"
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         )}
 
@@ -603,11 +603,11 @@ export default function ProductCard({
           </div>
         )}
 
-        <div style={{
-          display: "flex",
-          gap: 12,
-          marginTop: 32,
-          justifyContent: "flex-end"
+        <div style={{ 
+          display: "flex", 
+          gap: 12, 
+          marginTop: 32, 
+          justifyContent: "flex-end" 
         }}>
           {sessionStorage.getItem('productcard_enable_quick_add') === '1' && (
             <button
@@ -640,7 +640,7 @@ export default function ProductCard({
               }}
             >{saving ? "Збереження…" : "Зберегти й додати"}</button>
           )}
-          <button
+          <button 
             onClick={onCancel}
             disabled={saving}
             style={{
@@ -654,7 +654,7 @@ export default function ProductCard({
               opacity: saving ? 0.6 : 1
             }}
           >Скасувати</button>
-          <button
+          <button 
             onClick={handleSave}
             disabled={saving}
             style={{
@@ -671,5 +671,5 @@ export default function ProductCard({
       </div>
     </div>
   );
-}
+} 
 

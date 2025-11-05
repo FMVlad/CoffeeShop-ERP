@@ -50,6 +50,8 @@ import SalesRegisterPage from "./pages/SalesRegisterPage.jsx";
 import AccountingPage from "./pages/AccountingPage.jsx";
 import DictionariesPage from "./pages/DictionariesPage.jsx";
 import FinancePage from "./pages/FinancePage.jsx";
+import CashOpsPage from "./pages/CashOpsPage.jsx";
+import NonCashPage from "./pages/NonCashPage.jsx";
 
 import { UserProvider, useUser } from './UserContext';
 // companyId більше не передаємо глобально з UI
@@ -157,8 +159,8 @@ function AppRoutes() {
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/finance" element={<FinancePage />}>
                     <Route index element={<div>Касові операції — у розробці</div>} />
-                    <Route path="cash-ops" element={<div>Касові операції — у розробці</div>} />
-                    <Route path="noncash" element={<div>Безготівкові платежі — у розробці</div>} />
+                    <Route path="cash-ops" element={<CashOpsPage />} />
+                    <Route path="noncash" element={<NonCashPage />} />
                     <Route path="balances" element={<div>Залишки по касах/рахунках — у розробці</div>} />
                     <Route path="payments" element={<div>Платежі / Виписки — у розробці</div>} />
                     <Route path="reports" element={<div>Звіти по фінансах — у розробці</div>} />

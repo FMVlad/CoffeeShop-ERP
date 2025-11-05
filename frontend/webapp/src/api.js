@@ -624,6 +624,8 @@ export const updateSale = (id, data) =>
   fetchJSON(`/sales-documents/${id}`, { method: "PUT", data });
 export const deleteSale = (id) =>
   fetchJSON(`/sales-documents/${id}`, { method: "DELETE" });
+export const forceDeleteSale = (id) =>
+  fetchJSON(`/sales-documents/${id}/force`, { method: "DELETE" });
 export const getSaleItems = (docId) =>
   fetchJSON(`/sales-documents/${docId}/items`);
 export const addSaleItem = (docId, data) =>
@@ -825,6 +827,7 @@ export const api = {
   addSale,
   updateSale,
   deleteSale,
+  forceDeleteSale,
   getSaleItems,
   addSaleItem,
   updateSaleItem,
@@ -832,6 +835,7 @@ export const api = {
   clearSaleItems,
   postSalePostings,
   // Платежі
+  getPayments: (params = {}) => fetchJSON("/payments", { query: params }),
   addPayment,
   postPaymentPostings,
   deletePayment,

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import './RetailSalesPage.css';
 import { api } from '../api';
 import { useUser } from '../UserContext';
@@ -7,7 +7,8 @@ import StockPickerButton from '../components/StockPickerButton.jsx';
 
 export default function RetailSalesPage() {
   const navigate = useNavigate();
-  const { centerId: activeCenterId } = useUser();
+  const [searchParams] = useSearchParams();
+  const { centerId: activeCenterId, employee } = useUser();
   const [current, setCurrent] = useState(null);
   const [items, setItems] = useState([]);
   const [barcode, setBarcode] = useState('');
@@ -32,42 +33,118 @@ export default function RetailSalesPage() {
   const [cashReceived, setCashReceived] = useState(0);
   const [splitByCompany, setSplitByCompany] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const isInitializingRef = useRef(false);
 
   async function reloadItems() {
     if (!current?.ID) return;
-    const rows = await api.getSaleItems(current.ID);
-    setItems(Array.isArray(rows) ? rows : []);
+    try {
+      const rows = await api.getSaleItems(current.ID);
+      console.log('reloadItems: отримано позиції з БД для документа', current.ID, ':', rows);
+      setItems(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('Помилка завантаження позицій:', err);
+      setItems([]);
+    }
   }
 
-  // Створення/відновлення чернетки продажу для активного центру
+  // Функція для видалення пустих чернеток для центру
+  async function deleteEmptyDrafts(centerId) {
+    if (!centerId) return;
+    try {
+      // Отримуємо всі чернетки для центру
+      const allDocs = await api.getSales({ status: 'draft' });
+      const drafts = (Array.isArray(allDocs) ? allDocs : [])
+        .filter(d => Number(d.CenterID) === Number(centerId));
+      
+      // Видаляємо тільки порожні чернетки (без позицій)
+      for (const draft of drafts) {
+        try {
+          const items = await api.getSaleItems(draft.ID);
+          if (!Array.isArray(items) || items.length === 0) {
+            await api.deleteSale(draft.ID);
+          }
+        } catch (err) {
+          console.error('Помилка видалення чернетки:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Помилка очищення чернеток:', err);
+    }
+  }
+
+  // Створення нового пустого документа при відкритті форми (тільки якщо немає поточного документа)
   useEffect(() => {
     (async () => {
       if (!activeCenterId) return;
-      // знайдемо останню чернетку по центру
-      const list = await api.getSales();
-      const drafts = (Array.isArray(list) ? list : [])
-        .filter(d => String(d.Status || 'draft').toLowerCase() === 'draft' && Number(d.CenterID) === Number(activeCenterId))
-        .sort((a,b) => (new Date(a.Date) - new Date(b.Date)) || (a.ID - b.ID));
-      const last = drafts.length ? drafts[drafts.length - 1] : null;
-      if (last) {
-        const doc = await api.getSale(last.ID);
-        setCurrent(doc);
-        // завантажимо клієнта, якщо є
-        if (doc?.CustomerID) {
-          try { const c = await api.get('/clients/' + doc.CustomerID); setCustomer(c); } catch {}
+      // Якщо вже є поточний документ-чернетка - не створюємо новий
+      if (current?.ID && String(current.Status || 'draft').toLowerCase() === 'draft') {
+        return;
+      }
+      // Якщо вже ініціалізується - не запускаємо повторно
+      if (isInitializingRef.current) {
+        return;
+      }
+      isInitializingRef.current = true;
+      
+      try {
+        // Спочатку скидаємо поточний документ
+        setCurrent(null);
+        setItems([]);
+        
+        // Видаляємо всі пусті чернетки для цього центру перед створенням нового
+        await deleteEmptyDrafts(activeCenterId);
+        
+        // Якщо є параметр edit - завантажуємо конкретний документ (тільки якщо він чернетка)
+        const editId = searchParams.get('edit');
+        if (editId) {
+          try {
+            const sale = await api.getSale(Number(editId));
+            if (sale && String(sale.Status || 'draft').toLowerCase() === 'draft' && Number(sale.CenterID) === Number(activeCenterId)) {
+              setCurrent(sale);
+              if (sale?.CustomerID) {
+                try { const c = await api.get('/clients/' + sale.CustomerID); setCustomer(c); } catch {}
+              }
+              await reloadItems();
+              navigate('/sales/retail', { replace: true });
+              isInitializingRef.current = false;
+              return;
+            } else {
+              navigate('/sales/retail', { replace: true });
+            }
+          } catch {
+            navigate('/sales/retail', { replace: true });
+          }
         }
-      } else {
-        // гарантуємо системного роздрібного покупця
+        
+        // Створюємо новий пустий документ
         let retail = null;
         try { retail = await api.post('/clients/ensure-default-retail'); } catch {}
-        const res = await api.addSale({ Header: { CenterID: Number(activeCenterId), CustomerID: retail?.ID || null } });
-        const doc = await api.getSale(res.ID);
-        setCurrent(doc);
-        if (retail?.ID) setCustomer(retail);
+        
+        try {
+          const newDocRes = await api.addSale({
+            Header: {
+              CenterID: Number(activeCenterId),
+              CustomerID: retail?.ID || null,
+              CreatedBy: employee?.ID || null,
+              EmployeeID: employee?.ID || null
+            },
+            Items: []
+          });
+          const newDoc = await api.getSale(newDocRes.ID);
+          setCurrent(newDoc);
+          if (retail?.ID) setCustomer(retail);
+        } catch (err) {
+          console.error('Помилка створення документа:', err);
+          alert(err?.message || 'Помилка створення документа');
+        }
+      } finally {
+        isInitializingRef.current = false;
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCenterId]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { reloadItems(); }, [current?.ID]);
 
   // Довідник компаній для відображення повної назви ФОП
@@ -191,6 +268,27 @@ export default function RetailSalesPage() {
             await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
             candidate.Quantity = newQty;
           } else {
+            // Якщо немає поточного документа - створюємо його
+            if (!current?.ID) {
+              let retail = customer || null;
+              if (!retail) {
+                try { retail = await api.post('/clients/ensure-default-retail'); } catch {}
+              }
+              const newDocRes = await api.addSale({ 
+                Header: { 
+                  CenterID: Number(activeCenterId), 
+                  CustomerID: retail?.ID || null, 
+                  CreatedBy: employee?.ID || null, 
+                  EmployeeID: employee?.ID || null 
+                },
+                Items: [{ ProductID: pid, Quantity: Number(addQty||0), Price: price }]
+              });
+              const newDoc = await api.getSale(newDocRes.ID);
+              setCurrent(newDoc);
+              if (retail?.ID) setCustomer(retail);
+              await reloadItems();
+              return;
+            }
             const res = await api.addSaleItem(current.ID, { ProductID: pid, Quantity: Number(addQty||0), Price: price });
             if (res?.ID) localItems.push({ ID: res.ID, ProductID: pid, Quantity: Number(addQty||0), Price: price });
           }
@@ -198,6 +296,7 @@ export default function RetailSalesPage() {
       } catch {}
       await reloadItems();
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.ID, priceMap]);
 
   // Глобальні гарячі клавіші: Enter → фокус на штрихкод, F9 → оплатити,
@@ -259,12 +358,17 @@ export default function RetailSalesPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, focusedItemId, current?.ID]);
 
   // Додавання по штрихкоду по Enter
   async function addByBarcode() {
     const s = (barcode || '').trim();
-    if (!s || !current?.ID) return;
+    if (!s) return;
+    if (!activeCenterId) {
+      alert('Центр обліку не вибрано');
+      return;
+    }
     try {
       // Якщо це штрихкод клієнта — встановлюємо покупця
       const clientPrefix = '990';
@@ -287,34 +391,77 @@ export default function RetailSalesPage() {
         }
       }
       const p = await api.getProductByBarcode(s);
-      if (p && p.ID) {
-        const isDisc = forcedDiscount || !!p.IsDiscountBarcode;
-        const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
-          ? Number(p.DiscountPrice)
-          : Number(priceMap[p.ID] ?? p.Price ?? 0);
-        // Мерджимо з існуючим рядком з тією ж ціною (до 2 знаків); markdown не змішуємо зі звичайними
-        const candidate = (items || []).find(r =>
-          Number(r.ProductID) === Number(p.ID)
-            && Number(r.Price||0).toFixed(2) === Number(priceToUse||0).toFixed(2)
-            && (!!markdownItemIds.has(Number(r.ID)) === !!isDisc)
-        );
-        let newItemId = null;
+      if (!p || !p.ID) {
+        alert('Товар не знайдено');
+        return;
+      }
+      
+      const isDisc = forcedDiscount || !!p.IsDiscountBarcode;
+      const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
+        ? Number(p.DiscountPrice)
+        : Number(priceMap[p.ID] ?? p.Price ?? 0);
+      
+      if (!priceToUse || priceToUse <= 0) {
+        alert('Ціна товару не визначена');
+        return;
+      }
+      
+      // Мерджимо з існуючим рядком з тією ж ціною (до 2 знаків); markdown не змішуємо зі звичайними
+      const candidate = (items || []).find(r =>
+        Number(r.ProductID) === Number(p.ID)
+          && Number(r.Price||0).toFixed(2) === Number(priceToUse||0).toFixed(2)
+          && (!!markdownItemIds.has(Number(r.ID)) === !!isDisc)
+      );
+      // Якщо немає поточного документа - додаємо товар до існуючого (він має бути створений при відкритті)
+      if (!current?.ID) {
+        alert('Документ не створено. Спробуйте оновити сторінку.');
+        return;
+      }
+      
+      // Фіксуємо ID документа перед додаванням товару, щоб уникнути проблем зі зміною документа
+      const docIdToUse = current.ID;
+      console.log('Додавання товару до документа', docIdToUse);
+      
+      let newItemId = null;
+      try {
         if (candidate && candidate.ID){
           const newQty = Number(candidate.Quantity||0) + 1;
-          await api.updateSaleItem(current.ID, candidate.ID, { Quantity: newQty });
+          await api.updateSaleItem(docIdToUse, candidate.ID, { Quantity: newQty });
           newItemId = candidate.ID;
         } else {
-          const res = await api.addSaleItem(current.ID, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
-          newItemId = res?.ID || null;
+          console.log('Додавання нового товару до документа', docIdToUse, ':', { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
+          try {
+            const res = await api.addSaleItem(docIdToUse, { ProductID: Number(p.ID), Quantity: 1, Price: priceToUse });
+            console.log('Результат додавання товару:', res);
+            if (!res || !res.ID) {
+              throw new Error('Товар не додано: відсутній ID в відповіді');
+            }
+            newItemId = res.ID;
+          } catch (err) {
+            console.error('Помилка додавання товару до бази:', err);
+            alert('Помилка збереження товару: ' + (err?.message || 'Невідома помилка'));
+            throw err;
+          }
         }
         if (isDisc && newItemId) {
           setMarkdownItemIds(prev => { const ns = new Set(prev); ns.add(newItemId); return ns; });
         }
         setBarcode('');
-        await reloadItems();
+        // Перевіряємо, чи документ не змінився під час додавання товару
+        if (current?.ID === docIdToUse) {
+          await reloadItems();
+        } else {
+          console.warn('Документ змінився під час додавання товару. Поточний:', current?.ID, 'Очікуваний:', docIdToUse);
+          // Завантажуємо товари для поточного документа
+          await reloadItems();
+        }
+      } catch (err) {
+        console.error('Помилка додавання товару:', err);
+        alert(err?.message || 'Помилка додавання товару');
       }
     } catch (e) {
-      alert(e?.message || 'Товар не знайдено');
+      console.error('Помилка при додаванні товару:', e);
+      alert(e?.message || 'Помилка при додаванні товару');
     }
   }
 
@@ -338,36 +485,72 @@ export default function RetailSalesPage() {
   }, 0);
   const totalDiscount = Math.max(0, totalRetail - totalByItems);
 
-  // При виході зі сторінки — видаляємо порожню чернетку
+  // При виході зі сторінки — видаляємо поточну чернетку (завжди, якщо вона чернетка)
   useEffect(() => {
     return () => {
       if (cleanedRef.current) return;
       cleanedRef.current = true;
       try {
         const isDraft = String(current?.Status || 'draft').toLowerCase() === 'draft';
-        if (current?.ID && isDraft && (!Array.isArray(items) || items.length === 0)) {
+        if (current?.ID && isDraft) {
+          // Видаляємо чернетку завжди, незалежно від наявності позицій
           api.deleteSale(current.ID).catch(()=>{});
         }
       } catch {}
     };
-  }, [current?.ID, current?.Status, items?.length]);
+  }, [current?.ID, current?.Status]);
 
   async function handleBack() {
     try {
+      // Видаляємо чернетку при виході (завжди, якщо вона чернетка)
       const isDraft = String(current?.Status || 'draft').toLowerCase() === 'draft';
-      if (current?.ID && isDraft && (!Array.isArray(items) || items.length === 0)) {
-        await api.deleteSale(current.ID);
+      if (current?.ID && isDraft) {
+        // Перевіряємо чи документ порожній перед видаленням
+        try {
+          const items = await api.getSaleItems(current.ID);
+          if (!Array.isArray(items) || items.length === 0) {
+            await api.deleteSale(current.ID);
+          }
+        } catch {}
+      }
+      // Видаляємо всі пусті чернетки для центру
+      if (activeCenterId) {
+        await deleteEmptyDrafts(activeCenterId);
       }
     } catch {}
     navigate('/sales');
   }
+
+  // Функція для відкриття звіту
+  const openSalesReport = () => {
+    const today = new Date().toISOString().split('T')[0];
+    navigate(`/sales/register?dateFrom=${today}&dateTo=${today}&backUrl=/sales/retail`);
+  };
 
   return (
     <div className="retail-root">
       <header className="retail-header">
         <button onClick={handleBack} className="px-4 py-2 bg-white/10 rounded-lg">← Назад</button>
         <div className="text-2xl font-bold">🏪 Роздрібні продажі</div>
-        <button onClick={() => navigate('/')} className="px-4 py-2 bg-white/10 rounded-lg">🏠 Додому</button>
+        <button onClick={async ()=>{
+          try {
+            // Видаляємо поточну чернетку при виході
+            const isDraft = String(current?.Status || 'draft').toLowerCase() === 'draft';
+            if (current?.ID && isDraft) {
+              try {
+                const items = await api.getSaleItems(current.ID);
+                if (!Array.isArray(items) || items.length === 0) {
+                  await api.deleteSale(current.ID);
+                }
+              } catch {}
+            }
+            // Видаляємо всі пусті чернетки для центру
+            if (activeCenterId) {
+              await deleteEmptyDrafts(activeCenterId);
+            }
+          } catch {}
+          navigate('/');
+        }} className="px-4 py-2 bg-white/10 rounded-lg">🏠 Додому</button>
       </header>
 
       <main className="retail-main">
@@ -400,6 +583,29 @@ export default function RetailSalesPage() {
                   await api.clearSaleItems(current.ID);
                   setItems([]);
                   setMarkdownItemIds(new Set());
+                  // Після очищення - якщо документ порожній, видаляємо його
+                  const itemsAfter = await api.getSaleItems(current.ID);
+                  if (!Array.isArray(itemsAfter) || itemsAfter.length === 0) {
+                    await api.deleteSale(current.ID);
+                    setCurrent(null);
+                    // Створюємо новий пустий документ
+                    let retail = customer || null;
+                    if (!retail) {
+                      try { retail = await api.post('/clients/ensure-default-retail'); } catch {}
+                    }
+                    const newDocRes = await api.addSale({
+                      Header: {
+                        CenterID: Number(activeCenterId),
+                        CustomerID: retail?.ID || null,
+                        CreatedBy: employee?.ID || null,
+                        EmployeeID: employee?.ID || null
+                      },
+                      Items: []
+                    });
+                    const newDoc = await api.getSale(newDocRes.ID);
+                    setCurrent(newDoc);
+                    if (retail?.ID) setCustomer(retail);
+                  }
                 } catch (e) {
                   alert(e?.message || 'Не вдалося очистити реалізацію');
                 }
@@ -533,6 +739,10 @@ export default function RetailSalesPage() {
             onClick={() => setShowPay(true)}
             className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold"
           >Оплатити</button>
+          <button
+            onClick={openSalesReport}
+            className="mt-2 w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold"
+          >📊 Реєстр реалізацій</button>
         </aside>
       </main>
 
@@ -692,7 +902,10 @@ export default function RetailSalesPage() {
                           CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
                           AccountID: payMethod!=='cash' ? null : null,
                           CompanyID: cid==='no_company' ? null : Number(cid),
-                          IsAuto: true
+                          CenterID: Number(activeCenterId) || current?.CenterID || null,
+                          IsAuto: true,
+                          EmployeeID: employee?.ID || null,
+                          CreatedBy: employee?.ID || null
                         });
                       }
                     } else {
@@ -705,7 +918,10 @@ export default function RetailSalesPage() {
                         CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
                         AccountID: payMethod!=='cash' ? null : null,
                         CompanyID: current?.CompanyID ?? null,
-                        IsAuto: true
+                        CenterID: Number(activeCenterId) || current?.CenterID || null,
+                        IsAuto: true,
+                        EmployeeID: employee?.ID || null,
+                        CreatedBy: employee?.ID || null
                       });
                     }
 
@@ -733,12 +949,60 @@ export default function RetailSalesPage() {
                       try { await api.postPaymentPostings(id); } catch {}
                     }
 
-                    // 4) Оновити статус документа
-                    try { await api.updateSale?.(current.ID, { Status: 'paid', TotalAmount: Number(totalByItems||0) }); } catch {}
+                    // 4) Оновлюємо статус документа на 'paid' (TotalAmount буде перераховано з позицій автоматично)
+                    try { 
+                      // Перевіряємо чи є позиції перед оплатою
+                      console.log('Перевірка позицій перед оплатою. Document ID:', current.ID);
+                      console.log('Локальні позиції (frontend):', items);
+                      console.log('Кількість локальних позицій:', items.length);
+                      
+                      const itemsCheck = await api.getSaleItems(current.ID);
+                      console.log('Позиції з бази даних:', itemsCheck);
+                      console.log('Кількість позицій з БД:', Array.isArray(itemsCheck) ? itemsCheck.length : 0);
+                      
+                      // Якщо в базі немає позицій, але є локальні - використовуємо локальні
+                      if ((!Array.isArray(itemsCheck) || itemsCheck.length === 0) && items.length > 0) {
+                        console.warn('Позиції є локально, але не в базі. Спробуємо провести оплату з локальними даними.');
+                        // Не кидаємо помилку, дозволяємо backend перевірити позиції самостійно
+                      } else if ((!Array.isArray(itemsCheck) || itemsCheck.length === 0) && items.length === 0) {
+                        throw new Error('Документ не містить позицій. Неможливо провести оплату.');
+                      }
+                      // Оновлюємо статус на 'paid' (TotalAmount буде автоматично перераховано з позицій)
+                      await api.updateSale(current.ID, { Status: 'paid', TotalAmount: Number(totalByItems||0) }); 
+                    } catch (err) {
+                      console.error('Помилка оновлення статусу:', err);
+                      alert(err?.message || 'Помилка оновлення статусу документа');
+                      throw err; // Перекидаємо помилку, щоб не продовжувати
+                    }
+
+                    // 5) Створюємо новий пустий документ після оплати
+                    setItems([]);
+                    setMarkdownItemIds(new Set());
+                    setBarcode('');
+                    
+                    try {
+                      let retail = customer || null;
+                      if (!retail) {
+                        try { retail = await api.post('/clients/ensure-default-retail'); } catch {}
+                      }
+                      const newDocRes = await api.addSale({
+                        Header: {
+                          CenterID: Number(activeCenterId),
+                          CustomerID: retail?.ID || null,
+                          CreatedBy: employee?.ID || null,
+                          EmployeeID: employee?.ID || null
+                        },
+                        Items: []
+                      });
+                      const newDoc = await api.getSale(newDocRes.ID);
+                      setCurrent(newDoc);
+                      if (retail?.ID) setCustomer(retail);
+                    } catch (err) {
+                      console.error('Помилка створення нового документа:', err);
+                    }
 
                     alert('Оплату проведено успішно');
                     setShowPay(false);
-                    navigate('/sales');
                   } catch (err) {
                     alert(err?.message || 'Помилка під час проведення оплати');
                   } finally {

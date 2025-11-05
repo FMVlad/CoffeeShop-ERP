@@ -164,12 +164,12 @@ def _ensure_tables(db: pyodbc.Connection) -> None:
 
 
 def _next_doc_number_for_center(db: pyodbc.Connection, center_id: int) -> str:
-    """Повертає наступний номер документа по центру: MAX(TRY_CONVERT(INT, Number))+1.
+    """Повертає наступний номер документа по центру: MAX(Number)+1 ТІЛЬКИ з ПРОВЕДЕНИХ документів (Status='paid').
     Якщо номерів немає або нечислові — повертає '1'."""
     try:
         cur = db.cursor()
         row = cur.execute(
-            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments WHERE CenterID=?",
+            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments WHERE CenterID=? AND Status='paid'",
             (center_id,),
         ).fetchone()
         nxt = int(row[0]) if row and row[0] is not None else 1
@@ -179,11 +179,11 @@ def _next_doc_number_for_center(db: pyodbc.Connection, center_id: int) -> str:
 
 
 def _next_doc_number_global(db: pyodbc.Connection) -> str:
-    """Повертає наступний номер документа глобально: MAX(Number)+1."""
+    """Повертає наступний номер документа глобально: MAX(Number)+1 ТІЛЬКИ з ПРОВЕДЕНИХ документів (Status='paid')."""
     try:
         cur = db.cursor()
         row = cur.execute(
-            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments"
+            "SELECT ISNULL(MAX(TRY_CONVERT(INT, Number)), 0) + 1 FROM SalesDocuments WHERE Status='paid'"
         ).fetchone()
         nxt = int(row[0]) if row and row[0] is not None else 1
         return str(nxt)
@@ -198,12 +198,25 @@ def list_sales(
     customer: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
     company: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Фільтр по статусу: 'paid' або 'draft'"),
     db: pyodbc.Connection = Depends(get_db)
 ):
     _ensure_tables(db)
     cur = db.cursor()
+    
     where = []
     p: List[Any] = []
+    
+    # Якщо status не передано - показуємо тільки проведені документи (для реєстру)
+    # Якщо status='draft' - показуємо тільки чернетки
+    if status:
+        where.append("d.Status = ?")
+        p.append(status)
+    else:
+        # За замовчуванням - тільки проведені документи
+        where.append("d.Status = ?")
+        p.append('paid')
+    
     if date_from:
         where.append("d.[Date]>=?"); p.append(date_from)
     if date_to:
@@ -233,12 +246,25 @@ def list_sales(
         WHERE RelatedObjectType = 'SALE'
     ) m ON m.RelatedObjectID = d.ID AND m.rn = 1
     """
-    if where:
-        sql += " WHERE " + " AND ".join(where)
+    sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY d.[Date] DESC, d.ID DESC"
     rows = cur.execute(sql, tuple(p)).fetchall()
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, r)) for r in rows]
+
+
+@router.get("/next-number")
+def get_next_number(
+    center_id: Optional[int] = Query(None),
+    db: pyodbc.Connection = Depends(get_db)
+):
+    """Отримує наступний номер документа без створення документа"""
+    _ensure_tables(db)
+    if center_id:
+        number = _next_doc_number_for_center(db, int(center_id))
+    else:
+        number = _next_doc_number_global(db)
+    return {"nextNumber": number}
 
 
 @router.post("")
@@ -269,12 +295,22 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
     if _table_has_column(db, "SalesDocuments", "CompanyID"):
         cols.insert(4, "CompanyID")
         vals.insert(4, company_id)
+    # Додаємо CreatedBy та CreatedAt якщо колонки існують
+    created_by = header.get("CreatedBy") or payload.get("CreatedBy") or header.get("EmployeeID") or payload.get("EmployeeID")
+    if _table_has_column(db, "SalesDocuments", "CreatedBy") and created_by:
+        cols.append("CreatedBy")
+        vals.append(created_by)
+    if _table_has_column(db, "SalesDocuments", "CreatedAt"):
+        cols.append("CreatedAt")
+        vals.append(datetime.now())
     placeholders = ", ".join(["?" for _ in cols])
     col_list = ", ".join(cols)
     cur.execute(f"INSERT INTO SalesDocuments ({col_list}) OUTPUT INSERTED.ID VALUES ({placeholders})", tuple(vals))
     row = cur.fetchone(); doc_id = int(row[0])
 
     total = Decimal("0")
+    # Дозволяємо створювати чернетку без позицій (вона буде видалена при очищенні або закритті)
+    # Перевірка на наявність позицій буде при проведенні документа (update_sale)
     for it in items:
         pid = it.get("ProductID")
         qty = Decimal(str(it.get("Quantity") or 0))
@@ -293,8 +329,64 @@ def create_sale(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_db)
                 "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) VALUES (?, ?, ?, ?)",
                 (doc_id, pid, float(qty), float(price)),
             )
-        # рухи по партіях: списання FIFO — для MVP просто позначка, детальну реалізацію додамо далі
-        # тут же можна зменшити StockBalances за аналогією до прибуткової (у зворотному напрямку)
+        # рухи по партіях: списання FIFO при створенні документа
+        # Фіксуємо рухи, але НЕ оновлюємо RemainingQty (це буде при проведенні)
+        try:
+            warehouse_id = _resolve_default_warehouse(db, int(center_id)) if center_id else None
+            if warehouse_id and qty > 0:
+                has_pm_company = _table_has_column(db, "PartyMovements", "CompanyID")
+                has_party_company = _table_has_column(db, "Parties", "CompanyID")
+                has_party_remaining = _table_has_column(db, "Parties", "RemainingQty")
+                
+                need = float(qty)
+                # Підбираємо партії FIFO
+                where = ["ProductID=?", "WarehouseID=?"]
+                params_party: list[Any] = [pid, warehouse_id]
+                if has_party_company and item_company_id is not None:
+                    where.append("ISNULL(CompanyID,0)=ISNULL(?,0)")
+                    params_party.append(int(item_company_id))
+                order = "ORDER BY DateReceived, ID"
+                
+                if has_party_remaining:
+                    sql_party = f"SELECT ID, RemainingQty AS Rem, CompanyID FROM Parties WHERE {' AND '.join(where)} AND ISNULL(RemainingQty,0) > 0 {order}"
+                    party_rows = cur.execute(sql_party, tuple(params_party)).fetchall()
+                else:
+                    # Враховуємо рухи, але виключаємо рухи поточного документа
+                    sql_party = (
+                        "SELECT p.ID, p.Quantity - ISNULL((SELECT SUM(m.Quantity) FROM PartyMovements m WHERE m.PartyID=p.ID AND m.MovementType IN ('sale','out') AND (m.DocumentID IS NULL OR m.DocumentID != ?)),0) AS Rem, p.CompanyID "
+                        f"FROM Parties p WHERE {' AND '.join(where)} {order}"
+                    )
+                    # Додаємо doc_id на початок для виключення рухів поточного документа
+                    params_with_doc = [doc_id] + params_party
+                    party_rows = cur.execute(sql_party, tuple(params_with_doc)).fetchall()
+                
+                for r in party_rows:
+                    if need <= 0:
+                        break
+                    party_id = int(r[0])
+                    rem = float(r[1] or 0)
+                    party_company = r[2] if len(r) > 2 else item_company_id
+                    if rem <= 0:
+                        continue
+                    take = rem if rem < need else need
+                    # Рух 'sale' - створюємо при створенні документа
+                    try:
+                        if has_pm_company:
+                            cur.execute(
+                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID, CompanyID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?, ?)",
+                                (party_id, float(take), on_date, doc_id, warehouse_id, party_company),
+                            )
+                        else:
+                            cur.execute(
+                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
+                                (party_id, float(take), on_date, doc_id, warehouse_id),
+                            )
+                    except Exception:
+                        pass
+                    need -= float(take)
+        except Exception:
+            # Якщо помилка з партіями - не блокуємо створення документа
+            pass
 
     cur.execute("UPDATE SalesDocuments SET TotalAmount=? WHERE ID=?", (float(total), doc_id))
     db.commit()
@@ -361,8 +453,37 @@ def update_sale(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = De
         sets.append("CompanyID=?"); vals.append(payload.get("CompanyID"))
     if payload.get("PricesIncludeVAT") is not None:
         sets.append("PricesIncludeVAT=?"); vals.append(1 if payload.get("PricesIncludeVAT") else 0)
+    # Оновлюємо TotalAmount, якщо передано в payload (але не встановлюємо якщо встановлюємо Status='paid')
+    total_amount_in_payload = payload.get("TotalAmount")
+    should_update_total_amount = total_amount_in_payload is not None
+    
     if payload.get("Status") is not None:
-        sets.append("Status=?"); vals.append(payload.get("Status"))
+        new_status = payload.get("Status")
+        # Перевірка: не можна встановити Status='paid' для документів без позицій або з TotalAmount=0
+        if str(new_status).lower() == 'paid':
+            # Перевіряємо чи є позиції - перераховуємо TotalAmount з позицій перед перевіркою
+            items_count = cur.execute("SELECT COUNT(*) FROM SalesDocumentItems WHERE DocID=?", (doc_id,)).fetchone()
+            if not items_count or items_count[0] == 0:
+                raise HTTPException(400, "Не можна провести документ без позицій")
+            # Перераховуємо TotalAmount з позицій, щоб переконатися що він актуальний
+            total_from_items = cur.execute(
+                "SELECT ISNULL(SUM(Quantity*Price),0) FROM SalesDocumentItems WHERE DocID=?", 
+                (doc_id,)
+            ).fetchone()
+            calculated_total = float(total_from_items[0] or 0) if total_from_items else 0
+            # Оновлюємо TotalAmount в документі на основі фактичних позицій (пріоритет над payload)
+            if calculated_total > 0:
+                sets.append("TotalAmount=?")
+                vals.append(calculated_total)
+                should_update_total_amount = False  # Вже оновили з позицій
+            # Перевіряємо TotalAmount - використовуємо значення з payload або розраховане з позицій
+            total_to_check = float(total_amount_in_payload or 0) if total_amount_in_payload is not None else calculated_total
+            if total_to_check <= 0:
+                raise HTTPException(400, "Не можна провести документ з нульовою сумою")
+        sets.append("Status=?"); vals.append(new_status)
+    # Оновлюємо TotalAmount, якщо передано в payload і не встановлюємо Status='paid' одночасно
+    if should_update_total_amount:
+        sets.append("TotalAmount=?"); vals.append(float(total_amount_in_payload or 0))
     # PaymentMethod зберігається в MoneyMovements, не в SalesDocuments
 
     if not sets:
@@ -386,9 +507,11 @@ def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         SELECT i.ID, i.DocID, i.ProductID,
                p.FullName AS ProductName,
                i.Quantity, i.Price,
-               i.CompanyID
+               i.CompanyID,
+               COALESCE(comp.Name, 'Без підприємства') as CompanyName
           FROM SalesDocumentItems i
           LEFT JOIN Products p ON p.ID = i.ProductID
+          LEFT JOIN Companies comp ON comp.ID = i.CompanyID
          WHERE i.DocID = ?
          ORDER BY i.ID
         """,
@@ -402,6 +525,10 @@ def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
 def clear_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     _ensure_tables(db)
     cur = db.cursor()
+    # Перевірка: не можна очистити позиції у проведеного документа
+    status_row = cur.execute("SELECT Status FROM SalesDocuments WHERE ID=?", (doc_id,)).fetchone()
+    if status_row and str(status_row[0] or '').lower() == 'paid':
+        raise HTTPException(400, "Не можна очистити позиції проведеного документа")
     cur.execute("DELETE FROM SalesDocumentItems WHERE DocID=?", (doc_id,))
     cur.execute(
         "UPDATE SalesDocuments SET TotalAmount=0, UpdatedAt=GETDATE() WHERE ID=?",
@@ -449,23 +576,32 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
     except Exception:
         pass
 
-    if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
+    try:
+        if _table_has_column(db, "SalesDocumentItems", "CompanyID"):
+            cur.execute(
+                "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price, CompanyID) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)",
+                (doc_id, product_id, qty, price, item_company_id)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?)",
+                (doc_id, product_id, qty, price)
+            )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(500, "Не вдалося створити позицію")
+        new_id = int(row[0])
         cur.execute(
-            "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price, CompanyID) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?)",
-            (doc_id, product_id, qty, price, item_company_id)
+            "UPDATE SalesDocuments SET TotalAmount=(SELECT ISNULL(SUM(Quantity*Price),0) FROM SalesDocumentItems WHERE DocID=?), UpdatedAt=GETDATE() WHERE ID=?",
+            (doc_id, doc_id)
         )
-    else:
-        cur.execute(
-            "INSERT INTO SalesDocumentItems (DocID, ProductID, Quantity, Price) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?)",
-            (doc_id, product_id, qty, price)
-        )
-    new_id = int(cur.fetchone()[0])
-    cur.execute(
-        "UPDATE SalesDocuments SET TotalAmount=(SELECT ISNULL(SUM(Quantity*Price),0) FROM SalesDocumentItems WHERE DocID=?), UpdatedAt=GETDATE() WHERE ID=?",
-        (doc_id, doc_id)
-    )
-    db.commit()
-    return {"ok": True, "ID": new_id}
+        db.commit()
+        return {"ok": True, "ID": new_id}
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        raise HTTPException(500, f"Помилка додавання позиції: {str(e)}")
 
 
 @router.put("/{doc_id}/items/{item_id}")
@@ -539,10 +675,184 @@ def delete_sale(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     status = str(r[0] or 'draft').lower()
     if status != 'draft':
         raise HTTPException(400, "Видалення дозволено лише для чернеток")
-    cur.execute("DELETE FROM SalesDocumentItems WHERE DocID=?", (doc_id,))
-    cur.execute("DELETE FROM SalesDocuments WHERE ID=?", (doc_id,))
-    db.commit()
-    return {"ok": True}
+    
+    try:
+        # Видаляємо всі пов'язані записи в правильному порядку
+        
+        # 1. Видаляємо рухи партій (PartyMovements)
+        cur.execute("DELETE FROM PartyMovements WHERE DocumentType='SALE' AND DocumentID=?", (doc_id,))
+        
+        # 2. Видаляємо проводки (DocumentPostings)
+        cur.execute("DELETE FROM DocumentPostings WHERE DocumentType='SALE' AND DocumentID=?", (doc_id,))
+        
+        # 3. Видаляємо платежі (MoneyMovements) - використовуємо RelatedObjectType та RelatedObjectID
+        cur.execute("DELETE FROM MoneyMovements WHERE RelatedObjectType='SALE' AND RelatedObjectID=?", (doc_id,))
+        
+        # 4. Видаляємо складські залишки (StockBalances) - тільки ті, що створені цим документом
+        cur.execute("DELETE FROM StockBalances WHERE Comment LIKE ?", (f"SALE #{doc_id}%",))
+        
+        # 5. Видаляємо позиції документа (SalesDocumentItems)
+        cur.execute("DELETE FROM SalesDocumentItems WHERE DocID=?", (doc_id,))
+        
+        # 6. Видаляємо сам документ (SalesDocuments)
+        cur.execute("DELETE FROM SalesDocuments WHERE ID=?", (doc_id,))
+        
+        db.commit()
+        return {"ok": True}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Помилка при видаленні документа: {str(e)}")
+
+
+@router.delete("/{doc_id}/force")
+def force_delete_sale(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
+    """Примусове видалення проведеного документа з відкочуванням всіх операцій"""
+    _ensure_tables(db)
+    cur = db.cursor()
+    r = cur.execute("SELECT Status FROM SalesDocuments WHERE ID=?", (doc_id,)).fetchone()
+    if not r:
+        return {"ok": True}
+    
+    try:
+        # 1. Відкочуємо рухи партій (повертаємо залишки партій)
+        try:
+            cur.execute("""
+                UPDATE Parties 
+                SET RemainingQty = RemainingQty + (
+                    SELECT COALESCE(SUM(Quantity), 0) 
+                    FROM PartyMovements 
+                    WHERE PartyID = Parties.ID 
+                    AND DocumentType = 'SALE' 
+                    AND DocumentID = ?
+                )
+                WHERE ID IN (
+                    SELECT DISTINCT PartyID 
+                    FROM PartyMovements 
+                    WHERE DocumentType = 'SALE' 
+                    AND DocumentID = ?
+                )
+            """, (doc_id, doc_id))
+        except Exception as e:
+            print(f"Помилка відкочування партій: {e}")
+        
+        # 2. Відкочуємо складські операції (повертаємо товари на склад)
+        try:
+            # Отримуємо з PartyMovements дані про рухи продажу (з якого складу і скільки)
+            # JOIN з Parties щоб отримати ProductID
+            has_company_in_pm = _table_has_column(db, "PartyMovements", "CompanyID")
+            has_company_in_sb = _table_has_column(db, "StockBalances", "CompanyID")
+            has_company_in_p = _table_has_column(db, "Parties", "CompanyID")
+            
+            select_fields = "pm.PartyID, pm.WarehouseID, pm.Quantity, p.ProductID"
+            if has_company_in_pm:
+                select_fields += ", pm.CompanyID"
+            elif has_company_in_p:
+                select_fields += ", p.CompanyID"
+            
+            cur.execute(f"""
+                SELECT {select_fields}
+                FROM PartyMovements pm
+                INNER JOIN Parties p ON p.ID = pm.PartyID
+                WHERE pm.DocumentType = 'SALE' AND pm.DocumentID = ?
+            """, (doc_id,))
+            
+            movements = cur.fetchall()
+            for mov in movements:
+                party_id = mov[0]
+                warehouse_id = mov[1]
+                quantity = float(mov[2] or 0)
+                product_id = mov[3]
+                company_id = mov[4] if len(mov) > 4 else None
+                
+                if not warehouse_id or not product_id or quantity <= 0:
+                    continue
+                
+                # Повертаємо товар на склад у StockBalances
+                try:
+                    if has_company_in_sb and company_id is not None:
+                        cur.execute("""
+                            UPDATE StockBalances 
+                            SET Quantity = Quantity + ?, UpdatedAt = GETDATE()
+                            WHERE ProductID = ? AND WarehouseID = ? AND ISNULL(CompanyID,0) = ?
+                        """, (quantity, product_id, warehouse_id, company_id))
+                    else:
+                        cur.execute("""
+                            UPDATE StockBalances 
+                            SET Quantity = Quantity + ?, UpdatedAt = GETDATE()
+                            WHERE ProductID = ? AND WarehouseID = ?
+                        """, (quantity, product_id, warehouse_id))
+                    
+                    # Якщо не оновилось (небуло запису) - створюємо новий
+                    if cur.rowcount == 0:
+                        if has_company_in_sb and company_id is not None:
+                            cur.execute("""
+                                INSERT INTO StockBalances (ProductID, WarehouseID, CompanyID, Quantity, UpdatedAt, Comment)
+                                VALUES (?, ?, ?, ?, GETDATE(), ?)
+                            """, (product_id, warehouse_id, company_id, quantity, f"ROLLBACK SALE #{doc_id}"))
+                        else:
+                            cur.execute("""
+                                INSERT INTO StockBalances (ProductID, WarehouseID, Quantity, UpdatedAt, Comment)
+                                VALUES (?, ?, ?, GETDATE(), ?)
+                            """, (product_id, warehouse_id, quantity, f"ROLLBACK SALE #{doc_id}"))
+                except Exception as e:
+                    print(f"Помилка повернення товару {product_id} на склад {warehouse_id}: {e}")
+        except Exception as e:
+            print(f"Помилка відкочування складських операцій: {e}")
+        
+        # 3. Видаляємо всі пов'язані записи
+        try:
+            cur.execute("DELETE FROM PartyMovements WHERE DocumentType='SALE' AND DocumentID=?", (doc_id,))
+        except Exception as e:
+            print(f"Помилка видалення рухів партій: {e}")
+            
+        try:
+            cur.execute("DELETE FROM DocumentPostings WHERE DocumentType='SALE' AND DocumentID=?", (doc_id,))
+        except Exception as e:
+            print(f"Помилка видалення проводок: {e}")
+            
+        try:
+            # Спочатку отримуємо ID платежів для видалення їх проводок
+            payment_ids = cur.execute(
+                "SELECT ID FROM MoneyMovements WHERE RelatedObjectType='SALE' AND RelatedObjectID=?",
+                (doc_id,)
+            ).fetchall()
+            payment_id_list = [row[0] for row in payment_ids]
+            
+            # Видаляємо проводки для платежів
+            if payment_id_list:
+                placeholders = ','.join(['?' for _ in payment_id_list])
+                cur.execute(
+                    f"DELETE FROM DocumentPostings WHERE DocumentType='PAYMENT' AND DocumentID IN ({placeholders})",
+                    tuple(payment_id_list)
+                )
+            
+            # Видаляємо самі платежі
+            cur.execute("DELETE FROM MoneyMovements WHERE RelatedObjectType='SALE' AND RelatedObjectID=?", (doc_id,))
+        except Exception as e:
+            print(f"Помилка видалення платежів: {e}")
+            
+        # НЕ видаляємо записи з StockBalances - вони містять залишки на складі
+        # Записи, створені під час проведення (з коментарем SALE #doc_id), були зменшені
+        # а зараз повернуті назад - terefor quantity вже коректна
+            
+        try:
+            cur.execute("DELETE FROM SalesDocumentItems WHERE DocID=?", (doc_id,))
+        except Exception as e:
+            print(f"Помилка видалення позицій документа: {e}")
+            
+        try:
+            cur.execute("DELETE FROM SalesDocuments WHERE ID=?", (doc_id,))
+        except Exception as e:
+            print(f"Помилка видалення документа: {e}")
+        
+        db.commit()
+        return {"ok": True, "message": "Документ та всі пов'язані операції успішно видалено"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Помилка при примусовому видаленні документа: {str(e)}")
+
 
 @router.post("/{doc_id}/postings")
 def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
@@ -554,8 +864,13 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     if period_is_closed(db, on_date):
         raise HTTPException(400, "Період закритий для проведень")
 
-    # Зібрати суми
+    # Перевірка чи є оплата
     cur = db.cursor()
+    payment = cur.execute("SELECT ID FROM MoneyMovements WHERE RelatedObjectType='SALE' AND RelatedObjectID=?", (doc_id,)).fetchone()
+    if not payment:
+        raise HTTPException(400, "Неможливо провести документ без оплати. Спочатку необхідно здійснити оплату.")
+
+    # Зібрати суми
     rows = cur.execute("SELECT ProductID, Quantity, Price FROM SalesDocumentItems WHERE DocID=?", (doc_id,)).fetchall()
     total_gross = sum((Decimal(str(r[1] or 0)) * Decimal(str(r[2] or 0))) for r in rows)
     # ПДВ 20% для прикладу
@@ -651,6 +966,7 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
     db.commit()
 
     # --- FIFO списання та рухи партій ---
+    # При проведенні: оновлюємо залишки партій та складські залишки на основі вже створених рухів
     try:
         center_id = head[1]
         warehouse_id = _resolve_default_warehouse(db, int(center_id)) if center_id else None
@@ -666,57 +982,21 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             has_party_remaining = _table_has_column(db, "Parties", "RemainingQty")
             has_party_closed = _table_has_column(db, "Parties", "IsClosed")
 
-            for it in items:
-                pid = int(it[1])
-                need = float(it[2] or 0)
-                item_company = it[3]
-                if need <= 0:
-                    continue
+            # Перевіряємо чи вже є рухи партій для цього документа
+            existing_movements = cur.execute(
+                "SELECT PartyID, Quantity, CompanyID FROM PartyMovements WHERE DocumentType='SALE' AND DocumentID=?",
+                (doc_id,)
+            ).fetchall()
 
-                # Підбираємо партії FIFO
-                where = ["ProductID=?", "WarehouseID=?"]
-                params: list[Any] = [pid, warehouse_id]
-                if has_party_company and item_company is not None:
-                    where.append("ISNULL(CompanyID,0)=ISNULL(?,0)")
-                    params.append(int(item_company))
-                order = "ORDER BY DateReceived, ID"
-
-                if has_party_remaining:
-                    sql = f"SELECT ID, RemainingQty AS Rem, CompanyID FROM Parties WHERE {' AND '.join(where)} AND ISNULL(RemainingQty,0) > 0 {order}"
-                else:
-                    # Обчислимо залишок за рухами, якщо поля RemainingQty немає
-                    sql = (
-                        "SELECT p.ID, p.Quantity - ISNULL((SELECT SUM(m.Quantity) FROM PartyMovements m WHERE m.PartyID=p.ID AND m.MovementType IN ('sale','out')),0) AS Rem, p.CompanyID "
-                        f"FROM Parties p WHERE {' AND '.join(where)} {order}"
-                    )
-                rows = cur.execute(sql, tuple(params)).fetchall()
-
-                for r in rows:
-                    if need <= 0:
-                        break
-                    party_id = int(r[0])
-                    rem = float(r[1] or 0)
-                    party_company = r[2] if len(r) > 2 else item_company
-                    if rem <= 0:
-                        continue
-                    take = rem if rem < need else need
-                    # Рух 'sale'
-                    try:
-                        if has_pm_company:
-                            cur.execute(
-                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID, CompanyID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?, ?)",
-                                (party_id, float(take), on_date, doc_id, warehouse_id, party_company),
-                            )
-                        else:
-                            cur.execute(
-                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
-                                (party_id, float(take), on_date, doc_id, warehouse_id),
-                            )
-                    except Exception:
-                        pass
-
-                    # Оновити залишок партії, якщо є поле
-                    if has_party_remaining:
+            # Якщо рухи вже є - оновлюємо залишки на їх основі
+            if existing_movements:
+                for mov in existing_movements:
+                    party_id = int(mov[0])
+                    take = float(mov[1] or 0)
+                    party_company = mov[2] if len(mov) > 2 and mov[2] is not None else None
+                    
+                    # Оновити залишок партії
+                    if has_party_remaining and take > 0:
                         try:
                             if has_party_closed:
                                 cur.execute(
@@ -730,22 +1010,104 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                                 )
                         except Exception:
                             pass
-
-                    # Оновити складські залишки (з CompanyID по можливості)
+                    
+                    # Оновити складські залишки
                     try:
-                        inventory.upsert_stock_balance(
-                            db,
-                            product_id=pid,
-                            warehouse_id=warehouse_id,
-                            delta_qty=-float(take),
-                            comment=f"SALE #{doc_id}",
-                            parent_id=party_id,
-                            company_id=(int(party_company) if party_company is not None else None),
-                        )
+                        party_row = cur.execute("SELECT ProductID FROM Parties WHERE ID=?", (party_id,)).fetchone()
+                        if party_row:
+                            pid = int(party_row[0])
+                            inventory.upsert_stock_balance(
+                                db,
+                                product_id=pid,
+                                warehouse_id=warehouse_id,
+                                delta_qty=-float(take),
+                                comment=f"SALE #{doc_id}",
+                                parent_id=party_id,
+                                company_id=(int(party_company) if party_company is not None else None),
+                            )
                     except Exception:
                         pass
+            else:
+                # Якщо рухів немає - створюємо їх (fallback для старих документів)
+                for it in items:
+                    pid = int(it[1])
+                    need = float(it[2] or 0)
+                    item_company = it[3]
+                    if need <= 0:
+                        continue
 
-                    need -= float(take)
+                    # Підбираємо партії FIFO
+                    where = ["ProductID=?", "WarehouseID=?"]
+                    params: list[Any] = [pid, warehouse_id]
+                    if has_party_company and item_company is not None:
+                        where.append("ISNULL(CompanyID,0)=ISNULL(?,0)")
+                        params.append(int(item_company))
+                    order = "ORDER BY DateReceived, ID"
+
+                    if has_party_remaining:
+                        sql = f"SELECT ID, RemainingQty AS Rem, CompanyID FROM Parties WHERE {' AND '.join(where)} AND ISNULL(RemainingQty,0) > 0 {order}"
+                    else:
+                        sql = (
+                            "SELECT p.ID, p.Quantity - ISNULL((SELECT SUM(m.Quantity) FROM PartyMovements m WHERE m.PartyID=p.ID AND m.MovementType IN ('sale','out')),0) AS Rem, p.CompanyID "
+                            f"FROM Parties p WHERE {' AND '.join(where)} {order}"
+                        )
+                    rows = cur.execute(sql, tuple(params)).fetchall()
+
+                    for r in rows:
+                        if need <= 0:
+                            break
+                        party_id = int(r[0])
+                        rem = float(r[1] or 0)
+                        party_company = r[2] if len(r) > 2 else item_company
+                        if rem <= 0:
+                            continue
+                        take = rem if rem < need else need
+                        # Рух 'sale'
+                        try:
+                            if has_pm_company:
+                                cur.execute(
+                                    "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID, CompanyID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?, ?)",
+                                    (party_id, float(take), on_date, doc_id, warehouse_id, party_company),
+                                )
+                            else:
+                                cur.execute(
+                                    "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
+                                    (party_id, float(take), on_date, doc_id, warehouse_id),
+                                )
+                        except Exception:
+                            pass
+
+                        # Оновити залишок партії
+                        if has_party_remaining:
+                            try:
+                                if has_party_closed:
+                                    cur.execute(
+                                        "UPDATE Parties SET RemainingQty = RemainingQty - ?, IsClosed = CASE WHEN RemainingQty - ? <= 0 THEN 1 ELSE IsClosed END WHERE ID=?",
+                                        (float(take), float(take), party_id),
+                                    )
+                                else:
+                                    cur.execute(
+                                        "UPDATE Parties SET RemainingQty = RemainingQty - ? WHERE ID=?",
+                                        (float(take), party_id),
+                                    )
+                            except Exception:
+                                pass
+
+                        # Оновити складські залишки
+                        try:
+                            inventory.upsert_stock_balance(
+                                db,
+                                product_id=pid,
+                                warehouse_id=warehouse_id,
+                                delta_qty=-float(take),
+                                comment=f"SALE #{doc_id}",
+                                parent_id=party_id,
+                                company_id=(int(party_company) if party_company is not None else None),
+                            )
+                        except Exception:
+                            pass
+
+                        need -= float(take)
 
                 # Якщо ще залишилось списати (наприклад, немає партій) — спишемо з балансу загально
                 if need > 0:

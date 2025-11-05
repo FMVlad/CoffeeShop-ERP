@@ -1,22 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 
 export default function SalesRegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const backUrl = searchParams.get('backUrl') || '/sales';
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSale, setSelectedSale] = useState(null);
   const [saleItems, setSaleItems] = useState([]);
   
-  // Фільтри
+  // Фільтри з URL параметрами
   const [filters, setFilters] = useState({
-    dateFrom: '',
-    dateTo: '',
-    customer: '',
-    paymentMethod: '',
-    company: ''
+    dateFrom: searchParams.get('dateFrom') || '',
+    dateTo: searchParams.get('dateTo') || '',
+    customer: searchParams.get('customer') || '',
+    paymentMethod: searchParams.get('paymentMethod') || '',
+    company: searchParams.get('company') || ''
   });
+
+  // Обчислення статистики
+  const stats = React.useMemo(() => {
+    const totalAmount = sales.reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
+    const cashAmount = sales
+      .filter(s => s.PaymentMethod === 'cash')
+      .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
+    const cardAmount = sales
+      .filter(s => s.PaymentMethod === 'card')
+      .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
+    const bankAmount = sales
+      .filter(s => s.PaymentMethod === 'bank')
+      .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
+    
+    return {
+      count: sales.length,
+      totalAmount,
+      cashAmount,
+      cardAmount,
+      bankAmount
+    };
+  }, [sales]);
 
   // Завантаження продажів
   useEffect(() => {
@@ -62,18 +86,49 @@ export default function SalesRegisterPage() {
 
   // Видалення продажу
   const handleDeleteSale = async (saleId) => {
-    if (!window.confirm('Ви впевнені, що хочете видалити цей продаж?')) return;
+    const sale = sales.find(s => s.ID === saleId);
+    if (!sale) return;
     
-    try {
-      await api.deleteSale(saleId);
-      await loadSales();
-      if (selectedSale?.ID === saleId) {
-        setSelectedSale(null);
-        setSaleItems([]);
+    // Перевіряємо статус документа
+    if (sale.Status === 'paid') {
+      const forceDelete = window.confirm(
+        'Цей документ вже проведений (оплачений).\n\n' +
+        'Примусове видалення відкотить всі операції:\n' +
+        '• Поверне товари на склад\n' +
+        '• Відкотить рухи партій\n' +
+        '• Видалить проводки та платежі\n\n' +
+        'Ви впевнені, що хочете продовжити?'
+      );
+      
+      if (!forceDelete) return;
+      
+      try {
+        await api.forceDeleteSale(saleId);
+        await loadSales();
+        if (selectedSale?.ID === saleId) {
+          setSelectedSale(null);
+          setSaleItems([]);
+        }
+        alert('Документ та всі пов\'язані операції успішно видалено');
+      } catch (error) {
+        console.error('Помилка примусового видалення продажу:', error);
+        alert('Помилка примусового видалення продажу: ' + (error.message || 'Невідома помилка'));
       }
-    } catch (error) {
-      console.error('Помилка видалення продажу:', error);
-      alert('Помилка видалення продажу');
+    } else {
+      // Звичайне видалення для чернеток
+      if (!window.confirm('Ви впевнені, що хочете видалити цей продаж?')) return;
+      
+      try {
+        await api.deleteSale(saleId);
+        await loadSales();
+        if (selectedSale?.ID === saleId) {
+          setSelectedSale(null);
+          setSaleItems([]);
+        }
+      } catch (error) {
+        console.error('Помилка видалення продажу:', error);
+        alert('Помилка видалення продажу: ' + (error.message || 'Невідома помилка'));
+      }
     }
   };
 
@@ -102,8 +157,8 @@ export default function SalesRegisterPage() {
             <span style={{fontSize:24,fontWeight:700,color:'#fff',letterSpacing:0.5}}>Реєстр продажів</span>
           </div>
           <div style={{display:'flex',gap:12}}>
-            <button onClick={() => navigate('/sales')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>← Назад</button>
-            <button onClick={() => navigate('/webapp')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>🏠 На головну</button>
+            <button onClick={() => navigate(backUrl)} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>← Назад</button>
+            <button onClick={() => navigate('/')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>🏠 На головну</button>
           </div>
         </div>
 
@@ -152,17 +207,6 @@ export default function SalesRegisterPage() {
               </select>
             </div>
             <div>
-              <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Підприємство:</label>
-              <select 
-                value={filters.company}
-                onChange={e => setFilters({...filters, company: e.target.value})}
-                style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}
-              >
-                <option value="">Всі</option>
-                {/* Тут будуть підприємства */}
-              </select>
-            </div>
-            <div>
               <button 
                 onClick={loadSales}
                 style={{background:'#00b894',color:'#fff',border:'none',borderRadius:8,padding:'10px 20px',fontWeight:600,cursor:'pointer',width:'100%'}}
@@ -190,7 +234,7 @@ export default function SalesRegisterPage() {
                       <th style={{textAlign:'right',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Сума</th>
                       <th style={{textAlign:'left',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Клієнт</th>
                       <th style={{textAlign:'left',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Оплата</th>
-                      <th style={{textAlign:'left',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Підприємство</th>
+                      <th style={{textAlign:'center',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Статус</th>
                       <th style={{textAlign:'center',padding:'8px 12px',fontWeight:600}}>Дії</th>
                     </tr>
                   </thead>
@@ -218,31 +262,52 @@ export default function SalesRegisterPage() {
                           {sale.CustomerName || 'Без назви'}
                         </td>
                         <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0'}}>
-                          {sale.PaymentMethod === 'cash' ? 'Готівка' : 
-                           sale.PaymentMethod === 'card' ? 'Картка' : 
+                          {sale.PaymentMethod === 'cash' ? 'Готівка' :
+                           sale.PaymentMethod === 'card' ? 'Картка' :
                            sale.PaymentMethod === 'bank' ? 'Безготівка' : 'Невідомо'}
                         </td>
-                        <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0'}}>
-                          {sale.CompanyName || 'Без підприємства'}
+                        <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0',textAlign:'center'}}>
+                          <span style={{
+                            padding:'4px 8px',
+                            borderRadius:12,
+                            fontSize:12,
+                            fontWeight:600,
+                            background: sale.Status === 'paid' ? '#d4edda' : '#fff3cd',
+                            color: sale.Status === 'paid' ? '#155724' : '#856404'
+                          }}>
+                            {sale.Status === 'paid' ? '✅ Проведений' : '📝 Чернетка'}
+                          </span>
                         </td>
                         <td style={{padding:'8px 12px',textAlign:'center'}}>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/retail-sales?edit=${sale.ID}`);
-                            }}
-                            style={{marginRight:4,padding:'4px 8px',background:'#007bff',color:'#fff',border:'none',borderRadius:4,cursor:'pointer',fontSize:12}}
-                          >
-                            ✏️
-                          </button>
+                          {/* Кнопка редагування тільки для чернеток */}
+                          {sale.Status === 'draft' && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/sales/retail?edit=${sale.ID}`);
+                              }}
+                              style={{marginRight:4,padding:'4px 8px',background:'#007bff',color:'#fff',border:'none',borderRadius:4,cursor:'pointer',fontSize:12}}
+                            >
+                              ✏️
+                            </button>
+                          )}
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteSale(sale.ID);
                             }}
-                            style={{padding:'4px 8px',background:'#dc3545',color:'#fff',border:'none',borderRadius:4,cursor:'pointer',fontSize:12}}
+                            style={{
+                              padding:'4px 8px',
+                              background: sale.Status === 'paid' ? '#ff6b35' : '#dc3545',
+                              color:'#fff',
+                              border:'none',
+                              borderRadius:4,
+                              cursor:'pointer',
+                              fontSize:12
+                            }}
+                            title={sale.Status === 'paid' ? 'Примусове видалення (відкотить операції)' : 'Видалити чернетку'}
                           >
-                            🗑️
+                            {sale.Status === 'paid' ? '⚠️' : '🗑️'}
                           </button>
                         </td>
                       </tr>
@@ -262,7 +327,7 @@ export default function SalesRegisterPage() {
           {/* Деталі продажу */}
           <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,overflow:'hidden',display:'flex',flexDirection:'column'}}>
             <h3 style={{margin:'0 0 16px 0',fontSize:18,fontWeight:700,color:'#333'}}>
-              Склад документа {selectedSale ? `#${selectedSale.ID}` : ''}
+              Склад документа {selectedSale ? (selectedSale.Number || `#${selectedSale.ID}`) : ''}
             </h3>
             
             {selectedSale ? (
@@ -270,15 +335,20 @@ export default function SalesRegisterPage() {
                 <table style={{width:'100%',borderCollapse:'collapse',border:'1px solid #e0c9a0',background:'#fff'}}>
                   <thead>
                     <tr style={{borderBottom:'2px solid #e0c9a0',background:'#f8f9fa'}}>
+                      <th style={{textAlign:'center',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600,width:40}}>№</th>
                       <th style={{textAlign:'left',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Товар</th>
                       <th style={{textAlign:'center',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Кількість</th>
                       <th style={{textAlign:'right',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Ціна</th>
-                      <th style={{textAlign:'right',padding:'8px 12px',fontWeight:600}}>Сума</th>
+                      <th style={{textAlign:'right',padding:'8px 12px',borderRight:'1px solid #e0c9a0',fontWeight:600}}>Сума</th>
+                      <th style={{textAlign:'left',padding:'8px 12px',fontWeight:600}}>Підприємство</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {saleItems.map(item => (
+                    {saleItems.map((item, index) => (
                       <tr key={item.ID} style={{borderBottom:'1px solid #e0c9a0'}}>
+                        <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0',textAlign:'center',fontWeight:600}}>
+                          {index + 1}
+                        </td>
                         <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0'}}>
                           {item.ProductName || 'Без назви'}
                         </td>
@@ -288,8 +358,11 @@ export default function SalesRegisterPage() {
                         <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0',textAlign:'right'}}>
                           {formatAmount(item.Price)} грн
                         </td>
-                        <td style={{padding:'8px 12px',textAlign:'right',fontWeight:600}}>
+                        <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0',textAlign:'right',fontWeight:600}}>
                           {formatAmount(item.TotalAmount)} грн
+                        </td>
+                        <td style={{padding:'8px 12px'}}>
+                          {item.CompanyName || 'Без підприємства'}
                         </td>
                       </tr>
                     ))}
@@ -307,6 +380,33 @@ export default function SalesRegisterPage() {
                 Оберіть продаж для перегляду деталей
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Статистика */}
+        <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,marginTop:24}}>
+          <h3 style={{margin:'0 0 16px 0',fontSize:18,fontWeight:700,color:'#333'}}>📊 Статистика</h3>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16}}>
+            <div style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',padding:16,borderRadius:12,color:'#fff'}}>
+              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>Кількість чеків</div>
+              <div style={{fontSize:24,fontWeight:700}}>{stats.count}</div>
+            </div>
+            <div style={{background:'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',padding:16,borderRadius:12,color:'#fff'}}>
+              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>Загальна сума</div>
+              <div style={{fontSize:24,fontWeight:700}}>{formatAmount(stats.totalAmount)} грн</div>
+            </div>
+            <div style={{background:'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',padding:16,borderRadius:12,color:'#fff'}}>
+              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>💵 Готівка</div>
+              <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.cashAmount)} грн</div>
+            </div>
+            <div style={{background:'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',padding:16,borderRadius:12,color:'#fff'}}>
+              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>💳 Картка</div>
+              <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.cardAmount)} грн</div>
+            </div>
+            <div style={{background:'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',padding:16,borderRadius:12,color:'#fff'}}>
+              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>🏦 Безготівка</div>
+              <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.bankAmount)} грн</div>
+            </div>
           </div>
         </div>
       </div>

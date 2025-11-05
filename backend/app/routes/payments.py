@@ -94,59 +94,88 @@ def list_payments(
     document_id: Optional[int] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
+    center_id: Optional[int] = Query(None),
     db: pyodbc.Connection = Depends(get_db)
 ):
     _ensure_table(db)
     where: List[str] = []
     p: List[Any] = []
     if document_type:
-        where.append("RelatedObjectType=?"); p.append(document_type)
+        where.append("mm.RelatedObjectType=?"); p.append(document_type)
     if document_id:
-        where.append("RelatedObjectID=?"); p.append(document_id)
+        where.append("mm.RelatedObjectID=?"); p.append(document_id)
     if date_from:
-        where.append("DateTime>=?"); p.append(date_from)
+        where.append("mm.DateTime>=?"); p.append(date_from)
     if date_to:
-        where.append("DateTime<=?"); p.append(date_to)
+        where.append("mm.DateTime<=?"); p.append(date_to)
+    if payment_method:
+        where.append("mm.PaymentMethod=?"); p.append(payment_method)
+    if center_id:
+        where.append("mm.CenterID=?"); p.append(center_id)
 
-    base = [
-        "ID", "RelatedObjectType AS DocumentType", "RelatedObjectID AS DocumentID",
-        "PaymentMethod", "Amount", "CurrencyID", "DateTime AS [Date]",
-        "DebitAccountID", "CreditAccountID"
-    ]
-    # Повертаємо псевдонім AccountID для сумісності, якщо реальної колонки немає
-    if _table_has_column(db, 'MoneyMovements', 'AccountID'):
-        base.append("AccountID")
-    else:
-        base.append("DebitAccountID AS AccountID")
-    # Інші колонки (допускаємо їх наявність)
-    base.append("CompanyID")
-    if _table_has_column(db, 'MoneyMovements', 'Comment'):
-        base.append("Comment AS Notes")
-    if _table_has_column(db, 'MoneyMovements', 'CreatedAt'):
-        base.append("CreatedAt")
-    if _table_has_column(db, 'MoneyMovements', 'CreatedBy'):
-        base.append("CreatedBy")
-    if _table_has_column(db, 'MoneyMovements', 'IsAuto'):
-        base.append("IsNull(IsAuto,0) AS IsAuto")
-    if _table_has_column(db, 'MoneyMovements', 'CheckboxReceiptID'):
-        base.append("CheckboxReceiptID")
-    if _table_has_column(db, 'MoneyMovements', 'CheckboxFiscalNumber'):
-        base.append("CheckboxFiscalNumber")
-    if _table_has_column(db, 'MoneyMovements', 'CheckboxStatus'):
-        base.append("CheckboxStatus")
-
-    sql = f"SELECT {', '.join(base)} FROM dbo.MoneyMovements"
+    # Розширений запит з JOIN для платника, отримувача та пов'язаного документа
+    sql = f"""
+    SELECT 
+        mm.ID, mm.RelatedObjectType AS DocumentType, mm.RelatedObjectID AS DocumentID,
+        mm.PaymentMethod, mm.Amount, mm.CurrencyID, mm.DateTime AS [Date],
+        mm.DebitAccountID, mm.CreditAccountID,
+        '' AS DebitAccountCode,
+        COALESCE(deb.Name, '') AS DebitAccountName,
+        '' AS CreditAccountCode,
+        COALESCE(cre.Name, '') AS CreditAccountName,
+        mm.CompanyID, mm.Comment AS Notes, mm.OperationPurpose,
+        mm.CreatedAt, mm.CreatedBy,
+        ISNULL(mm.IsAuto, 0) AS IsAuto,
+        mm.CheckboxReceiptID, mm.CheckboxFiscalNumber, mm.CheckboxStatus,
+        CASE 
+            WHEN mm.PaymentMethod = 'cash' AND mm.Amount > 0 THEN 'Прибуток'
+            WHEN mm.PaymentMethod = 'cash' AND mm.Amount < 0 THEN 'Видаток'
+            WHEN mm.PaymentMethod != 'cash' AND mm.Amount > 0 THEN 'Надходження'
+            WHEN mm.PaymentMethod != 'cash' AND mm.Amount < 0 THEN 'Розрахунок'
+            ELSE 'Невідомо'
+        END AS Direction,
+        mm.DocumentNumber,
+        CASE 
+            WHEN mm.RelatedObjectType = 'SALE' THEN sd.Number
+            ELSE mm.ExternalDocumentNumber
+        END AS RelatedDocumentNumber,
+        CASE 
+            WHEN mm.RelatedObjectType = 'SALE' THEN sd.[Date]
+            ELSE mm.DateTime
+        END AS RelatedDocumentDate,
+        -- Платник: для SALE - назва клієнта, інакше - порожньо або назва рахунку
+        CASE 
+            WHEN mm.RelatedObjectType = 'SALE' THEN COALESCE(payer.Name, '')
+            ELSE COALESCE(deb.Name, '')
+        END AS PayerName,
+        -- Отримувач: назва центру обліку, інакше - назва рахунку
+        COALESCE(center.Name, cre.Name, '') AS RecipientName,
+        -- Підстава з датою документа
+        CASE 
+            WHEN mm.RelatedObjectType = 'SALE' AND mm.OperationPurpose IS NOT NULL AND sd.[Date] IS NOT NULL THEN 
+                mm.OperationPurpose + ' від ' + CONVERT(varchar, sd.[Date], 104)
+            WHEN mm.RelatedObjectType = 'SALE' AND sd.Number IS NOT NULL AND sd.[Date] IS NOT NULL THEN 
+                'Оплата реалізації №' + CAST(sd.Number AS varchar) + ' від ' + CONVERT(varchar, sd.[Date], 104)
+            WHEN mm.OperationPurpose IS NOT NULL THEN 
+                mm.OperationPurpose
+            ELSE ''
+        END AS OperationPurposeWithDate
+    FROM dbo.MoneyMovements mm
+    LEFT JOIN dbo.ChartOfAccounts deb ON deb.ID = mm.DebitAccountID
+    LEFT JOIN dbo.ChartOfAccounts cre ON cre.ID = mm.CreditAccountID
+    LEFT JOIN dbo.SalesDocuments sd ON sd.ID = mm.RelatedObjectID AND mm.RelatedObjectType = 'SALE'
+    LEFT JOIN dbo.Clients payer ON payer.ID = mm.PayerID
+    LEFT JOIN dbo.CentersOfAccounting center ON center.ID = mm.CenterID
+    """
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY DateTime DESC, ID DESC"
+    sql += " ORDER BY mm.DateTime DESC, mm.ID DESC"
 
     cur = db.cursor()
     cur.execute(sql, tuple(p))
     cols = [c[0] for c in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    if 'IsAuto' not in cols:
-        for r in rows:
-            r['IsAuto'] = 0
     return rows
 
 
@@ -177,15 +206,103 @@ def create_payment(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_
     if debit_id is None or credit_id is None:
         raise HTTPException(400, f"Не знайдено рахунки (Дт {debit_code}, Кт {credit_code}) у Плані рахунків")
 
+    # Додаткова інформація для SALE документів
+    payer_id = payload.get("PayerID")
+    recipient_id = payload.get("RecipientID")
+    center_id = payload.get("CenterID")
+    employee_id = payload.get("EmployeeID")
+    document_number = payload.get("DocumentNumber")
+    operation_purpose = payload.get("OperationPurpose")
+    operation_type = payload.get("OperationType") or ("SALE_PAYMENT" if doc_type == "SALE" else None)
+    
+    # Якщо це оплата за реалізацію (SALE) - заповнюємо дані з документа
+    if doc_type == "SALE":
+        cur_check = db.cursor()
+        sale_row = cur_check.execute(
+            "SELECT CustomerID, CompanyID, CenterID, Number, CreatedBy FROM SalesDocuments WHERE ID=?",
+            (doc_id,)
+        ).fetchone()
+        if sale_row:
+            customer_id = sale_row[0]
+            sale_company_id = sale_row[1]
+            sale_center_id = sale_row[2]
+            sale_number = sale_row[3]
+            sale_created_by = sale_row[4] if len(sale_row) > 4 else None
+            
+            # Заповнюємо EmployeeID з документа якщо не передано
+            if employee_id is None and sale_created_by:
+                employee_id = sale_created_by
+            
+            # Заповнюємо PayerID (клієнт з документа)
+            if payer_id is None and customer_id:
+                payer_id = customer_id
+            # Якщо клієнта немає - шукаємо системного роздрібного покупця
+            if payer_id is None:
+                retail_row = cur_check.execute(
+                    "SELECT ID FROM Clients WHERE Name LIKE '%Роздрібний%' OR Name LIKE '%Retail%' ORDER BY ID"
+                ).fetchone()
+                if retail_row:
+                    payer_id = retail_row[0]
+            
+            # Заповнюємо RecipientID (компанія з документа або з payload)
+            if recipient_id is None:
+                recipient_id = sale_company_id or company_id
+            
+            # Заповнюємо CenterID
+            if center_id is None:
+                center_id = sale_center_id
+            
+            # Заповнюємо CompanyID якщо не передано
+            if company_id is None:
+                company_id = sale_company_id or recipient_id
+            
+            # Заповнюємо DocumentNumber
+            if document_number is None:
+                document_number = sale_number or str(doc_id)
+            
+            # Заповнюємо OperationPurpose
+            if operation_purpose is None:
+                operation_purpose = f"Оплата реалізації №{document_number}"
+
+    # Визначаємо CreatedBy: з payload, або з документа SALE, або EmployeeID
+    created_by = payload.get("CreatedBy") or employee_id or None
+    
     cols = [
         "RelatedObjectType","RelatedObjectID","PaymentMethod","Amount","CurrencyID",
-        "DateTime","DebitAccountID","CreditAccountID","CompanyID","Comment","CreatedAt","CreatedBy"
+        "DateTime","DebitAccountID","CreditAccountID","CompanyID","Comment","CreatedAt"
     ]
     vals = [
         doc_type, doc_id, method, amount_abs, payload.get("CurrencyID"),
         date_val, int(debit_id), int(credit_id), company_id, payload.get("Notes"),
-        datetime.now(), payload.get("CreatedBy")
+        datetime.now()
     ]
+    # Додаємо CreatedBy тільки якщо він є
+    if _table_has_column(db, 'MoneyMovements', 'CreatedBy') and created_by:
+        cols.append("CreatedBy")
+        vals.append(created_by)
+    
+    # Додаємо додаткові поля якщо вони є
+    if _table_has_column(db, 'MoneyMovements', 'OperationType') and operation_type:
+        cols.append("OperationType")
+        vals.append(operation_type)
+    if _table_has_column(db, 'MoneyMovements', 'PayerID') and payer_id:
+        cols.append("PayerID")
+        vals.append(payer_id)
+    if _table_has_column(db, 'MoneyMovements', 'RecipientID') and recipient_id:
+        cols.append("RecipientID")
+        vals.append(recipient_id)
+    if _table_has_column(db, 'MoneyMovements', 'CenterID') and center_id:
+        cols.append("CenterID")
+        vals.append(center_id)
+    if _table_has_column(db, 'MoneyMovements', 'EmployeeID') and employee_id:
+        cols.append("EmployeeID")
+        vals.append(employee_id)
+    if _table_has_column(db, 'MoneyMovements', 'DocumentNumber') and document_number:
+        cols.append("DocumentNumber")
+        vals.append(document_number)
+    if _table_has_column(db, 'MoneyMovements', 'OperationPurpose') and operation_purpose:
+        cols.append("OperationPurpose")
+        vals.append(operation_purpose)
     if _table_has_column(db, 'MoneyMovements', 'IsAuto'):
         cols.append("IsAuto"); vals.append(1 if payload.get("IsAuto") else 0)
     # Підтримка Checkbox-полів (опційно)
