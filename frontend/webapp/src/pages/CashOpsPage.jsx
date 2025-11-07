@@ -3,13 +3,217 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useUser } from '../UserContext';
 
+const pageWrapperStyle = {
+  minHeight: '100vh',
+  background: 'linear-gradient(135deg, #f7f1ff 0%, #efe4ff 45%, #fef9ff 100%)',
+  padding: '40px 24px 80px'
+};
+
+const layoutStyle = {
+  maxWidth: 1320,
+  margin: '0 auto'
+};
+
+const heroCardStyle = {
+  background: 'linear-gradient(120deg, #755bff 0%, #a47bff 50%, #caa5ff 100%)',
+  borderRadius: 34,
+  padding: '56px 38px',
+  color: '#fff',
+  boxShadow: '0 30px 68px rgba(117, 91, 255, 0.35)',
+  position: 'relative',
+  overflow: 'hidden'
+};
+
+const heroIconStyle = {
+  fontSize: 56,
+  display: 'block',
+  marginBottom: 18
+};
+
+const heroTitleStyle = {
+  fontSize: 46,
+  fontWeight: 800,
+  marginBottom: 10,
+  letterSpacing: 0.8
+};
+
+const heroSubtitleStyle = {
+  fontSize: 20,
+  opacity: 0.85
+};
+
+const heroActionsStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 18,
+  justifyContent: 'center',
+  marginTop: 34
+};
+
+const heroBtnBase = {
+  border: 'none',
+  borderRadius: 18,
+  padding: '14px 36px',
+  fontWeight: 700,
+  fontSize: 18,
+  cursor: 'pointer',
+  color: '#fff',
+  boxShadow: '0 18px 42px rgba(0, 0, 0, 0.18)',
+  transition: 'transform .18s ease, box-shadow .18s ease'
+};
+
+const backBtnStyle = {
+  ...heroBtnBase,
+  background: 'linear-gradient(120deg, #5fa8ff 0%, #6dc0ff 100%)'
+};
+
+const homeBtnStyle = {
+  ...heroBtnBase,
+  background: 'linear-gradient(120deg, #ff8b68 0%, #ff6f61 100%)'
+};
+
+const filtersCardStyle = {
+  background: '#ffffffee',
+  borderRadius: 28,
+  padding: 36,
+  marginTop: -42,
+  boxShadow: '0 24px 48px rgba(78, 36, 130, 0.18)',
+  backdropFilter: 'blur(3px)'
+};
+
+const filtersGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+  gap: 22,
+  alignItems: 'end'
+};
+
+const labelStyle = {
+  display: 'block',
+  marginBottom: 10,
+  fontWeight: 600,
+  color: '#3a2664',
+  fontSize: 15,
+  letterSpacing: 0.3
+};
+
+const controlStyle = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: 14,
+  border: '2px solid rgba(133, 110, 180, 0.25)',
+  fontSize: 15,
+  outline: 'none',
+  boxShadow: '0 6px 20px rgba(133, 110, 180, 0.1)',
+  background: '#fff'
+};
+
+const searchBtnStyle = {
+  background: 'linear-gradient(135deg, #755bff 0%, #9b7bff 100%)',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 14,
+  padding: '12px 28px',
+  fontWeight: 700,
+  fontSize: 16,
+  cursor: 'pointer',
+  boxShadow: '0 18px 36px rgba(117, 91, 255, 0.3)',
+  justifySelf: 'center'
+};
+
+const statsGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  gap: 26,
+  marginTop: 32
+};
+
+const statCardStyle = {
+  background: '#fff',
+  borderRadius: 24,
+  padding: '32px 28px',
+  textAlign: 'center',
+  boxShadow: '0 22px 48px rgba(110, 84, 160, 0.2)'
+};
+
+const statValueStyle = (color) => ({
+  fontSize: 50,
+  fontWeight: 800,
+  color
+});
+
+const statLabelStyle = {
+  fontSize: 16,
+  color: '#5c4b8a',
+  marginTop: 10,
+  letterSpacing: 0.2
+};
+
+const tableSectionStyle = {
+  background: '#fff',
+  borderRadius: 28,
+  marginTop: 40,
+  boxShadow: '0 28px 56px rgba(110, 84, 160, 0.18)',
+  border: '2px solid #d7c9ff',
+  overflow: 'hidden'
+};
+
+const tableHeaderStyle = {
+  fontSize: 22,
+  fontWeight: 800,
+  color: '#3a2664',
+  padding: '28px 36px',
+  borderBottom: '2px solid #d7c9ff'
+};
+
+const tableContainerStyle = {
+  width: '100%',
+  overflowX: 'auto'
+};
+
+const tableStyle = {
+  width: '100%',
+  minWidth: 960,
+  borderCollapse: 'separate',
+  borderSpacing: 0,
+  fontFamily: 'inherit'
+};
+
+const tableHeadCellStyle = {
+  padding: '18px 22px',
+  fontWeight: 700,
+  fontSize: 15,
+  textAlign: 'left',
+  background: '#f2e9ff',
+  color: '#3a2664',
+  borderBottom: '2px solid #d2c3ff',
+  borderRight: '2px solid #d2c3ff'
+};
+
+const tableCellStyle = {
+  padding: '16px 22px',
+  fontSize: 15,
+  color: '#2c1f4f',
+  background: '#fff',
+  borderBottom: '1px solid #e7dbff',
+  borderRight: '2px solid #f0e6ff'
+};
+
+const badgeStyleBase = {
+  padding: '7px 16px',
+  borderRadius: 999,
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 0.4,
+  display: 'inline-block'
+};
+
 export default function CashOpsPage() {
   const navigate = useNavigate();
   const { centerId: activeCenterId } = useUser();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Встановлюємо по замовчуванню сьогоднішню дату
+
   const today = new Date().toISOString().split('T')[0];
   const [filters, setFilters] = useState({
     dateFrom: today,
@@ -24,9 +228,8 @@ export default function CashOpsPage() {
       const params = { payment_method: 'cash' };
       if (filters.dateFrom) params.dateFrom = filters.dateFrom;
       if (filters.dateTo) params.dateTo = filters.dateTo;
-      // Додаємо фільтр по центру обліку
       if (activeCenterId) params.center_id = Number(activeCenterId);
-      
+
       const data = await api.getPayments(params);
       setPayments(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -43,31 +246,31 @@ export default function CashOpsPage() {
 
   const filteredPayments = React.useMemo(() => {
     let result = payments;
-    
+
     if (filters.direction) {
-      result = result.filter(p => p.Direction === filters.direction);
+      result = result.filter((p) => p.Direction === filters.direction);
     }
-    
+
     if (filters.customer) {
       const search = filters.customer.toLowerCase();
-      result = result.filter(p => {
+      result = result.filter((p) => {
         const payer = (p.PayerName || '').toLowerCase();
         const receiver = (p.RecipientName || '').toLowerCase();
         return payer.includes(search) || receiver.includes(search);
       });
     }
-    
+
     return result;
   }, [payments, filters.direction, filters.customer]);
 
   const stats = React.useMemo(() => {
     const income = filteredPayments
-      .filter(p => p.Direction === 'Прибуток')
+      .filter((p) => p.Direction === 'Прибуток')
       .reduce((sum, p) => sum + Math.abs(parseFloat(p.Amount) || 0), 0);
     const outcome = filteredPayments
-      .filter(p => p.Direction === 'Видаток')
+      .filter((p) => p.Direction === 'Видаток')
       .reduce((sum, p) => sum + Math.abs(parseFloat(p.Amount) || 0), 0);
-    
+
     return { count: filteredPayments.length, income, outcome };
   }, [filteredPayments]);
 
@@ -83,115 +286,156 @@ export default function CashOpsPage() {
   };
 
   const formatAmount = (val) => {
-    return new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    return new Intl.NumberFormat('uk-UA', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(val);
   };
 
   return (
-    <div style={{minHeight: '100vh', background: '#f5f6fa'}}>
-      <div style={{marginLeft: 280, padding: 32}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#f5f6fa',borderRadius:18,padding:'18px 32px',marginBottom:32}}>
-          <div style={{display:'flex',alignItems:'center',gap:14}}>
-            <span style={{fontSize:32}}>💰</span>
-            <span style={{fontSize:24,fontWeight:700,color:'#333',letterSpacing:0.5}}>Касові операції</span>
+    <div style={pageWrapperStyle}>
+      <div style={layoutStyle}>
+        <div style={heroCardStyle}>
+          <span style={heroIconStyle}>💰</span>
+          <div style={heroTitleStyle}>Касові операції</div>
+          <div style={heroSubtitleStyle}>
+            Управління рухом готівки, платежами та пов’язаними документами
           </div>
-          <div style={{display:'flex',gap:12}}>
-            <button onClick={() => navigate('/finance')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>← Назад</button>
-            <button onClick={() => navigate('/')} style={{background:'#e9ecef',color:'#333',border:'none',borderRadius:10,padding:'12px 32px',fontWeight:700,fontSize:18,cursor:'pointer',boxShadow:'0 2px 8px #0002'}}>🏠 На головну</button>
+
+          <div style={heroActionsStyle}>
+            <button type="button" onClick={() => navigate('/finance')} style={backBtnStyle}>
+              ← Назад
+            </button>
+            <button type="button" onClick={() => navigate('/')} style={homeBtnStyle}>
+              🏠 На головну
+            </button>
           </div>
         </div>
 
-        {/* Фільтри */}
-        <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,marginBottom:24}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr auto',gap:16,alignItems:'end'}}>
+        <div style={filtersCardStyle}>
+          <div style={filtersGridStyle}>
             <div>
-              <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Дата від</label>
-              <input type="date" value={filters.dateFrom} onChange={(e) => setFilters({...filters, dateFrom: e.target.value})} style={{width:'100%',padding:'10px 14px',border:'2px solid #e0e0e0',borderRadius:10,fontSize:15}} />
+              <label style={labelStyle}>Дата від</label>
+              <input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                style={controlStyle}
+              />
             </div>
             <div>
-              <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Дата до</label>
-              <input type="date" value={filters.dateTo} onChange={(e) => setFilters({...filters, dateTo: e.target.value})} style={{width:'100%',padding:'10px 14px',border:'2px solid #e0e0e0',borderRadius:10,fontSize:15}} />
+              <label style={labelStyle}>Дата до</label>
+              <input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                style={controlStyle}
+              />
             </div>
             <div>
-              <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Напрямок</label>
-              <select value={filters.direction} onChange={(e) => setFilters({...filters, direction: e.target.value})} style={{width:'100%',padding:'10px 14px',border:'2px solid #e0e0e0',borderRadius:10,fontSize:15}}>
+              <label style={labelStyle}>Напрямок</label>
+              <select
+                value={filters.direction}
+                onChange={(e) => setFilters({ ...filters, direction: e.target.value })}
+                style={controlStyle}
+              >
                 <option value="">Всі</option>
                 <option value="Прибуток">Прибуток</option>
                 <option value="Видаток">Видаток</option>
               </select>
             </div>
             <div>
-              <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Платник / Отримувач</label>
-              <input type="text" value={filters.customer} onChange={(e) => setFilters({...filters, customer: e.target.value})} placeholder="Пошук..." style={{width:'100%',padding:'10px 14px',border:'2px solid #e0e0e0',borderRadius:10,fontSize:15}} />
+              <label style={labelStyle}>Платник / Отримувач</label>
+              <input
+                type="text"
+                value={filters.customer}
+                placeholder="Пошук..."
+                onChange={(e) => setFilters({ ...filters, customer: e.target.value })}
+                style={controlStyle}
+              />
             </div>
-            <button onClick={loadPayments} style={{background:'#7b6eea',color:'#fff',border:'none',borderRadius:10,padding:'10px 24px',fontWeight:700,fontSize:15,cursor:'pointer'}}>🔍 Пошук</button>
+            <button type="button" onClick={loadPayments} style={searchBtnStyle}>
+              🔍 Пошук
+            </button>
+          </div>
+
+          <div style={statsGridStyle}>
+            <div style={statCardStyle}>
+              <div style={statValueStyle('#755bff')}>{stats.count}</div>
+              <div style={statLabelStyle}>Кількість операцій</div>
+            </div>
+            <div style={statCardStyle}>
+              <div style={statValueStyle('#00c48c')}>{formatAmount(stats.income)}</div>
+              <div style={statLabelStyle}>Загальний прибуток</div>
+            </div>
+            <div style={statCardStyle}>
+              <div style={statValueStyle('#ff6f61')}>{formatAmount(stats.outcome)}</div>
+              <div style={statLabelStyle}>Загальний видаток</div>
+            </div>
           </div>
         </div>
 
-        {/* Статистика */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:20,marginBottom:24}}>
-          <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,textAlign:'center'}}>
-            <div style={{fontSize:36,fontWeight:700,color:'#7b6eea'}}>{stats.count}</div>
-            <div style={{fontSize:16,color:'#666',marginTop:8}}>Кількість операцій</div>
-          </div>
-          <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,textAlign:'center'}}>
-            <div style={{fontSize:36,fontWeight:700,color:'#28a745'}}>{formatAmount(stats.income)}</div>
-            <div style={{fontSize:16,color:'#666',marginTop:8}}>Загальний прибуток</div>
-          </div>
-          <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24,textAlign:'center'}}>
-            <div style={{fontSize:36,fontWeight:700,color:'#dc3545'}}>{formatAmount(stats.outcome)}</div>
-            <div style={{fontSize:16,color:'#666',marginTop:8}}>Загальний видаток</div>
-          </div>
-        </div>
-
-        {/* Таблиця */}
-        <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px #0001',padding:24}}>
-          <div style={{fontSize:20,fontWeight:700,marginBottom:20}}>Список операцій</div>
+        <div style={tableSectionStyle}>
+          <div style={tableHeaderStyle}>Список операцій</div>
           {loading ? (
-            <div style={{textAlign:'center',padding:40}}>Завантаження...</div>
+            <div style={{ textAlign: 'center', padding: 64, fontSize: 18, color: '#5c4b8a' }}>
+              Завантаження...
+            </div>
           ) : filteredPayments.length === 0 ? (
-            <div style={{textAlign:'center',padding:40,color:'#999'}}>Немає операцій</div>
+            <div style={{ textAlign: 'center', padding: 64, fontSize: 18, color: '#8b7bac' }}>
+              Немає операцій
+            </div>
           ) : (
-            <div style={{overflow:'auto',display:'flex',justifyContent:'center'}}>
-              <table style={{width:'100%',maxWidth:'100%',borderCollapse:'collapse',margin:'0 auto'}}>
+            <div style={tableContainerStyle}>
+              <table style={tableStyle}>
                 <thead>
-                  <tr style={{background:'#f8f9fa',borderBottom:'2px solid #dee2e6'}}>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>№</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Дата</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Номер документа</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Платник</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Отримувач</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Напрямок</th>
-                    <th style={{padding:'12px',textAlign:'right',fontWeight:600}}>Сума</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Підстава</th>
-                    <th style={{padding:'12px',textAlign:'left',fontWeight:600}}>Підстава оплати</th>
+                  <tr>
+                    <th style={{ ...tableHeadCellStyle, borderLeft: '2px solid #d2c3ff' }}>№</th>
+                    <th style={tableHeadCellStyle}>Дата</th>
+                    <th style={tableHeadCellStyle}>Номер документа</th>
+                    <th style={tableHeadCellStyle}>Платник</th>
+                    <th style={tableHeadCellStyle}>Отримувач</th>
+                    <th style={tableHeadCellStyle}>Напрямок</th>
+                    <th style={{ ...tableHeadCellStyle, textAlign: 'right' }}>Сума</th>
+                    <th style={tableHeadCellStyle}>Підстава</th>
+                    <th style={{ ...tableHeadCellStyle, borderRight: '2px solid #d2c3ff' }}>
+                      Підстава оплати
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPayments.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} style={{padding:'40px',textAlign:'center',color:'#999'}}>
-                        Операцій не знайдено
+                  {filteredPayments.map((p, idx) => (
+                    <tr key={p.ID}>
+                      <td style={{ ...tableCellStyle, borderLeft: '2px solid #f0e6ff' }}>{idx + 1}</td>
+                      <td style={tableCellStyle}>{formatDate(p.RelatedDocumentDate || p.Date)}</td>
+                      <td style={tableCellStyle}>{p.RelatedDocumentNumber || p.DocumentNumber || '-'}</td>
+                      <td style={tableCellStyle}>{p.PayerName || '-'}</td>
+                      <td style={tableCellStyle}>{p.RecipientName || '-'}</td>
+                      <td style={tableCellStyle}>
+                        <span
+                          style={{
+                            ...badgeStyleBase,
+                            background:
+                              p.Direction === 'Прибуток'
+                                ? 'rgba(0, 196, 140, 0.16)'
+                                : 'rgba(255, 111, 97, 0.16)',
+                            color: p.Direction === 'Прибуток' ? '#00996a' : '#e0544d'
+                          }}
+                        >
+                          {p.Direction || '-'}
+                        </span>
+                      </td>
+                      <td style={{ ...tableCellStyle, fontWeight: 700, textAlign: 'right' }}>
+                        {formatAmount(Math.abs(parseFloat(p.Amount) || 0))}
+                      </td>
+                      <td style={tableCellStyle}>
+                        {p.OperationPurposeWithDate || p.OperationPurpose || '-'}
+                      </td>
+                      <td style={{ ...tableCellStyle, borderRight: '2px solid #f0e6ff' }}>
+                        {p.Notes || '-'}
                       </td>
                     </tr>
-                  ) : (
-                    filteredPayments.map((p, idx) => (
-                      <tr key={p.ID} style={{borderBottom:'1px solid #eee'}}>
-                        <td style={{padding:'12px'}}>{idx + 1}</td>
-                        <td style={{padding:'12px'}}>{formatDate(p.RelatedDocumentDate || p.Date)}</td>
-                        <td style={{padding:'12px'}}>{p.RelatedDocumentNumber || p.DocumentNumber || '-'}</td>
-                        <td style={{padding:'12px'}}>{p.PayerName || '-'}</td>
-                        <td style={{padding:'12px'}}>{p.RecipientName || '-'}</td>
-                        <td style={{padding:'12px'}}>
-                          <span style={{padding:'4px 12px',borderRadius:6,fontSize:13,fontWeight:600,background:p.Direction === 'Прибуток' ? '#d4edda' : '#f8d7da',color:p.Direction === 'Прибуток' ? '#155724' : '#721c24'}}>
-                            {p.Direction || '-'}
-                          </span>
-                        </td>
-                        <td style={{padding:'12px',fontWeight:600,textAlign:'right'}}>{formatAmount(Math.abs(parseFloat(p.Amount) || 0))}</td>
-                        <td style={{padding:'12px'}}>{p.OperationPurposeWithDate || p.OperationPurpose || '-'}</td>
-                        <td style={{padding:'12px'}}>{p.Notes || '-'}</td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -201,4 +445,5 @@ export default function CashOpsPage() {
     </div>
   );
 }
+
 
