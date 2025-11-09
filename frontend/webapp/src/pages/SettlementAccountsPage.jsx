@@ -1,10 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const ACCOUNT_TYPE_LABELS = {
+  bank: 'Розрахунковий',
+  card: 'Картковий'
+};
+
+function mapAccountType(value) {
+  if (!value) return ACCOUNT_TYPE_LABELS.bank;
+  return ACCOUNT_TYPE_LABELS[value] || value;
+}
+
 export default function SettlementAccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [form, setForm] = useState({
-    AccountName: '', AccountNumber: '', BankName: '', BankCity: '', MFO: '', IsActive: true
+    AccountName: '',
+    AccountNumber: '',
+    BankName: '',
+    BankCity: '',
+    MFO: '',
+    AccountType: 'bank',
+    IsActive: true
   });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -18,13 +34,24 @@ export default function SettlementAccountsPage() {
   }
 
   function handleAddClick() {
-    setForm({ AccountName: '', AccountNumber: '', BankName: '', BankCity: '', MFO: '', IsActive: true });
+    setForm({
+      AccountName: '',
+      AccountNumber: '',
+      BankName: '',
+      BankCity: '',
+      MFO: '',
+      AccountType: 'bank',
+      IsActive: true
+    });
     setEditingId(null);
     setShowForm(true);
   }
 
   function handleEditClick(account) {
-    setForm({ ...account });
+    setForm({
+      ...account,
+      AccountType: account.AccountType || 'bank'
+    });
     setEditingId(account.ID);
     setShowForm(true);
   }
@@ -90,6 +117,7 @@ export default function SettlementAccountsPage() {
         <thead>
           <tr>
               <th style={headerCellStyle}>Назва</th>
+              <th style={headerCellStyle}>Тип</th>
               <th style={headerCellStyle}>Рахунок</th>
               <th style={headerCellStyle}>Банк</th>
               <th style={headerCellStyle}>Місто</th>
@@ -101,6 +129,7 @@ export default function SettlementAccountsPage() {
           {accounts.map(a =>
               <tr key={a.ID} style={rowStyle}>
                 <td style={cellStyle}>{a.AccountName}</td>
+                <td style={cellStyle}>{mapAccountType(a.AccountType)}</td>
                 <td style={cellStyle}>{a.AccountNumber}</td>
                 <td style={cellStyle}>{a.BankName}</td>
                 <td style={cellStyle}>{a.BankCity}</td>
@@ -145,6 +174,17 @@ function FormFields({ form, setForm }) {
           onChange={e => setForm(f => ({ ...f, BankName: e.target.value }))}
           style={inputStyle}
         />
+      </div>
+      <div>
+        <label style={labelStyle}>Тип рахунку:</label>
+        <select
+          value={form.AccountType}
+          onChange={e => setForm(f => ({ ...f, AccountType: e.target.value }))}
+          style={inputStyle}
+        >
+          <option value="bank">Розрахунковий</option>
+          <option value="card">Картковий</option>
+        </select>
       </div>
       <div>
         <label style={labelStyle}>Місто:</label>

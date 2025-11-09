@@ -43,6 +43,7 @@ from app.routes import user_prefs as user_prefs_router
 from app.routes import sales_documents as sales_documents_router
 from app.routes.clients_router import router as clients_router
 from app.routes import payments as payments_router
+from app.routes import payment_defaults as payment_defaults_router
 
 app = FastAPI(
     title="VYSHNIA API",
@@ -109,6 +110,7 @@ app.include_router(movements_router.router, prefix="/api")
 app.include_router(sales_documents_router.router, prefix="/api")
 app.include_router(clients_router, prefix="/api")
 app.include_router(payments_router.router, prefix="/api")
+app.include_router(payment_defaults_router.router, prefix="/api")
 
 @app.get("/")
 def read_root():

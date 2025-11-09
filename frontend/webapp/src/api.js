@@ -295,6 +295,19 @@ export const updateSettlementAccount = (id, data) =>
 export const deleteSettlementAccount = (id) =>
   fetchJSON(`/settlement-accounts/${id}`, { method: "DELETE" });
 
+// --- Налаштування оплат ---
+export const getSettlementPaymentDefaults = ({ employee_id, center_id }) =>
+  fetchJSON("/payment-defaults/settlement", {
+    query: { employee_id, center_id },
+  });
+export const upsertSettlementPaymentDefault = (data) =>
+  fetchJSON("/payment-defaults/settlement", { method: "POST", data });
+export const deleteSettlementPaymentDefault = ({ employee_id, center_id, company_id }) =>
+  fetchJSON("/payment-defaults/settlement", {
+    method: "DELETE",
+    query: { employee_id, center_id, company_id },
+  });
+
 // --- Системні параметри ---
 export const getSystemParameters = () => fetchJSON("/system-parameters");
 export const addSystemParameter = (data) =>
@@ -701,6 +714,9 @@ export const api = {
   addSettlementAccount,
   updateSettlementAccount,
   deleteSettlementAccount,
+  getSettlementPaymentDefaults,
+  upsertSettlementPaymentDefault,
+  deleteSettlementPaymentDefault,
   // Системні параметри
   getSystemParameters,
   addSystemParameter,

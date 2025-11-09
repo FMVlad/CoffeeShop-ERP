@@ -192,6 +192,9 @@ def create_payment(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_
     if period_is_closed(db, str(date_val)[:10]):
         raise HTTPException(400, "Період закритий для проведень")
 
+    if method not in {"cash", "bank"}:
+        raise HTTPException(400, "PaymentMethod має бути 'cash' або 'bank'")
+
     # Визначаємо рахунки: каса/банк проти дебіторки (361). Знак суми інвертує напрямок.
     company_id = payload.get("CompanyID")
     amount_abs = abs(amount)
@@ -205,6 +208,29 @@ def create_payment(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_
     credit_id = _resolve_account_id(db, credit_code)
     if debit_id is None or credit_id is None:
         raise HTTPException(400, f"Не знайдено рахунки (Дт {debit_code}, Кт {credit_code}) у Плані рахунків")
+
+    # Параметри каси / розрахункового рахунку
+    def _convert_to_int(value):
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    cashbox_id = _convert_to_int(payload.get("CashboxID"))
+    settlement_account_id = _convert_to_int(payload.get("SettlementAccountID"))
+
+    if method == "cash":
+        if cashbox_id is None and _table_has_column(db, "MoneyMovements", "CashboxID"):
+            raise HTTPException(400, "Для готівкового платежу потрібно вказати CashboxID")
+    else:
+        if settlement_account_id is None:
+            # спробуємо визначити за компанією
+            if company_id is not None:
+                settlement_account_id = _resolve_account_for_company(db, company_id)
+        if settlement_account_id is None and _table_has_column(db, "MoneyMovements", "SettlementAccountID"):
+            raise HTTPException(400, "Для безготівкового платежу потрібно вказати SettlementAccountID")
 
     # Додаткова інформація для SALE документів
     payer_id = payload.get("PayerID")
@@ -297,6 +323,12 @@ def create_payment(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_
     if _table_has_column(db, 'MoneyMovements', 'EmployeeID') and employee_id:
         cols.append("EmployeeID")
         vals.append(employee_id)
+    if _table_has_column(db, 'MoneyMovements', 'CashboxID'):
+        cols.append("CashboxID")
+        vals.append(cashbox_id)
+    if _table_has_column(db, 'MoneyMovements', 'SettlementAccountID'):
+        cols.append("SettlementAccountID")
+        vals.append(settlement_account_id)
     if _table_has_column(db, 'MoneyMovements', 'DocumentNumber') and document_number:
         cols.append("DocumentNumber")
         vals.append(document_number)

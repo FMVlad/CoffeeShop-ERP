@@ -2,6 +2,18 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from '../api';
 
+const ACCOUNT_TYPE_LABELS = {
+  bank: "Розрахунковий",
+  card: "Картковий",
+};
+
+function formatAccountLabel(acc) {
+  if (!acc) return "";
+  const typeLabel = ACCOUNT_TYPE_LABELS[acc.AccountType] || "Розрахунковий";
+  const bank = acc.BankName ? `(${acc.BankName})` : "";
+  return `${typeLabel}: ${acc.AccountNumber} ${bank}`.trim();
+}
+
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -32,7 +44,10 @@ export default function CompaniesPage() {
   }
 
   function handleEditClick(company) {
-    setForm({ ...company });
+    setForm({
+      ...company,
+      MainAccountID: company.MainAccountID ?? "",
+    });
     setEditingId(company.ID);
     setShowForm(true);
   }
@@ -40,7 +55,7 @@ export default function CompaniesPage() {
   async function handleSave() {
     if (!form.Name) return;
     if (editingId) {
-      await api.updateCompany({ ...form, ID: editingId });
+      await api.updateCompany(editingId, form);
     } else {
       await api.addCompany(form);
     }
@@ -209,13 +224,13 @@ function CompanyForm({ form, setForm, accounts }) {
           <label style={labelStyle}>Розрахунковий рахунок:</label>
           <select
             value={form.MainAccountID || ""}
-            onChange={e => setForm(f => ({ ...f, MainAccountID: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, MainAccountID: e.target.value ? Number(e.target.value) : "" }))}
             style={inputStyle}
           >
             <option value="">— Розрахункові —</option>
             {accounts.map(acc => (
               <option key={acc.ID} value={acc.ID}>
-                {acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}
+                {formatAccountLabel(acc)}
               </option>
             ))}
           </select>

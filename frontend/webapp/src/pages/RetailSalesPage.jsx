@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './RetailSalesPage.css';
 import { api } from '../api';
@@ -19,6 +19,13 @@ export default function RetailSalesPage() {
   const [showClientPick, setShowClientPick] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [companiesMap, setCompaniesMap] = useState({});
+  const [companiesList, setCompaniesList] = useState([]);
+  const [settlementAccounts, setSettlementAccounts] = useState([]);
+  const [settlementDefaults, setSettlementDefaults] = useState({});
+  const [showProperties, setShowProperties] = useState(false);
+  const [newDefaultCompanyId, setNewDefaultCompanyId] = useState('');
+  const [newDefaultAccountId, setNewDefaultAccountId] = useState('');
+  const [defaultCashboxId, setDefaultCashboxId] = useState(null);
   const lastSelectionPayloadRef = useRef(null);
   const cleanedRef = useRef(false);
   const [qtyDrafts, setQtyDrafts] = useState({});
@@ -26,7 +33,7 @@ export default function RetailSalesPage() {
   const barcodeInputRef = useRef(null);
   const payBtnRef = useRef(null);
   const [showPay, setShowPay] = useState(false);
-  const [payMethod, setPayMethod] = useState('cash'); // cash | bank | card
+  const [payMethod, setPayMethod] = useState('cash'); // cash | bank
   const [cashboxes, setCashboxes] = useState([]);
   const [cashboxId, setCashboxId] = useState(null);
   const [payAmount, setPayAmount] = useState(0);
@@ -34,6 +41,145 @@ export default function RetailSalesPage() {
   const [splitByCompany, setSplitByCompany] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const isInitializingRef = useRef(false);
+
+  const defaultCashboxStorageKey = useMemo(() => {
+    if (!employee?.ID || !activeCenterId) return null;
+    return `retail-default-cashbox:${employee.ID}:${activeCenterId}`;
+  }, [employee?.ID, activeCenterId]);
+
+  const loadCashboxes = useCallback(async (centerId) => {
+    if (!centerId) {
+      setCashboxes([]);
+      return [];
+    }
+    try {
+      const list = await api.getCashboxes(Number(centerId));
+      const arr = Array.isArray(list) ? list : [];
+      setCashboxes(arr);
+      return arr;
+    } catch (error) {
+      console.error('Не вдалося завантажити каси:', error);
+      setCashboxes([]);
+      return [];
+    }
+  }, []);
+
+  const loadSettlementDefaults = useCallback(async () => {
+    if (!employee?.ID || !activeCenterId) {
+      setSettlementDefaults({});
+      return;
+    }
+    try {
+      const rows = await api.getSettlementPaymentDefaults({
+        employee_id: employee.ID,
+        center_id: activeCenterId,
+      });
+      const map = {};
+      (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const companyId = row.CompanyID ?? row.company_id;
+        const accountId = row.SettlementAccountID ?? row.settlement_account_id;
+        if (companyId != null && accountId != null) {
+          map[String(companyId)] = Number(accountId);
+        }
+      });
+      setSettlementDefaults(map);
+    } catch (error) {
+      console.error('Не вдалося завантажити налаштування розрахункових рахунків:', error);
+      setSettlementDefaults({});
+    }
+  }, [employee?.ID, activeCenterId]);
+
+  const handleSaveDefaultCashbox = useCallback(
+    (id) => {
+      const numeric = id ? Number(id) : null;
+      setDefaultCashboxId(numeric);
+      if (payMethod === 'cash') {
+        setCashboxId(numeric || null);
+      }
+      if (!defaultCashboxStorageKey) return;
+      try {
+        if (numeric) {
+          window.localStorage.setItem(defaultCashboxStorageKey, String(numeric));
+        } else {
+          window.localStorage.removeItem(defaultCashboxStorageKey);
+        }
+      } catch (err) {
+        console.error('Не вдалося зберегти налаштування каси за замовчуванням:', err);
+      }
+    },
+    [defaultCashboxStorageKey, payMethod]
+  );
+
+  const handleUpsertSettlementDefault = useCallback(
+    async (companyId, accountId) => {
+      if (!employee?.ID || !activeCenterId) {
+        alert('Спершу виберіть центр обліку та користувача.');
+        return;
+      }
+      try {
+        await api.upsertSettlementPaymentDefault({
+          EmployeeID: employee.ID,
+          CenterID: activeCenterId,
+          CompanyID: Number(companyId),
+          SettlementAccountID: Number(accountId),
+          UpdatedBy: employee?.ID || null,
+        });
+        setSettlementDefaults((prev) => ({
+          ...prev,
+          [String(companyId)]: Number(accountId),
+        }));
+      } catch (error) {
+        console.error('Не вдалося зберегти налаштування рахунку:', error);
+        alert(error?.message || 'Не вдалося зберегти рахунок за замовчуванням');
+      }
+    },
+    [employee?.ID, activeCenterId]
+  );
+
+  const handleDeleteSettlementDefault = useCallback(
+    async (companyId) => {
+      if (!employee?.ID || !activeCenterId) return;
+      try {
+        await api.deleteSettlementPaymentDefault({
+          employee_id: employee.ID,
+          center_id: activeCenterId,
+          company_id: Number(companyId),
+        });
+        setSettlementDefaults((prev) => {
+          const next = { ...prev };
+          delete next[String(companyId)];
+          return next;
+        });
+      } catch (error) {
+        console.error('Не вдалося видалити налаштування рахунку:', error);
+        alert(error?.message || 'Не вдалося видалити налаштування');
+      }
+    },
+    [employee?.ID, activeCenterId]
+  );
+
+  const resolveSettlementAccount = useCallback(
+    (companyId) => {
+      if (companyId == null) return null;
+      const key = String(companyId);
+      return settlementDefaults[key] ?? null;
+    },
+    [settlementDefaults]
+  );
+
+  const handleAddSettlementDefault = useCallback(async () => {
+    if (!newDefaultCompanyId) {
+      alert('Оберіть підприємство для прив’язки.');
+      return;
+    }
+    if (!newDefaultAccountId) {
+      alert('Оберіть розрахунковий рахунок.');
+      return;
+    }
+    await handleUpsertSettlementDefault(Number(newDefaultCompanyId), Number(newDefaultAccountId));
+    setNewDefaultCompanyId('');
+    setNewDefaultAccountId('');
+  }, [newDefaultCompanyId, newDefaultAccountId, handleUpsertSettlementDefault]);
 
   async function reloadItems() {
     if (!current?.ID) return;
@@ -152,8 +298,10 @@ export default function RetailSalesPage() {
     (async () => {
       try {
         const list = await api.getCompanies?.();
+        const safeList = Array.isArray(list) ? list : [];
+        setCompaniesList(safeList);
         const map = {};
-        (Array.isArray(list) ? list : []).forEach(c => {
+        safeList.forEach(c => {
           const id = Number(c.ID || c.Id || 0);
           if (!id) return;
           map[id] = c.Name || c.ShortName || c.FullName || `ФОП #${id}`;
@@ -182,29 +330,69 @@ export default function RetailSalesPage() {
     })();
   }, [activeCenterId]);
 
-  // Підготовка модалки оплати при відкритті
   useEffect(() => {
     (async () => {
-      if (!showPay) return;
-      try {
-        // Локальні підрахунки від поточного списку позицій
-        const localTotal = (Array.isArray(items) ? items : []).reduce((s, it) => s + Number(it.Quantity||0)*Number(it.Price||0), 0);
-        setPayAmount(Number(localTotal || 0));
-        setCashReceived(Number(localTotal || 0));
-        const companiesSet = new Set((Array.isArray(items) ? items : []).map(it => (it.CompanyID ?? 'no_company')));
-        setSplitByCompany(companiesSet.size > 1);
-        // Підтягнути каси для центру
-        if (activeCenterId) {
-          const list = await api.getCashboxes(Number(activeCenterId));
-          setCashboxes(Array.isArray(list) ? list : []);
-          const first = (Array.isArray(list) && list.length) ? list[0] : null;
-          setCashboxId(first ? (first.ID || first.Id) : null);
-        }
-      } catch {
+      if (!activeCenterId) {
         setCashboxes([]);
+        return;
+      }
+      await loadCashboxes(activeCenterId);
+    })();
+  }, [activeCenterId, loadCashboxes]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await api.getSettlementAccounts?.();
+        setSettlementAccounts(Array.isArray(list) ? list : []);
+      } catch {
+        setSettlementAccounts([]);
       }
     })();
-  }, [showPay, activeCenterId, items]);
+  }, []);
+
+  useEffect(() => {
+    loadSettlementDefaults();
+  }, [loadSettlementDefaults]);
+
+  useEffect(() => {
+    if (!defaultCashboxStorageKey) {
+      setDefaultCashboxId(null);
+      return;
+    }
+    try {
+      const saved = window.localStorage.getItem(defaultCashboxStorageKey);
+      setDefaultCashboxId(saved ? Number(saved) : null);
+    } catch {
+      setDefaultCashboxId(null);
+    }
+  }, [defaultCashboxStorageKey]);
+
+  useEffect(() => {
+    if (showProperties && activeCenterId) {
+      loadCashboxes(activeCenterId);
+    }
+  }, [showProperties, activeCenterId, loadCashboxes]);
+
+  // Підготовка модалки оплати при відкритті
+  useEffect(() => {
+    if (!showPay) return;
+    const localItems = Array.isArray(items) ? items : [];
+    const localTotal = localItems.reduce((s, it) => s + Number(it.Quantity || 0) * Number(it.Price || 0), 0);
+    setPayAmount(Number(localTotal || 0));
+    setCashReceived(Number(localTotal || 0));
+    const companyIdsSet = new Set(
+      localItems
+        .map((it) => (it.CompanyID == null ? null : Number(it.CompanyID)))
+        .filter((cid) => cid != null)
+    );
+    setSplitByCompany(() => {
+      if (payMethod === 'bank') {
+        return true;
+      }
+      return companyIdsSet.size > 1;
+    });
+  }, [showPay, items, payMethod]);
 
   // Якщо перемикнули спосіб на готівку — підставляємо внесену суму як до сплати
   useEffect(() => {
@@ -213,6 +401,26 @@ export default function RetailSalesPage() {
       setCashReceived(Number(payAmount || 0));
     }
   }, [payMethod, payAmount, showPay]);
+
+  useEffect(() => {
+    if (!showPay) return;
+    if (payMethod !== 'cash') {
+      setCashboxId(null);
+      return;
+    }
+    const preferredId = defaultCashboxId;
+    if (preferredId) {
+      const exists = (cashboxes || []).find(
+        (cb) => Number(cb.ID || cb.Id) === Number(preferredId)
+      );
+      if (exists) {
+        setCashboxId(Number(preferredId));
+        return;
+      }
+    }
+    const first = (cashboxes && cashboxes.length) ? cashboxes[0] : null;
+    setCashboxId(first ? (first.ID || first.Id || null) : null);
+  }, [showPay, payMethod, cashboxes, defaultCashboxId]);
 
   // Завантаження клієнтів при відкритті модалки
   useEffect(() => {
@@ -465,25 +673,76 @@ export default function RetailSalesPage() {
     }
   }
 
-  const totalByItems = items.reduce((s,it)=> s + Number(it.Quantity||0)*Number(it.Price||0), 0);
-  const totalsByCompany = items.reduce((acc, it) => {
-    const cid = it.CompanyID ?? null;
-    const amt = Number(it.Quantity||0) * Number(it.Price||0);
-    const key = cid == null ? 'no_company' : String(cid);
-    acc[key] = (acc[key] || 0) + amt;
+  const totalByItems = useMemo(
+    () => (Array.isArray(items) ? items : []).reduce(
+      (s, it) => s + Number(it.Quantity || 0) * Number(it.Price || 0),
+      0
+    ),
+    [items]
+  );
+
+  const totalsByCompany = useMemo(() => {
+    const acc = {};
+    (Array.isArray(items) ? items : []).forEach((it) => {
+      const cid = it.CompanyID ?? null;
+      const amt = Number(it.Quantity || 0) * Number(it.Price || 0);
+      const key = cid == null ? 'no_company' : String(cid);
+      acc[key] = (acc[key] || 0) + amt;
+    });
     return acc;
-  }, {});
+  }, [items]);
+  const companyTotalsEntries = useMemo(
+    () => Object.entries(totalsByCompany).filter(([cid]) => cid !== 'no_company'),
+    [totalsByCompany]
+  );
+  const hasMultipleCompanies = companyTotalsEntries.length > 1;
+  const settlementAccountOptions = useMemo(() => {
+    const list = Array.isArray(settlementAccounts) ? settlementAccounts : [];
+    return list.filter(
+      (acc) => (acc.AccountType || acc.accountType || '').toLowerCase() === 'bank'
+    );
+  }, [settlementAccounts]);
+
+  useEffect(() => {
+    if (!showPay) return;
+    if (payMethod === 'bank') {
+      setSplitByCompany(true);
+    } else if (!hasMultipleCompanies) {
+      setSplitByCompany(false);
+    }
+  }, [payMethod, showPay, hasMultipleCompanies]);
   const companyLabel = (cid) => {
     if (cid == null) return '';
     const id = Number(cid);
     return companiesMap?.[id] || `ФОП #${id}`;
   };
-  const totalRetail = items.reduce((s,it)=> {
+  const settlementAccountLabel = useCallback(
+    (accountId) => {
+      if (!accountId) return '';
+      const numeric = Number(accountId);
+      const list = Array.isArray(settlementAccounts) ? settlementAccounts : [];
+      const acc = list.find((a) => Number(a.ID || a.Id) === numeric);
+      if (!acc) return `Рахунок #${numeric}`;
+      const bank = acc.BankName ? ` (${acc.BankName})` : '';
+      return `${acc.AccountNumber || acc.AccountName || acc.Name || `#${numeric}`}${bank}`;
+    },
+    [settlementAccounts]
+  );
+  const unmappedCompanies = useMemo(
+    () =>
+      (Array.isArray(companiesList) ? companiesList : []).filter((company) => {
+        const id = Number(company.ID || company.Id);
+        if (!id) return false;
+        return settlementDefaults[String(id)] == null;
+      }),
+    [companiesList, settlementDefaults]
+  );
+  const totalRetail = useMemo(() => (Array.isArray(items) ? items : []).reduce((s,it)=> {
     const pid = Number(it.ProductID || it.ProductId || it.Product || 0);
     const retail = priceMap[pid] ?? Number(it.Price || 0);
     return s + Number(it.Quantity||0) * Number(retail||0);
-  }, 0);
-  const totalDiscount = Math.max(0, totalRetail - totalByItems);
+  }, 0), [items, priceMap]);
+  const totalDiscount = useMemo(() => Math.max(0, totalRetail - totalByItems), [totalRetail, totalByItems]);
 
   // При виході зі сторінки — видаляємо поточну чернетку (завжди, якщо вона чернетка)
   useEffect(() => {
@@ -572,6 +831,7 @@ export default function RetailSalesPage() {
               className="btn-blue-outline"
             />
             <button className="btn-blue" onClick={()=> setShowClientPick(true)}>Вибрати покупця</button>
+            <button className="btn-blue-outline" onClick={()=> setShowProperties(true)}>⚙️ Властивості</button>
             <input className="retail-action-input" placeholder="Застосована акція" disabled />
             <button
               className="ml-auto px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded"
@@ -721,10 +981,10 @@ export default function RetailSalesPage() {
 
           <div className="border rounded p-3 mb-3">
             <div className="font-semibold mb-2">Чеки підприємців:</div>
-            {Object.keys(totalsByCompany).length === 0 && (
+            {companyTotalsEntries.length === 0 && !totalsByCompany['no_company'] && (
               <div className="text-sm text-gray-500">Немає позицій</div>
             )}
-            {Object.entries(totalsByCompany).map(([cid, sum]) => {
+            {companyTotalsEntries.map(([cid, sum]) => {
               const label = cid === 'no_company' ? 'Без компанії' : companyLabel(Number(cid));
               return (
                 <div key={cid} className="flex justify-between">
@@ -733,6 +993,12 @@ export default function RetailSalesPage() {
                 </div>
               );
             })}
+            {totalsByCompany['no_company'] ? (
+              <div className="flex justify-between text-sm text-red-600 mt-2">
+                <span>Без компанії</span>
+                <span>{Number(totalsByCompany['no_company'] || 0).toFixed(2)}</span>
+              </div>
+            ) : null}
           </div>
           <button
             ref={payBtnRef}
@@ -745,6 +1011,161 @@ export default function RetailSalesPage() {
           >📊 Реєстр реалізацій</button>
         </aside>
       </main>
+
+      {showProperties && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-xl font-bold">Властивості реалізації</div>
+              <button className="px-3 py-1 bg-gray-200 rounded" onClick={() => setShowProperties(false)}>✕</button>
+            </div>
+
+            <div className="space-y-6">
+              <section>
+                <h3 className="font-semibold text-lg mb-2">Готівка</h3>
+                <label className="block text-sm text-gray-600 mb-1">Каса за замовчуванням</label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  value={defaultCashboxId ?? ''}
+                  onChange={(e)=> handleSaveDefaultCashbox(e.target.value || null)}
+                >
+                  <option value="">— Не вибрано —</option>
+                  {(cashboxes || []).map((cb) => {
+                    const id = cb.ID || cb.Id;
+                    const label = cb.Name || cb.Title || `Каса #${id}`;
+                    return (
+                      <option key={id} value={id}>{label}</option>
+                    );
+                  })}
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  Обрана каса підставлятиметься автоматично під час готівкової оплати. Змінити її можна тут або безпосередньо в модалці оплати.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="font-semibold text-lg mb-2">Безготівкові рахунки за замовчуванням</h3>
+                {Object.keys(settlementDefaults).length === 0 ? (
+                  <div className="text-sm text-gray-500 border rounded px-3 py-3">
+                    Ще не налаштовано жодної прив’язки. Додайте відповідність «підприємство → рахунок» нижче.
+                  </div>
+                ) : (
+                  <div className="overflow-auto border rounded">
+                    <table className="min-w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="p-3 text-left">Підприємство</th>
+                          <th className="p-3 text-left">Розрахунковий рахунок</th>
+                          <th className="p-3 text-center w-32">Дія</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(settlementDefaults).map(([companyId, accountId]) => {
+                          const numericCompanyId = Number(companyId);
+                          const label = companyLabel(numericCompanyId);
+                          return (
+                            <tr key={companyId} className="border-t">
+                              <td className="p-3">{label || `ID ${companyId}`}</td>
+                              <td className="p-3">
+                                <select
+                                  className="w-full border rounded px-2 py-1"
+                                  value={accountId || ''}
+                                  onChange={(e)=> {
+                                    const val = e.target.value;
+                                    if (!val) {
+                                      handleDeleteSettlementDefault(numericCompanyId);
+                                      return;
+                                    }
+                                    handleUpsertSettlementDefault(numericCompanyId, Number(val));
+                                  }}
+                                >
+                                  <option value="">— Оберіть рахунок —</option>
+                                  {settlementAccountOptions.map(acc => {
+                                    const id = acc.ID || acc.Id;
+                                    return (
+                                      <option key={id} value={id}>
+                                        {acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {settlementAccountLabel(accountId) || 'Рахунок не вибрано'}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  onClick={()=> handleDeleteSettlementDefault(numericCompanyId)}
+                                  className="px-3 py-1 bg-red-100 text-red-700 rounded"
+                                >
+                                  Видалити
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="mt-5 border-t pt-4">
+                  <div className="text-sm font-semibold mb-2">Додати нову прив’язку</div>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm text-gray-600 mb-1">Підприємство</label>
+                      <select
+                        className="w-full border rounded px-3 py-2"
+                        value={newDefaultCompanyId}
+                        onChange={(e)=> setNewDefaultCompanyId(e.target.value)}
+                      >
+                        <option value="">— Оберіть підприємство —</option>
+                        {unmappedCompanies.map((company) => (
+                          <option key={company.ID || company.Id} value={company.ID || company.Id}>
+                            {company.Name || company.ShortName || `ФОП #${company.ID || company.Id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm text-gray-600 mb-1">Розрахунковий рахунок</label>
+                      <select
+                        className="w-full border rounded px-3 py-2"
+                        value={newDefaultAccountId}
+                        onChange={(e)=> setNewDefaultAccountId(e.target.value)}
+                      >
+                        <option value="">— Оберіть рахунок —</option>
+                        {settlementAccountOptions.map((acc) => (
+                          <option key={acc.ID || acc.Id} value={acc.ID || acc.Id}>
+                            {acc.AccountNumber} {acc.BankName ? `(${acc.BankName})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <button
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={!newDefaultCompanyId || !newDefaultAccountId}
+                        onClick={handleAddSettlementDefault}
+                      >
+                        Додати
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Ці налаштування діють для співробітника {employee?.Name || `ID ${employee?.ID ?? '?'}`}
+                    {' '}та центру обліку №{activeCenterId}. Їх використовуємо при безготівковій оплаті.
+                  </p>
+                </div>
+              </section>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button className="px-4 py-2 bg-gray-200 rounded" onClick={() => setShowProperties(false)}>Закрити</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showClientPick && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
@@ -797,7 +1218,6 @@ export default function RetailSalesPage() {
                   onChange={(e)=> setPayMethod(e.target.value)}
                 >
                   <option value="cash">Готівка</option>
-                  <option value="card">Картка</option>
                   <option value="bank">Безготівково</option>
                 </select>
               </div>
@@ -852,8 +1272,16 @@ export default function RetailSalesPage() {
               )}
               <div className="md:col-span-2">
                 <label className="inline-flex items-center gap-2">
-                  <input type="checkbox" checked={splitByCompany} onChange={e=> setSplitByCompany(e.target.checked)} />
-                  <span>Розподілити оплату по ФОП/компаніях</span>
+                  <input
+                    type="checkbox"
+                    checked={payMethod === 'bank' ? true : splitByCompany}
+                    onChange={(e)=> { if (payMethod !== 'bank') setSplitByCompany(e.target.checked); }}
+                    disabled={payMethod === 'bank'}
+                  />
+                  <span>
+                    Розподілити оплату по ФОП/компаніях
+                    {payMethod === 'bank' ? ' (обовʼязково для безготівки)' : ''}
+                  </span>
                 </label>
               </div>
             </div>
@@ -866,9 +1294,9 @@ export default function RetailSalesPage() {
                   <div className="flex justify-between mt-1 text-sm"><span>Решта:</span><span>{(Number(payAmount||0) - Number(cashReceived||0)).toFixed(2)}</span></div>
                 </>
               )}
-              {Object.keys(totalsByCompany||{}).length > 0 && (
+              {companyTotalsEntries.length > 0 && (
                 <div className="mt-2 text-sm text-gray-700">
-                  {Object.entries(totalsByCompany).map(([cid, sum]) => (
+                  {companyTotalsEntries.map(([cid, sum]) => (
                     <div key={cid} className="flex justify-between">
                       <span>{cid==='no_company' ? 'Без компанії' : companyLabel(Number(cid))}</span>
                       <span>{Number(sum||0).toFixed(2)}</span>
@@ -876,6 +1304,14 @@ export default function RetailSalesPage() {
                   ))}
                 </div>
               )}
+              {totalsByCompany['no_company'] ? (
+                <div className="mt-2 text-sm text-red-600">
+                  <div className="flex justify-between">
+                    <span>Без компанії</span>
+                    <span>{Number(totalsByCompany['no_company'] || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex justify-end gap-2">
@@ -891,17 +1327,58 @@ export default function RetailSalesPage() {
                     // 1) Підготувати платежі (CREATE), без проведення
                     const createdPaymentIds = [];
                     const payments = [];
-                    if (splitByCompany && Object.keys(totalsByCompany||{}).length > 0) {
-                      for (const [cid, sum] of Object.entries(totalsByCompany)) {
+                    const paymentDate = new Date().toISOString().slice(0, 10);
+                    const effectiveSplit = payMethod === 'bank'
+                      ? true
+                      : (splitByCompany && Object.keys(totalsByCompany || {}).length > 0);
+
+                    if (payMethod === 'cash' && !cashboxId) {
+                      alert('Виберіть касу для готівкового платежу (у «Властивостях реалізації»).');
+                      setIsPaying(false);
+                      return;
+                    }
+
+                    if (payMethod === 'bank') {
+                      const noCompanyAmount = totalsByCompany['no_company'] || 0;
+                      if (noCompanyAmount > 0) {
+                        alert('Є позиції без вказаного підприємства. Вкажіть підприємство для кожного товару перед безготівковою оплатою.');
+                        setIsPaying(false);
+                        return;
+                      }
+                      if (companyTotalsEntries.length === 0) {
+                        alert('Немає товарів із прив’язаними підприємствами для безготівкової оплати.');
+                        setIsPaying(false);
+                        return;
+                      }
+                    }
+
+                    const missingAccountCompanies = [];
+
+                    if (effectiveSplit && Object.keys(totalsByCompany || {}).length > 0) {
+                      const entries = payMethod === 'bank'
+                        ? companyTotalsEntries
+                        : Object.entries(totalsByCompany);
+                      for (const [cid, sum] of entries) {
+                        const amount = Number(sum || 0);
+                        if (!(amount > 0)) continue;
+                        const companyId = cid === 'no_company' ? null : Number(cid);
+                        let settlementAccountId = null;
+                        if (payMethod === 'bank') {
+                          settlementAccountId = resolveSettlementAccount(companyId);
+                          if (!settlementAccountId) {
+                            missingAccountCompanies.push(companyId);
+                            continue;
+                          }
+                        }
                         payments.push({
                           DocumentType: 'SALE',
                           DocumentID: current.ID,
                           PaymentMethod: payMethod,
-                          Amount: Number(sum||0),
-                          Date: new Date().toISOString().slice(0,10),
-                          CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
-                          AccountID: payMethod!=='cash' ? null : null,
-                          CompanyID: cid==='no_company' ? null : Number(cid),
+                          Amount: amount,
+                          Date: paymentDate,
+                          CashboxID: payMethod === 'cash' ? (cashboxId || null) : null,
+                          SettlementAccountID: payMethod === 'bank' ? settlementAccountId : null,
+                          CompanyID: companyId,
                           CenterID: Number(activeCenterId) || current?.CenterID || null,
                           IsAuto: true,
                           EmployeeID: employee?.ID || null,
@@ -909,20 +1386,62 @@ export default function RetailSalesPage() {
                         });
                       }
                     } else {
+                      const singleCompanyId = (() => {
+                        if (companyTotalsEntries.length === 1) {
+                          return Number(companyTotalsEntries[0][0]);
+                        }
+                        if (current?.CompanyID != null) return Number(current.CompanyID);
+                        if (companyTotalsEntries.length > 0) {
+                          return Number(companyTotalsEntries[0][0]);
+                        }
+                        return null;
+                      })();
+
+                      let settlementAccountId = null;
+                      if (payMethod === 'bank') {
+                        settlementAccountId = resolveSettlementAccount(singleCompanyId);
+                        if (!settlementAccountId) {
+                          const label = singleCompanyId ? companyLabel(singleCompanyId) : 'обраної компанії';
+                          alert(`Не налаштовано рахунок за замовчуванням для ${label}. Відкрийте «Властивості реалізації» та оберіть рахунок.`);
+                          setShowProperties(true);
+                          setIsPaying(false);
+                          return;
+                        }
+                      }
+
                       payments.push({
                         DocumentType: 'SALE',
                         DocumentID: current.ID,
                         PaymentMethod: payMethod,
-                        Amount: Number(payAmount||0) || Number(totalByItems||0),
-                        Date: new Date().toISOString().slice(0,10),
-                        CashboxID: payMethod==='cash' ? (cashboxId||null) : null,
-                        AccountID: payMethod!=='cash' ? null : null,
-                        CompanyID: current?.CompanyID ?? null,
+                        Amount: Number(payAmount || 0) || Number(totalByItems || 0),
+                        Date: paymentDate,
+                        CashboxID: payMethod === 'cash' ? (cashboxId || null) : null,
+                        SettlementAccountID: payMethod === 'bank' ? settlementAccountId : null,
+                        CompanyID: singleCompanyId,
                         CenterID: Number(activeCenterId) || current?.CenterID || null,
                         IsAuto: true,
                         EmployeeID: employee?.ID || null,
                         CreatedBy: employee?.ID || null
                       });
+                    }
+
+                    if (payMethod === 'bank' && missingAccountCompanies.length > 0) {
+                      const names = missingAccountCompanies
+                        .map((cid) => {
+                          if (!cid) return 'невизначена компанія';
+                          return companyLabel(cid) || `ID ${cid}`;
+                        })
+                        .join(', ');
+                      alert(`Не вказано розрахунковий рахунок за замовчуванням для: ${names}. Відкрийте «Властивості реалізації» та додайте рахунок.`);
+                      setShowProperties(true);
+                      setIsPaying(false);
+                      return;
+                    }
+
+                    if (payments.length === 0) {
+                      alert('Не вдалося підготувати платежі. Перевірте налаштування реалізації.');
+                      setIsPaying(false);
+                      return;
                     }
 
                     // Створюємо платежі, збираємо їх ID
