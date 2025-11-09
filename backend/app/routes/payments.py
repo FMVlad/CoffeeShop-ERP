@@ -96,6 +96,7 @@ def list_payments(
     date_to: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
     center_id: Optional[int] = Query(None),
+    company_id: Optional[int] = Query(None),
     db: pyodbc.Connection = Depends(get_db)
 ):
     _ensure_table(db)
@@ -113,6 +114,8 @@ def list_payments(
         where.append("mm.PaymentMethod=?"); p.append(payment_method)
     if center_id:
         where.append("mm.CenterID=?"); p.append(center_id)
+    if company_id:
+        where.append("mm.CompanyID=?"); p.append(company_id)
 
     # Розширений запит з JOIN для платника, отримувача та пов'язаного документа
     sql = f"""
@@ -160,13 +163,15 @@ def list_payments(
             WHEN mm.OperationPurpose IS NOT NULL THEN 
                 mm.OperationPurpose
             ELSE ''
-        END AS OperationPurposeWithDate
+        END AS OperationPurposeWithDate,
+        COALESCE(comp.Name, '') AS CompanyName
     FROM dbo.MoneyMovements mm
     LEFT JOIN dbo.ChartOfAccounts deb ON deb.ID = mm.DebitAccountID
     LEFT JOIN dbo.ChartOfAccounts cre ON cre.ID = mm.CreditAccountID
     LEFT JOIN dbo.SalesDocuments sd ON sd.ID = mm.RelatedObjectID AND mm.RelatedObjectType = 'SALE'
     LEFT JOIN dbo.Clients payer ON payer.ID = mm.PayerID
     LEFT JOIN dbo.CentersOfAccounting center ON center.ID = mm.CenterID
+    LEFT JOIN dbo.Companies comp ON comp.ID = mm.CompanyID
     """
     if where:
         sql += " WHERE " + " AND ".join(where)

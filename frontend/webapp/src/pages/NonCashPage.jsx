@@ -213,13 +213,15 @@ export default function NonCashPage() {
   const { centerId: activeCenterId } = useUser();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [companyOptions, setCompanyOptions] = useState([]);
 
   const today = new Date().toISOString().split('T')[0];
   const [filters, setFilters] = useState({
     dateFrom: today,
     dateTo: today,
     direction: '',
-    customer: ''
+    customer: '',
+    companyId: ''
   });
 
   const loadPayments = async () => {
@@ -229,6 +231,7 @@ export default function NonCashPage() {
       if (filters.dateFrom) params.dateFrom = filters.dateFrom;
       if (filters.dateTo) params.dateTo = filters.dateTo;
       if (activeCenterId) params.center_id = Number(activeCenterId);
+      if (filters.companyId) params.company_id = Number(filters.companyId);
 
       const data = await api.getPayments(params);
       setPayments(Array.isArray(data) ? data : []);
@@ -242,13 +245,42 @@ export default function NonCashPage() {
 
   useEffect(() => {
     loadPayments();
-  }, [filters.dateFrom, filters.dateTo, activeCenterId]);
+  }, [filters.dateFrom, filters.dateTo, activeCenterId, filters.companyId]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const fetchCompanies = async () => {
+      if (!activeCenterId) {
+        if (!ignore) setCompanyOptions([]);
+        return;
+      }
+      try {
+        const list = await api.getCenterCompanies(Number(activeCenterId));
+        if (!ignore) {
+          setCompanyOptions(Array.isArray(list) ? list : []);
+        }
+      } catch (err) {
+        console.error('Не вдалося завантажити перелік підприємств для центру:', err);
+        if (!ignore) setCompanyOptions([]);
+      }
+    };
+
+    fetchCompanies();
+    return () => {
+      ignore = true;
+    };
+  }, [activeCenterId]);
 
   const filteredPayments = React.useMemo(() => {
     let result = payments;
 
     if (filters.direction) {
       result = result.filter((p) => p.Direction === filters.direction);
+    }
+
+    if (filters.companyId) {
+      result = result.filter((p) => String(p.CompanyID) === String(filters.companyId));
     }
 
     if (filters.customer) {
@@ -261,7 +293,7 @@ export default function NonCashPage() {
     }
 
     return result;
-  }, [payments, filters.direction, filters.customer]);
+  }, [payments, filters.direction, filters.customer, filters.companyId]);
 
   const stats = React.useMemo(() => {
     const income = filteredPayments
@@ -345,6 +377,21 @@ export default function NonCashPage() {
               </select>
             </div>
             <div>
+              <label style={labelStyle}>Підприємство</label>
+              <select
+                value={filters.companyId}
+                onChange={(e) => setFilters({ ...filters, companyId: e.target.value })}
+                style={controlStyle}
+              >
+                <option value="">Всі</option>
+                {companyOptions.map((company) => (
+                  <option key={company.ID} value={company.ID}>
+                    {company.ShortName || company.Name || `Компанія #${company.ID}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label style={labelStyle}>Платник / Отримувач</label>
               <input
                 type="text"
@@ -393,6 +440,7 @@ export default function NonCashPage() {
                     <th style={{ ...tableHeadCellStyle, borderLeft: '2px solid #c4d5ff' }}>№</th>
                     <th style={tableHeadCellStyle}>Дата</th>
                     <th style={tableHeadCellStyle}>Номер документа</th>
+                    <th style={tableHeadCellStyle}>Підприємство</th>
                     <th style={tableHeadCellStyle}>Платник</th>
                     <th style={tableHeadCellStyle}>Отримувач</th>
                     <th style={tableHeadCellStyle}>Напрямок</th>
@@ -409,6 +457,7 @@ export default function NonCashPage() {
                       <td style={{ ...tableCellStyle, borderLeft: '2px solid #e6efff' }}>{idx + 1}</td>
                       <td style={tableCellStyle}>{formatDate(p.RelatedDocumentDate || p.Date)}</td>
                       <td style={tableCellStyle}>{p.RelatedDocumentNumber || p.DocumentNumber || '-'}</td>
+                      <td style={tableCellStyle}>{p.CompanyName || '-'}</td>
                       <td style={tableCellStyle}>{p.PayerName || '-'}</td>
                       <td style={tableCellStyle}>{p.RecipientName || '-'}</td>
                       <td style={tableCellStyle}>
