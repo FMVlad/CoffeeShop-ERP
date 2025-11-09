@@ -242,6 +242,10 @@ export const updateProductPrice = (id, data) =>
   fetchJSON(`/product-prices/${id}`, { method: "PUT", data });
 export const deleteProductPrice = (id) =>
   fetchJSON(`/product-prices/${id}`, { method: "DELETE" });
+export const applyDiscounts = (data) =>
+  fetchJSON("/product-prices/apply-discounts", { method: "POST", data });
+export const clearDiscounts = (data) =>
+  fetchJSON("/product-prices/clear-discounts", { method: "POST", data });
 
 // --- Категорії цін ---
 export const getPriceCategories = () => fetchJSON("/price-categories");
@@ -627,6 +631,37 @@ export const deleteArrivalDocItem = (docId, itemId) =>
 export const cancelArrivalDocPostings = (id) =>
   fetchJSON(`/arrival-documents/${id}/postings`, { method: 'DELETE' });
 
+// --- Документи уцінки ---
+export const getDiscountDocs = (params = {}) =>
+  fetchJSON("/discount-documents", { query: params });
+export const getDiscountDoc = (id) =>
+  fetchJSON(`/discount-documents/${id}`);
+export const addDiscountDoc = (data) =>
+  fetchJSON("/discount-documents", { method: "POST", data });
+export const updateDiscountDoc = (id, data) =>
+  fetchJSON(`/discount-documents/${id}`, { method: "PUT", data });
+export const deleteDiscountDoc = (id) =>
+  fetchJSON(`/discount-documents/${id}`, { method: "DELETE" });
+export const getDiscountDocItems = (docId) =>
+  fetchJSON(`/discount-documents/${docId}/items`);
+export const addDiscountDocItem = (docId, data) =>
+  fetchJSON(`/discount-documents/${docId}/items`, { method: "POST", data });
+export const updateDiscountDocItem = (docId, itemId, data) =>
+  fetchJSON(`/discount-documents/${docId}/items/${itemId}`, {
+    method: "PUT",
+    data,
+  });
+export const deleteDiscountDocItem = (docId, itemId) =>
+  fetchJSON(`/discount-documents/${docId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+export const postDiscountDocPostings = (docId) =>
+  fetchJSON(`/discount-documents/${docId}/postings`, { method: "POST" });
+export const closeDiscountDocIfEmpty = (docId) =>
+  fetchJSON(`/discount-documents/${docId}/close-if-empty`, { method: "POST" });
+export const cleanupStockBalances = () =>
+  fetchJSON("/discount-documents/cleanup-stock-balances", { method: "POST" });
+
 // --- Продажі (Sales) ---
 export const getSales = (params = {}) =>
   fetchJSON("/sales-documents", { query: params });
@@ -775,6 +810,8 @@ export const api = {
   deletePriceCategory,
   // Прайс
   getProductPrices,
+  applyDiscounts,
+  clearDiscounts,
   addProductPrice,
   updateProductPrice,
   deleteProductPrice,
@@ -837,6 +874,19 @@ export const api = {
   deleteArrivalDocItem,
   postArrivalDocPostings,
   cancelArrivalDocPostings,
+  // Документи уцінки
+  getDiscountDocs,
+  getDiscountDoc,
+  addDiscountDoc,
+  updateDiscountDoc,
+  deleteDiscountDoc,
+  getDiscountDocItems,
+  addDiscountDocItem,
+  updateDiscountDocItem,
+  deleteDiscountDocItem,
+  postDiscountDocPostings,
+  closeDiscountDocIfEmpty,
+  cleanupStockBalances,
   // Продажі
   getSales,
   getSale,

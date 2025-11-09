@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import StockPickerButton from "../components/StockPickerButton.jsx";
-import BarcodeInput from "../components/BarcodeInput.jsx";
 import { useUser } from "../UserContext";
 
 export default function DiscountDocumentsPage(){
@@ -20,95 +19,107 @@ export default function DiscountDocumentsPage(){
   const [roundStep, setRoundStep] = useState(1); // 1 грн за замовчуванням
   const [roundMode, setRoundMode] = useState('nearest'); // nearest | up | down
 
+  const reloadItems = useCallback(async (docId) => {
+    const targetId = docId ?? current?.ID;
+    if (!targetId) return;
+    console.log('🔍 DiscountDocumentsPage: Завантаження позицій для документа:', targetId);
+    const loaded = await api.getDiscountDocItems(targetId);
+    console.log('🔍 DiscountDocumentsPage: Отримано позицій:', Array.isArray(loaded) ? loaded.length : 0);
+    setItems(Array.isArray(loaded) ? loaded : []);
+  }, [current?.ID]);
+
   useEffect(() => { api.getCenters().then(setCenters).catch(()=>{}); }, []);
   useEffect(() => { if (activeCenterId && !centerId) setCenterId(String(activeCenterId)); }, [activeCenterId, centerId]);
 
   // Автоматично додаємо товари з selectionBridge
   useEffect(() => {
-    if (current?.ID) {
-      console.log('🔍 DiscountDocumentsPage: Перевіряємо sessionStorage для документа:', current.ID);
-      const picked = window.sessionStorage.getItem('selected::discount_doc');
-      console.log('🔍 DiscountDocumentsPage: Отримано з sessionStorage (raw):', picked);
-      
-      if (picked) {
-        try {
-          const parsed = JSON.parse(picked);
-          console.log('🔍 DiscountDocumentsPage: Отримано з sessionStorage (parsed):', parsed);
-          
-          if (parsed?.items && parsed.items.length > 0) {
-            console.log('🔍 DiscountDocumentsPage: Товари для додавання:', parsed.items);
-            
-            // Додаємо всі обрані товари асинхронно
-            const processItems = async () => {
-              console.log('🔍 DiscountDocumentsPage: Починаємо обробку товарів...');
-              for (const item of parsed.items) {
-                if (item.id) {
-                  const productId = Number(item.id);
-                  const quantity = Number(item.quantity || 1);
-                  const price = Number(item.price || 0);
-                  
-                  console.log('🔍 DiscountDocumentsPage: Обробляємо товар:', { productId, quantity, price });
-                  
-                  // Перевіряємо чи товар вже є в документі
-                  const existingItem = items.find(it => it.ProductID === productId);
-                  
-                  if (existingItem) {
-                    // Якщо товар вже є - оновлюємо кількість
-                    const newQuantity = existingItem.Quantity + quantity;
-                    console.log('🔍 DiscountDocumentsPage: Оновлюємо існуючий товар:', { existingItem: existingItem.ID, newQuantity });
-                    await api.updateDiscountDocItem(current.ID, existingItem.ID, { 
-                      Quantity: newQuantity,
-                      Price: price // Оновлюємо ціну на нову
-                    });
-                  } else {
-                    // Якщо товар новий - додаємо
-                    console.log('🔍 DiscountDocumentsPage: Додаємо новий товар:', { productId, quantity, price });
-                    await api.addDiscountDocItem(current.ID, { 
-                      ProductID: productId, 
-                      Quantity: quantity, 
-                      Price: price 
-                    });
-                  }
-                }
-              }
-              // Очищаємо sessionStorage
-              window.sessionStorage.removeItem('selected::discount_doc');
-              console.log('🔍 DiscountDocumentsPage: sessionStorage очищено');
-              // Перезавантажуємо позиції
-              console.log('🔍 DiscountDocumentsPage: Перезавантажуємо позиції...');
-              setTimeout(() => reloadItems(), 100);
-            };
-            
-            processItems().catch(e => {
-              console.error('Помилка обробки обраних товарів:', e);
-            });
-          } else {
-            console.log('🔍 DiscountDocumentsPage: Немає товарів для додавання або неправильна структура:', parsed);
-          }
-        } catch (e) {
-          console.error('Помилка обробки обраних товарів:', e);
-        }
-      } else {
-        console.log('🔍 DiscountDocumentsPage: sessionStorage порожній для ключа selected::discount_doc');
-      }
-    } else {
+    const currentId = current?.ID;
+    if (!currentId) {
       console.log('🔍 DiscountDocumentsPage: current.ID не встановлено:', current);
+      return;
     }
-  }, [current?.ID]);
+
+    let cancelled = false;
+    console.log('🔍 DiscountDocumentsPage: Перевіряємо sessionStorage для документа:', currentId);
+    const picked = window.sessionStorage.getItem('selected::discount_doc');
+    console.log('🔍 DiscountDocumentsPage: Отримано з sessionStorage (raw):', picked);
+
+    const processSelection = async () => {
+      if (!picked) {
+        console.log('🔍 DiscountDocumentsPage: sessionStorage порожній для ключа selected::discount_doc');
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(picked);
+        console.log('🔍 DiscountDocumentsPage: Отримано з sessionStorage (parsed):', parsed);
+
+        if (!parsed?.items || parsed.items.length === 0) {
+          console.log('🔍 DiscountDocumentsPage: Немає товарів для додавання або неправильна структура:', parsed);
+          return;
+        }
+
+        // Переконуємося, що працюємо з актуальним станом позицій
+        const existingList = await api.getDiscountDocItems(currentId);
+        if (cancelled) return;
+        const existingArray = Array.isArray(existingList) ? existingList : [];
+        const existingMap = new Map(existingArray.map(it => [Number(it.ProductID), it]));
+        setItems(existingArray);
+
+        console.log('🔍 DiscountDocumentsPage: Починаємо обробку товарів...');
+        for (const item of parsed.items) {
+          if (cancelled) return;
+          if (!item?.id) continue;
+
+          const productId = Number(item.id);
+          if (!productId) continue;
+
+          const quantity = Number(item.quantity || 1);
+          const price = Number(item.price || 0);
+          console.log('🔍 DiscountDocumentsPage: Обробляємо товар:', { productId, quantity, price });
+
+          const existingItem = existingMap.get(productId);
+          if (existingItem) {
+            const currentQuantity = Number(existingItem.Quantity || 0);
+            const newQuantity = currentQuantity + quantity;
+            console.log('🔍 DiscountDocumentsPage: Оновлюємо існуючий товар:', { existingItem: existingItem.ID, newQuantity });
+            await api.updateDiscountDocItem(currentId, existingItem.ID, {
+              Quantity: newQuantity,
+              Price: price,
+            });
+            existingItem.Quantity = newQuantity;
+            existingItem.Price = price;
+          } else {
+            console.log('🔍 DiscountDocumentsPage: Додаємо новий товар:', { productId, quantity, price });
+            await api.addDiscountDocItem(currentId, {
+              ProductID: productId,
+              Quantity: quantity,
+              Price: price,
+            });
+          }
+        }
+
+        window.sessionStorage.removeItem('selected::discount_doc');
+        console.log('🔍 DiscountDocumentsPage: sessionStorage очищено');
+        if (!cancelled) {
+          await reloadItems(currentId);
+        }
+      } catch (e) {
+        console.error('Помилка обробки обраних товарів:', e);
+      }
+    };
+
+    processSelection().catch(e => console.error('Помилка обробки обраних товарів:', e));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [current?.ID, reloadItems]);
 
   async function reloadDocs(){ setDocs(await api.getDiscountDocs()); }
-  async function reloadItems(){ 
-    if (current?.ID) {
-      console.log('🔍 DiscountDocumentsPage: Завантаження позицій для документа:', current.ID);
-      const items = await api.getDiscountDocItems(current.ID);
-      console.log('🔍 DiscountDocumentsPage: Отримано позицій:', items?.length || 0);
-      setItems(items);
-    }
-  }
 
   useEffect(() => { reloadDocs(); }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reloadItems(); }, [current?.ID]);
+  useEffect(() => { reloadItems(); }, [reloadItems]);
 
   // Повернення зі сторінки вибору: якщо є вибір і документ не відкрито —
   // спочатку шукаємо останній відкритий документ по центру, і лише якщо його нема — створюємо новий.
@@ -192,7 +203,8 @@ export default function DiscountDocumentsPage(){
 
   // Застосувати введений % до ціни для конкретного рядка
   const commitPercentForItem = async (item, pctStr) => {
-    const base = Number(item.PriceBase || item.PriceBase || item.Price || 0) || 0;
+    const baseSource = item.PriceBase ?? item.BasePrice ?? item.Price ?? 0;
+    const base = Number(baseSource) || 0;
     const pct = Number(pctStr);
     const priceRaw = base ? (base * (1 - (isNaN(pct) ? 0 : pct) / 100)) : 0;
     const price = roundPrice(priceRaw);

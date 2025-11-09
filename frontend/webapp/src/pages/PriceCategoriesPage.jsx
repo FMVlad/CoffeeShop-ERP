@@ -30,20 +30,28 @@ export default function PriceCategoriesPage() {
     loadAll();
   }, []);
 
-  function loadAll() {
-    api.getPriceCategories().then(data => {
-      console.log('🔍 PriceCategoriesPage: Отримано категорії цін:', data);
-      // Виправляю: беру data.categories замість data
-      setPriceCategories(Array.isArray(data?.categories) ? data.categories : []);
-    });
-    api.getCategories().then(data => {
-      console.log('🔍 PriceCategoriesPage: Отримано категорії товару:', data);
-      setProductCategories(Array.isArray(data) ? data : []);
-    });
-    api.getCategoryMargins().then(data => {
-      console.log('🔍 PriceCategoriesPage: Отримано націнки:', data);
-      setMargins(Array.isArray(data) ? data : []);
-    });
+  async function loadAll() {
+    try {
+      const [priceCats, prodCats, marginsData] = await Promise.all([
+        api.getPriceCategories(),
+        api.getCategories(),
+        api.getCategoryMargins(),
+      ]);
+
+      console.log('🔍 PriceCategoriesPage: Отримано категорії цін:', priceCats);
+      setPriceCategories(Array.isArray(priceCats) ? priceCats : []);
+
+      console.log('🔍 PriceCategoriesPage: Отримано категорії товару:', prodCats);
+      setProductCategories(Array.isArray(prodCats) ? prodCats : []);
+
+      console.log('🔍 PriceCategoriesPage: Отримано націнки:', marginsData);
+      setMargins(Array.isArray(marginsData) ? marginsData : []);
+    } catch (error) {
+      console.error('❗ PriceCategoriesPage: Не вдалося завантажити довідники для сторінки категорій цін', error);
+      setPriceCategories([]);
+      setProductCategories([]);
+      setMargins([]);
+    }
   }
 
   // --- Категорії цін (CRUD)
@@ -71,12 +79,12 @@ export default function PriceCategoriesPage() {
       await api.addPriceCategory({ CategoryName: categoryName });
     }
     closeCategoryModal();
-    api.getPriceCategories().then(setPriceCategories);
+    await loadAll();
   }
   async function handleDeleteCategory(id) {
     if (window.confirm("Видалити категорію?")) {
       await api.deletePriceCategory(id);
-      api.getPriceCategories().then(setPriceCategories);
+      await loadAll();
     }
   }
 
@@ -109,12 +117,12 @@ export default function PriceCategoriesPage() {
       await api.addCategoryMargin(marginForm);
     }
     closeMarginModal();
-    api.getCategoryMargins().then(setMargins);
+    await loadAll();
   }
   async function handleDeleteMargin(id) {
     if (window.confirm("Видалити націнку?")) {
       await api.deleteCategoryMargin(id);
-      api.getCategoryMargins().then(setMargins);
+      await loadAll();
     }
   }
 
