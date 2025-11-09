@@ -1,8 +1,27 @@
 import React, { useState, useEffect } from "react";
 import { api } from '../api';
 
+// --- Ієрархія для селектора категорій ---
+function buildCategoryTree(categories, parentId = null) {
+  return categories
+    .filter(cat => String(cat.ParentID) === String(parentId))
+    .map(cat => ({
+      ...cat,
+      children: buildCategoryTree(categories, cat.ID),
+    }));
+}
+function renderCategoryOptions(tree, level = 0) {
+  return tree.flatMap(cat => [
+    <option key={cat.ID} value={cat.ID}>
+      {Array(level).fill(' ').join('')}
+      {level > 0 ? '▶ ' : ''}{cat.CategoryName}
+    </option>,
+    ...renderCategoryOptions(cat.children, level + 1)
+  ]);
+}
+
 export default function ProductCard({ 
-  templateId = 3, 
+  templateId = null,
   productId = null,
   onSave = () => {},
   onCancel = () => {}
@@ -17,147 +36,173 @@ export default function ProductCard({
   const [photoPreview, setPhotoPreview] = useState(null);
   const [attributeValues, setAttributeValues] = useState([]);
   const [fullName, setFullName] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(templateId);
 
   const isEditMode = productId !== null;
 
+  // --- Завантаження категорій та виробників ---
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        console.log('🔄 Завантажуємо дані...');
-        const [templateData, categoriesData, manufacturersData] = await Promise.all([
-          fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${templateId}`).then(r => r.json()),
-          fetch('http://localhost:8000/api/categories').then(r => r.json()),
-          fetch('http://localhost:8000/api/manufacturers').then(r => r.json())
-        ]);
+    const fetchInitial = async () => {
+      const cats = await api.getCategories();
+      setCategories(cats || []);
+      const mans = await (api.getManufacturers ? api.getManufacturers() : Promise.resolve([]));
+      setManufacturers(mans || []);
+    };
+    fetchInitial();
+  }, []);
 
-        console.log('📋 Поля шаблону:', templateData);
-        console.log('🏷️ Категорії:', categoriesData);
-        console.log('🏭 Виробники:', manufacturersData);
-
-        setTemplateFields(templateData);
-        setCategories(categoriesData);
-        setManufacturers(manufacturersData);
-
-        const initialFields = {};
-        templateData.forEach(field => {
-          initialFields[field.SqlName] = "";
-        });
+  // --- Завантаження продукту та шаблону ---
+  useEffect(() => {
+    const loadProductAndTemplate = async () => {
+      setLoading(true);
+      let initialFields = {};
+      let templateIdToUse = templateId;
 
         if (isEditMode) {
-          const productResponse = await fetch(`http://localhost:8000/api/products/${productId}`);
-          const productData = await productResponse.json();
-          console.log('📦 Дані товару:', productData);
-          
-          Object.keys(productData).forEach(key => {
-            if (initialFields.hasOwnProperty(key)) {
-              initialFields[key] = productData[key] || "";
-            }
-          });
+        const products = await api.getProducts();
+        const product = products.find(p => p.ID === productId);
+        if (product) {
+          const category = await api.getCategories().then(cats => cats.find(c => c.ID === product.CategoryID));
+          templateIdToUse = (category && category.ProductCardTemplateID) || templateId || 3;
+          setSelectedTemplateId(templateIdToUse);
 
-          if (productData.Photo) {
-            setPhotoPreview(`http://localhost:8000/api/photo/${productData.Photo}`);
+          const tFields = await api.getProductCardTemplateFields(templateIdToUse);
+          setTemplateFields(tFields);
+
+          tFields.forEach(field => {
+            initialFields[field.SqlName] = product?.[field.SqlName] ?? "";
+          });
+          setFields(initialFields);
+
+          // Фото
+          if (product?.Photo) {
+            setPhotoPreview(`http://localhost:8000/api/preview/${product.Photo}`);
           }
 
-          // Підвантажуємо додаткові параметри
+          // Додаткові атрибути
           const attrs = await api.getProductAttributes(productId);
           setAttributeValues(attrs);
-        }
 
+          // Повна назва (від беку)
+          setFullName(product.FullName || "");
+
+          // Спеціальні параметри (можуть бути відсутні у шаблоні)
+          initialFields["DiscountBarcode"] = product.DiscountBarcode || "";
+          initialFields["IsDiscountedAvailable"] = Boolean(product.IsDiscountedAvailable);
+        }
+      } else {
+        const cats = await api.getCategories();
+        setCategories(cats || []);
+        let selectedCat = cats && cats.length > 0 ? cats[0] : null;
+        if (selectedCat && selectedCat.ProductCardTemplateID) {
+          templateIdToUse = selectedCat.ProductCardTemplateID;
+        } else {
+          templateIdToUse = templateId || 3;
+        }
+        setSelectedTemplateId(templateIdToUse);
+
+        const tFields = await api.getProductCardTemplateFields(templateIdToUse);
+        setTemplateFields(tFields);
+
+        tFields.forEach(field => {
+          if (field.SqlName === "Barcode") {
+            const prefill = sessionStorage.getItem('productcard_prefill_barcode');
+            if (prefill) initialFields[field.SqlName] = prefill;
+            else initialFields[field.SqlName] = "";
+          } else {
+            initialFields[field.SqlName] = "";
+          }
+        });
+        // Значення за замовчуванням для спеціальних параметрів
+        initialFields["DiscountBarcode"] = initialFields["DiscountBarcode"] || "";
+        initialFields["IsDiscountedAvailable"] = false;
         setFields(initialFields);
-        setLoading(false);
-      } catch (error) {
-        console.error("❌ Помилка завантаження даних:", error);
-        setLoading(false);
+        setAttributeValues([]);
+        setFullName("");
       }
+      setLoading(false);
     };
+    loadProductAndTemplate();
+    // eslint-disable-next-line
+  }, [productId]);
 
-    loadData();
-  }, [templateId, productId, isEditMode]);
-
+  // --- Preview FullName при зміні полів (динамічно через бекенд) ---
   useEffect(() => {
-    if (productId) {
-      fetch(`http://localhost:8000/api/products/${productId}/fullname`)
-        .then(r => r.json())
-        .then(data => setFullName(data.FullName || ""));
-    } else {
-      setFullName("");
-    }
-  }, [productId, fields, attributeValues]);
+    if (!templateFields.length) return;
+    let timeout = setTimeout(async () => {
+      const currentCategory = fields.CategoryID || (categories[0]?.ID || null);
+      if (!currentCategory) return;
 
+      let ruleObj = null;
+      try {
+        const rules = await api.getProductNameRules();
+        ruleObj = rules.find(r => String(r.CategoryID) === String(currentCategory));
+      } catch {}
+      if (!ruleObj || !ruleObj.Rule) {
+        setFullName(""); // Немає rule — нічого не відображати
+        return;
+      }
+
+      const values = {};
+      templateFields.forEach(f => {
+        if (f.IsStandard) values[f.SqlName] = fields[f.SqlName] ?? "";
+      });
+      attributeValues.forEach(a => {
+        const fieldMeta = templateFields.find(f => f.ID === a.FieldID);
+        if (fieldMeta) values[fieldMeta.SqlName] = a.Value;
+      });
+
+      try {
+        const resp = await api.generateProductFullName({
+          rule: ruleObj.Rule,
+          values
+        });
+        setFullName(resp.full_name || "");
+      } catch {
+        setFullName("");
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line
+  }, [fields, attributeValues, templateFields]);
+
+  // --- Категорія змінює шаблон і поля, але НЕ витирає значення якщо є ---
+  const handleCategoryChange = async (categoryId) => {
+    handleChange("CategoryID", categoryId);
+    const selectedCat = categories.find(c => String(c.ID) === String(categoryId));
+    const templateIdToUse = selectedCat?.ProductCardTemplateID || 3;
+    setSelectedTemplateId(templateIdToUse);
+
+    const tFields = await api.getProductCardTemplateFields(templateIdToUse);
+    setTemplateFields(tFields);
+
+    // Основні (стандартні) поля
+    setFields(prevFields => {
+      const newFields = {};
+      tFields.forEach(f => {
+        if (f.SqlName === "CategoryID") newFields[f.SqlName] = categoryId;
+        else newFields[f.SqlName] = prevFields[f.SqlName] ?? "";
+      });
+      return newFields;
+    });
+
+    // Додаткові поля (атрибути)
+    setAttributeValues(prevAttrs => {
+      const allowedFieldIDs = tFields.filter(f => !f.IsStandard).map(f => f.ID);
+      return prevAttrs.filter(a => allowedFieldIDs.includes(a.FieldID));
+    });
+  };
+
+  // --- Для стандартних полів (Products) ---
   const handleChange = (sqlName, value) => {
-    setFields(prev => ({ ...prev, [sqlName]: value }));
+    setFields(prev => ({
+      ...prev,
+      [sqlName]: value
+    }));
   };
 
-  const handlePhotoUpload = async (file) => {
-    if (!file || !file.type.startsWith('image/')) {
-      alert('📸 Будь ласка, виберіть файл зображення');
-      return;
-    }
-
-    if (isEditMode && productId) {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        console.log('🔄 Завантажуємо фото для товару ID:', productId);
-        const response = await fetch(`http://localhost:8000/api/products/${productId}/upload-photo`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        console.log('📡 Відповідь сервера:', response.status);
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log('✅ Результат:', result);
-          
-          const photoUrl = `http://localhost:8000/api/photo/${result.filename}`;
-          console.log('🖼️ URL фото:', photoUrl);
-          setPhotoPreview(photoUrl);
-          handleChange('Photo', result.filename);
-          alert('✅ Фото та прев\'ю збережено!');
-        } else {
-          const errorText = await response.text();
-          console.error('❌ Помилка сервера:', errorText);
-          alert('❌ Помилка завантаження фото');
-        }
-      } catch (error) {
-        console.error('❌ Помилка:', error);
-        alert('❌ Помилка завантаження фото');
-      }
-    } else {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        console.log('🔄 Завантажуємо фото (тимчасово)...');
-        const response = await fetch('http://localhost:8000/api/upload-image', {
-          method: 'POST',
-          body: formData
-        });
-        
-        console.log('📡 Відповідь сервера:', response.status);
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log('✅ Результат:', result);
-          const photoUrl = `http://localhost:8000/uploads/${result.filename}`;
-          console.log('🖼️ URL фото:', photoUrl);
-          setPhotoPreview(photoUrl);
-          handleChange('Photo', result.filename);
-          alert('✅ Фото завантажено тимчасово!');
-        } else {
-          const errorText = await response.text();
-          console.error('❌ Помилка сервера:', errorText);
-          alert('❌ Помилка завантаження фото');
-        }
-      } catch (error) {
-        console.error('❌ Помилка:', error);
-        alert('❌ Помилка завантаження фото');
-      }
-    }
-  };
-
+  // --- Для додаткових атрибутів (ProductAttributes) ---
   const handleAttributeChange = (fieldId, value) => {
     setAttributeValues(prev => {
       const idx = prev.findIndex(a => a.FieldID === fieldId);
@@ -171,114 +216,78 @@ export default function ProductCard({
     });
   };
 
+  const handlePhotoUpload = async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      alert('📸 Будь ласка, виберіть файл зображення');
+      return;
+    }
+    if (isEditMode && productId) {
+      try {
+        const result = await api.uploadProductPhoto(productId, file);
+        setPhotoPreview(`http://localhost:8000/api/preview/${result.filename}`);
+          handleChange('Photo', result.filename);
+          alert('✅ Фото та прев\'ю збережено!');
+      } catch (error) {
+        alert('❌ Помилка завантаження фото');
+      }
+    }
+  };
+
+  // --- Збереження ---
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Визначаємо стандартні поля (які є у templateFields з IsStandard)
-      const standardFieldNames = templateFields.filter(f => f.IsStandard).map(f => f.SqlName);
+      const standardFields = templateFields.filter(f => f.IsStandard);
       const standardData = {};
-      Object.keys(fields).forEach(key => {
-        if (standardFieldNames.includes(key)) {
-          standardData[key] = fields[key];
-        }
+      standardFields.forEach(f => {
+        let value = fields[f.SqlName];
+        if (f.SqlName === "ManufacturerID") value = value ? Number(value) : null;
+        if (f.SqlName === "CategoryID") value = value ? Number(value) : null;
+        standardData[f.SqlName] = value;
       });
-      // Додаткові поля — тільки ті, що у attributeValues
+
       const additionalData = attributeValues.map(attr => ({
         FieldID: attr.FieldID,
         Value: attr.Value
       }));
 
+      // Додамо спеціальні параметри, якщо бек їх підтримує
+      standardData["DiscountBarcode"] = fields["DiscountBarcode"] || "";
+      standardData["IsDiscountedAvailable"] = !!fields["IsDiscountedAvailable"]; 
+
+      let response;
       if (isEditMode) {
-        // Оновлення стандартних полів
-        const response = await fetch(`http://localhost:8000/api/products/${productId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(standardData)
-        });
-        if (response.ok) {
-          const result = await response.json();
-          // Оновлення додаткових полів
-          if (additionalData.length > 0) {
-            await api.saveProductAttributes(productId, additionalData);
-          }
-          onSave(result);
-          alert('✅ Товар оновлено!');
-        } else {
-          const errorText = await response.text();
-          console.error('❌ Помилка сервера:', errorText);
-          alert('❌ Помилка збереження');
+        response = await api.updateProduct(productId, standardData);
+        if (additionalData.length > 0) {
+          await api.saveProductAttributes(productId, additionalData);
         }
+        onSave(response);
+        alert('✅ Товар оновлено!');
       } else {
-        // Створення нового товару
-        const response = await fetch('http://localhost:8000/api/products', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(standardData)
-        });
-        if (response.ok) {
-          const result = await response.json();
-          // Додаткові поля
-          if (additionalData.length > 0) {
-            await api.saveProductAttributes(result.id, additionalData);
-          }
-          onSave(result);
-          alert('✅ Товар створено!');
-        } else {
-          const errorText = await response.text();
-          console.error('❌ Помилка сервера:', errorText);
-          alert('❌ Помилка збереження');
+        response = await api.addProduct(standardData);
+        if (additionalData.length > 0) {
+          await api.saveProductAttributes(response.id, additionalData);
         }
+        onSave(response);
+        alert('✅ Товар створено!');
       }
+      // У довіднику лише збереження/редагування, без швидкого додавання у документи
     } catch (error) {
-      console.error('❌ Помилка:', error);
       alert('❌ Помилка збереження');
     } finally {
       setSaving(false);
     }
   };
 
-  const renderField = (field) => {
-    const { SqlName, DisplayName, FieldType, IsRequired, ID: FieldID } = field;
-    
-    if (SqlName === "CategoryID") {
-      return (
-        <div key={SqlName} style={{ marginBottom: 16 }}>
-          <label style={{ 
-            fontWeight: 600, 
-            display: "block", 
-            marginBottom: 8, 
-            fontSize: 14,
-            color: "#333"
-          }}>
-            {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
-          </label>
-          <select
-            value={fields[SqlName] || ""}
-            onChange={e => handleChange(SqlName, e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              background: "white",
-              boxSizing: "border-box"
-            }}
-          >
-            <option value="">Оберіть категорію</option>
-            {categories.map(cat => (
-              <option key={cat.ID} value={cat.ID}>{cat.CategoryName}</option>
-            ))}
-          </select>
-        </div>
-      );
-    }
+  // У довіднику — без швидкого додавання у документи
 
-    if (SqlName === "ManufacturerID" || SqlName === "Manufacturer" || SqlName.toLowerCase().includes("manufacturer") || SqlName.toLowerCase().includes("виробник")) {
-      const manufacturer = manufacturers.find(man => man.ID === Number(fields[SqlName]));
-      const displayValue = manufacturer
-        ? `${manufacturer.ManufacturerName}${manufacturer.Country ? " (" + manufacturer.Country + ")" : ""}`
-        : "";
+  // --- Рендер полів ---
+  const renderField = (field) => {
+    const { SqlName, DisplayName, FieldType, IsRequired, ID: FieldID, IsStandard } = field;
+
+    if (SqlName === "CategoryID") {
+      // --- Ієрархічний селектор категорій ---
+      const tree = buildCategoryTree(categories);
 
       return (
         <div key={SqlName} style={{ marginBottom: 16 }}>
@@ -287,16 +296,34 @@ export default function ProductCard({
           </label>
           <select
             value={fields[SqlName] || ""}
-            onChange={e => handleChange(SqlName, e.target.value)}
+            onChange={e => handleCategoryChange(e.target.value)}
             style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 14,
-              background: "white",
-              boxSizing: "border-box"
+              width: "100%", padding: "12px", borderRadius: 8,
+              border: "1px solid #ddd", fontSize: 14, background: "white", boxSizing: "border-box"
             }}
+          >
+            <option value="">Оберіть категорію</option>
+            {renderCategoryOptions(tree)}
+          </select>
+        </div>
+      );
+    }
+
+    if (
+      SqlName === "ManufacturerID" ||
+      SqlName === "Manufacturer" ||
+      SqlName.toLowerCase().includes("manufacturer") ||
+      SqlName.toLowerCase().includes("виробник")
+    ) {
+      return (
+        <div key={SqlName} style={{ marginBottom: 16 }}>
+          <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+            {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
+          </label>
+          <select
+            value={fields[SqlName] || ""}
+            onChange={e => handleChange(SqlName, e.target.value)}
+            style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, background: "white", boxSizing: "border-box" }}
           >
             <option value="">Оберіть виробника</option>
             {manufacturers.map(man => (
@@ -305,26 +332,31 @@ export default function ProductCard({
               </option>
             ))}
           </select>
-          {manufacturer && (
-            <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
-              {displayValue}
             </div>
-          )}
+      );
+    }
+
+    if (IsStandard) {
+      return (
+        <div key={SqlName} style={{ marginBottom: 16 }}>
+          <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+            {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
+          </label>
+          <input
+            type={FieldType === "number" ? "number" : "text"}
+            value={fields[SqlName] ?? ""}
+            onChange={e => handleChange(SqlName, e.target.value)}
+            placeholder={`Введіть ${DisplayName.toLowerCase()}`}
+            style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
+          />
         </div>
       );
     }
     
-    // Для додаткових полів беремо значення з attributeValues
-    const attrValue = attributeValues.find(a => a.FieldID === FieldID)?.Value || fields[SqlName] || "";
+    const attrValue = attributeValues.find(a => a.FieldID === FieldID)?.Value ?? "";
     return (
       <div key={SqlName} style={{ marginBottom: 16 }}>
-        <label style={{ 
-          fontWeight: 600, 
-          display: "block", 
-          marginBottom: 8, 
-          fontSize: 14,
-          color: "#333"
-        }}>
+        <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
           {DisplayName} {IsRequired && <span style={{ color: "#e74c3c" }}>*</span>}
         </label>
         <input
@@ -332,23 +364,14 @@ export default function ProductCard({
           value={attrValue}
           onChange={e => handleAttributeChange(FieldID, e.target.value)}
           placeholder={`Введіть ${DisplayName.toLowerCase()}`}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            fontSize: 14,
-            boxSizing: "border-box"
-          }}
+          style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
         />
       </div>
     );
   };
 
-  // Визначаємо, яке фото показувати: прев'ю чи повне
   const getPhotoUrl = () => {
     if (photoPreview && isEditMode && fields.Photo) {
-      // Після збереження показуємо прев'ю
       return `http://localhost:8000/api/preview/${fields.Photo}`;
     }
     return photoPreview;
@@ -356,13 +379,20 @@ export default function ProductCard({
 
   if (loading) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "400px", fontSize: 18, color: "#666" }}>
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        minHeight: "400px",
+        fontSize: 18,
+        color: "#666"
+      }}>
         Завантаження...
       </div>
     );
   }
 
-  const standardFields = templateFields.filter(f => f.IsStandard && f.IsVisible && f.SqlName !== "Photo");
+  const standardFieldsArr = templateFields.filter(f => f.IsStandard && f.IsVisible && f.SqlName !== "Photo");
   const additionalFields = templateFields.filter(f => !f.IsStandard && f.IsVisible);
 
   return (
@@ -375,66 +405,147 @@ export default function ProductCard({
       overflow: "hidden",
       padding: 0
     }}>
-      {/* Заголовок */}
-      <div style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", padding: "28px 40px", textAlign: "center" }}>
+      <div style={{ background: "#f7ede2", color: "#6d4c2b", padding: "28px 40px", textAlign: "center" }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>🛒 Деталі товару</h1>
         {fullName && (
-          <div style={{ marginTop: 12, fontSize: 20, fontWeight: 600, color: "#ffeaa7", textShadow: "0 1px 2px #3333" }}>
+      <div style={{
+            marginTop: 12, fontSize: 20, fontWeight: 700,
+            color: "#c4282d", textShadow: "0 1px 2px #fff8"
+          }}>
             {fullName}
           </div>
         )}
       </div>
 
-      {/* Вкладки */}
-      <div style={{ display: "flex", background: "#f8f9fa", borderBottom: "1px solid #e9ecef" }}>
-        <button onClick={() => setActiveTab("details")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "details" ? "white" : "transparent", borderBottom: activeTab === "details" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "details" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Основні дані</button>
-        <button onClick={() => setActiveTab("attributes")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "attributes" ? "white" : "transparent", borderBottom: activeTab === "attributes" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "attributes" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Додаткові поля</button>
-        <button onClick={() => setActiveTab("pricing")} style={{ flex: 1, padding: "16px 0", border: "none", background: activeTab === "pricing" ? "white" : "transparent", borderBottom: activeTab === "pricing" ? "3px solid #007bff" : "3px solid transparent", fontSize: 16, fontWeight: 700, color: activeTab === "pricing" ? "#007bff" : "#666", cursor: "pointer", transition: "all 0.2s" }}>Ціни</button>
+      <div style={{
+        display: "flex",
+        background: "#f8f9fa",
+        borderBottom: "1px solid #e9ecef"
+      }}>
+        <button
+          onClick={() => setActiveTab("details")}
+          style={{
+            flex: 1, padding: "12px 16px", border: "none",
+            background: activeTab === "details" ? "white" : "transparent",
+            borderBottom: activeTab === "details" ? "2px solid #007bff" : "2px solid transparent",
+            fontSize: 14, fontWeight: 600, color: activeTab === "details" ? "#007bff" : "#666",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+        >Основні дані</button>
+        <button
+          onClick={() => setActiveTab("attributes")}
+          style={{
+            flex: 1, padding: "12px 16px", border: "none",
+            background: activeTab === "attributes" ? "white" : "transparent",
+            borderBottom: activeTab === "attributes" ? "2px solid #007bff" : "2px solid transparent",
+            fontSize: 14, fontWeight: 600, color: activeTab === "attributes" ? "#007bff" : "#666",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+        >Додаткові поля</button>
+        <button
+          onClick={() => setActiveTab("pricing")}
+          style={{
+            flex: 1, padding: "12px 16px", border: "none",
+            background: activeTab === "pricing" ? "white" : "transparent",
+            borderBottom: activeTab === "pricing" ? "2px solid #007bff" : "2px solid transparent",
+            fontSize: 14, fontWeight: 600, color: activeTab === "pricing" ? "#007bff" : "#666",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+        >Ціни</button>
+        <button
+          onClick={() => setActiveTab("special")}
+          style={{
+            flex: 1, padding: "12px 16px", border: "none",
+            background: activeTab === "special" ? "white" : "transparent",
+            borderBottom: activeTab === "special" ? "2px solid #007bff" : "2px solid transparent",
+            fontSize: 14, fontWeight: 600, color: activeTab === "special" ? "#007bff" : "#666",
+            cursor: "pointer", transition: "all 0.2s"
+          }}
+        >Спеціальні параметри</button>
       </div>
 
-      {/* Контент */}
-      <div style={{ padding: "40px" }}>
+      <div style={{ padding: "24px" }}>
         {activeTab === "details" && (
-          <div style={{ display: "flex", gap: 40, alignItems: "flex-start" }}>
-            {/* Фото зліва */}
-            <div style={{ flex: "0 0 220px" }}>
-              <div style={{ marginBottom: 16, fontWeight: 600, fontSize: 15, color: "#555" }}>Фото</div>
-              {photoPreview ? (
+          <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ flex: "0 0 200px" }}>
+              <div style={{ marginBottom: 12, fontWeight: 600, fontSize: 14 }}>Фото</div>
+              {getPhotoUrl() ? (
                 <div style={{ position: "relative" }}>
-                  <img src={photoPreview} alt="Товар" style={{ width: 200, height: 200, objectFit: "cover", borderRadius: 16, border: "2px solid #e9ecef", background: "#f8f9fa" }} />
-                  <button onClick={() => { setPhotoPreview(null); handleChange('Photo', ''); }} style={{ position: "absolute", top: 8, right: 8, background: "#e74c3c", color: "white", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>✕</button>
+                  <img 
+                    src={getPhotoUrl()}
+                    alt="Товар"
+                    style={{ 
+                      width: 200, height: 200, objectFit: "cover",
+                      borderRadius: 12, border: "1px solid #ddd"
+                    }}
+                    onError={() => {
+                      setPhotoPreview(null);
+                      handleChange('Photo', '');
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPhotoPreview(null);
+                      handleChange('Photo', '');
+                    }}
+                    style={{
+                      position: "absolute", top: 8, right: 8,
+                      background: "rgba(0,0,0,0.7)", color: "white",
+                      border: "none", borderRadius: "50%", width: 24, height: 24,
+                      fontSize: 12, cursor: "pointer"
+                    }}
+                  >✕</button>
                 </div>
               ) : (
-                <div style={{ width: 200, height: 200, border: "2px dashed #ddd", borderRadius: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "#f8f9fa" }} onClick={() => document.getElementById('photo-input').click()}>
+                <div 
+                  style={{
+                    width: 200, height: 200, border: "2px dashed #ddd",
+                    borderRadius: 12, display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", background: "#f8f9fa"
+                  }}
+                  onClick={() => document.getElementById('photo-input').click()}
+                >
                   <div style={{ fontSize: 48, marginBottom: 8, color: "#ccc" }}>📷</div>
-                  <div style={{ fontSize: 13, color: "#666", textAlign: "center" }}>Клікніть для завантаження<br/>фото товару</div>
-                  <input id="photo-input" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files[0] && handlePhotoUpload(e.target.files[0])} />
+                  <div style={{ fontSize: 12, color: "#666", textAlign: "center" }}>
+                    Клікніть для завантаження<br />фото товару
+                  </div>
+                  <input
+                    id="photo-input"
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={e => e.target.files[0] && handlePhotoUpload(e.target.files[0])}
+                  />
                 </div>
               )}
             </div>
-            {/* Поля справа */}
             <div style={{ flex: 1 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                {standardFields.map(renderField)}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {standardFieldsArr.map(renderField)}
               </div>
             </div>
           </div>
         )}
+
         {activeTab === "attributes" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div>
             {additionalFields.length > 0 ? (
-              additionalFields.map(renderField)
-            ) : (
-              <div style={{ textAlign: "center", color: "#999", padding: 40, gridColumn: "1/3" }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
-                <div>Додаткові поля не налаштовані</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Додайте поля через "Налаштування → Поля шаблонів"
-                </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {additionalFields.map(renderField)}
               </div>
-            )}
+              ) : (
+                <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>⚙️</div>
+                  <div>Додаткові поля не налаштовані</div>
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    Додайте поля через "Налаштування → Поля шаблонів"
+                  </div>
+                </div>
+              )}
           </div>
         )}
+
         {activeTab === "pricing" && (
           <div style={{ textAlign: "center", color: "#999", padding: 40 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
@@ -444,12 +555,121 @@ export default function ProductCard({
             </div>
           </div>
         )}
-        {/* Кнопки */}
-        <div style={{ display: "flex", gap: 16, marginTop: 40, justifyContent: "flex-end" }}>
-          <button onClick={onCancel} disabled={saving} style={{ background: "#6c757d", color: "white", border: "none", borderRadius: 10, padding: "14px 32px", fontWeight: 700, fontSize: 16, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>Скасувати</button>
-          <button onClick={handleSave} disabled={saving} style={{ background: saving ? "#636e72" : "#c4282d", color: "white", border: "none", borderRadius: 10, padding: "14px 32px", fontWeight: 700, fontSize: 16, cursor: saving ? "not-allowed" : "pointer" }}>{saving ? "Збереження..." : "Зберегти"}</button>
+
+        {activeTab === "special" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div>
+              <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+                Дозволити уцінений товар
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={!!fields.IsDiscountedAvailable}
+                  onChange={e => handleChange("IsDiscountedAvailable", e.target.checked)}
+                />
+                <span style={{ color: "#666" }}>Можна переносити в підсклад «Уцінка»</span>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontWeight: 600, display: "block", marginBottom: 8, fontSize: 14, color: "#333" }}>
+                Штрихкод для уціненого товару
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={fields.DiscountBarcode || ""}
+                  onChange={e => handleChange("DiscountBarcode", e.target.value)}
+                  placeholder="Введіть або згенеруйте"
+                  style={{ flex: 1, padding: "12px", borderRadius: 8, border: "1px solid #ddd", fontSize: 14, boxSizing: "border-box" }}
+                />
+                <button
+                  onClick={async () => {
+                    // Генерація робиться бекендом при переміщенні; тут залишимо місце для ручного генерування у майбутньому
+                    alert("Штрихкод для уціненого генерується при перенесенні на підсклад 'Уцінка'. Тут можна ввести вручну, якщо потрібно.");
+                  }}
+                  style={{
+                    background: "#3498db", color: "#fff", border: "none", borderRadius: 8,
+                    padding: "12px 16px", fontWeight: 600, cursor: "pointer"
+                  }}
+                >Згенерувати</button>
+              </div>
+              <div style={{ fontSize: 12, color: "#777", marginTop: 6 }}>
+                Примітка: при уцінці штрихкод формується з префіксом з `SystemParameters`,
+                після префікса додається ID підскладу «Уцінка».
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ 
+          display: "flex", 
+          gap: 12, 
+          marginTop: 32, 
+          justifyContent: "flex-end" 
+        }}>
+          {sessionStorage.getItem('productcard_enable_quick_add') === '1' && (
+            <button
+              onClick={async () => {
+                // короткий режим: зберегти і повернутися з додаванням у накладну
+                try {
+                  await handleSave();
+                  const bc = fields.Barcode || sessionStorage.getItem('productcard_prefill_barcode') || "";
+                  if (bc) {
+                    try {
+                      const p = await api.getProductByBarcode(bc);
+                      if (p && p.ID) {
+                        sessionStorage.setItem('arrival_selected_products', JSON.stringify([{ ID: p.ID, FullName: p.FullName || p.Name || "", Quantity: 1 }]));
+                      }
+                    } catch {}
+                  }
+                } finally {
+                  window.history.back();
+                }
+              }}
+              disabled={saving}
+              style={{
+                background: saving ? "#e9ecef" : "#28a745",
+                color: saving ? "#6c757d" : "white",
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 24px",
+                fontWeight: 600,
+                cursor: saving ? "not-allowed" : "pointer"
+              }}
+            >{saving ? "Збереження…" : "Зберегти й додати"}</button>
+          )}
+          <button 
+            onClick={onCancel}
+            disabled={saving}
+            style={{
+              background: "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "12px 24px",
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.6 : 1
+            }}
+          >Скасувати</button>
+          <button 
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              background: saving ? "#6c757d" : "#c4282d",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "12px 24px",
+              fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer"
+            }}
+          >{saving ? "Збереження..." : "Зберегти"}</button>
         </div>
       </div>
     </div>
   );
 } 
+

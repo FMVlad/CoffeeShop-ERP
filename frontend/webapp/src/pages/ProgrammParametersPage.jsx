@@ -11,12 +11,17 @@ import ChartOfAccountsPage from "./ChartOfAccountsPage";
 import SettlementAccountsPage from "./SettlementAccountsPage";
 import ProductNameRulesPage from "./ProductNameRulesPage";
 import ProductCardTemplatesPage from "./ProductCardTemplatesPage";
+import UsersSettings from "./UsersSettings";
+import RolesSettings from './RolesSettings';
+
 
 // ...інші імпорти, якщо треба
 
 const menu = [
   { key: "main", label: "Програмні параметри" },
+  { key: "users", label: "Користувачі" },
   { key: "centers", label: "Центри обліку" },
+  { key: "roles", label: "Ролі" },
   { key: "employees", label: "Співробітники" },
   { key: "cashiers", label: "Каси та касири" },
   { key: "bank", label: "Розрахункові рахунки" },
@@ -80,10 +85,12 @@ export default function ProgrammParametersPage() {
       {/* Вміст — перемикай по ключу свою сторінку */}
       <main style={{ flex: 1, padding: 40 }}>
         {section === "main" && <MainProgramSettings />}
+        {section === "users" && <UsersSettings />}
         {section === "centers" && <AccountCentersSettings />}
         {section === "productcards" && <ProductCardTemplatesPage />}
         {section === "productnamerules" && <ProductNameRulesPage />}
         {section === "cashiers" && <CashiersSettings />}
+        {section === "roles" && <RolesSettings />}
         {section === "employees" && <EmployeesSettings />}
         {section === "printforms" && <PrintFormsSettings />}
         {section === "companies" && <CompaniesPage />}

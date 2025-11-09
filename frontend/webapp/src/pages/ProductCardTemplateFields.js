@@ -1,8 +1,10 @@
+// src/pages/ProductCardTemplateFields.jsx
+
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 
 export default function ProductCardTemplateFields() {
-  const templateId = 3; // Залишаємо 3, щоб працювати з існуючим полем "Розмір"
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -16,47 +18,43 @@ export default function ProductCardTemplateFields() {
     Description: ""
   });
 
+  // Завантажити шаблони (картки)
   useEffect(() => {
-    loadFields();
+    fetch("http://localhost:8000/api/product-card-templates")
+      .then(res => res.json())
+      .then(data => {
+        setTemplates(data);
+        if (data.length) setSelectedTemplateId(data[0].ID);
+      });
   }, []);
 
-  const loadFields = async () => {
-    try {
-      console.log("🔍 Завантажуємо поля з templateId:", templateId);
-      const response = await fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${templateId}`);
-      console.log("📡 Відповідь сервера:", response.status, response.statusText);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log("📦 Отримані дані:", data);
-      console.log("📊 Кількість полів:", data.length);
-      console.log("🛡️ Стандартні поля:", data.filter(f => f.IsStandard));
-      console.log("⚡ Додаткові поля:", data.filter(f => !f.IsStandard));
-      
-      setFields(data);
-      setLoading(false);
-    } catch (error) {
-      console.error("❌ Помилка завантаження полів:", error);
-      alert(`❌ Помилка завантаження: ${error.message}`);
-      setLoading(false);
-    }
-  };
+  // Завантажити поля для обраного шаблону
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+    setLoading(true);
+    fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${selectedTemplateId}`)
+      .then(res => res.json())
+      .then(data => {
+        setFields(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        alert("❌ Помилка завантаження полів: " + err.message);
+        setLoading(false);
+      });
+  }, [selectedTemplateId]);
 
   // Автогенерація SqlName
   const generateSqlName = (displayName) => {
     return displayName
       .replace(/[^a-zA-Zа-яА-Я0-9\s]/g, '')
       .replace(/\s+/g, '_')
-      .replace(/[а-я]/g, (char) => {
+      .replace(/[а-яіїє]/g, (char) => {
         const map = {
           'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e',
-          'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+          'ж': 'zh', 'з': 'z', 'и': 'y', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
           'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
           'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
-          'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
           'і': 'i', 'ї': 'yi', 'є': 'ye'
         };
         return map[char] || char;
@@ -65,41 +63,39 @@ export default function ProductCardTemplateFields() {
 
   const handleAddField = async () => {
     if (!newField.DisplayName.trim()) {
-      alert("💡 Введіть назву поля!\n\nНаприклад: 'Країна походження', 'Солодкість'");
+      alert("💡 Введіть назву поля!");
       return;
     }
-
     const sqlName = newField.SqlName || generateSqlName(newField.DisplayName);
-
     try {
-      const response = await fetch("http://localhost:8000/api/product-card-template-fields", {
+      const resp = await fetch("http://localhost:8000/api/product-card-template-fields", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newField,
           SqlName: sqlName,
-          TemplateID: templateId
+          TemplateID: selectedTemplateId
         })
       });
-
-      if (response.ok) {
-        alert("✅ Поле успішно додано!");
-        setNewField({
+      if (!resp.ok) {
+        const error = await resp.json();
+        alert("❌ " + (error.detail || "Помилка створення поля"));
+      return;
+    }
+      setNewField({
       DisplayName: "",
       SqlName: "",
-          FieldType: "string",
-          MaxLength: 255,
+        FieldType: "string",
+        MaxLength: 255,
       IsRequired: false,
       IsVisible: true,
-          Description: ""
-        });
-        setShowAddForm(false);
-        loadFields();
-      } else {
-        const error = await response.json();
-        alert(`❌ Помилка: ${error.detail}`);
-      }
-    } catch (error) {
+        Description: ""
+      });
+      setShowAddForm(false);
+      // reload fields
+      const data = await fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${selectedTemplateId}`).then(r => r.json());
+      setFields(data);
+    } catch (e) {
       alert("❌ Сталася помилка при додаванні поля.");
     }
   };
@@ -110,70 +106,67 @@ export default function ProductCardTemplateFields() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          DisplayName: field.DisplayName,
-          FieldType: field.FieldType,
-          MaxLength: field.MaxLength,
-          Precision: field.Precision,
-          IsRequired: field.IsRequired,
-          IsVisible: !field.IsVisible,
-          DisplayOrder: field.DisplayOrder,
-          Description: field.Description
+          ...field,
+          IsVisible: !field.IsVisible
         })
-      });
-      loadFields();
+    });
+    // reload fields
+      const data = await fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${selectedTemplateId}`).then(r => r.json());
+      setFields(data);
     } catch (error) {
-      console.error("Помилка оновлення:", error);
+      alert("❌ Помилка оновлення: " + error.message);
     }
   };
 
   const deleteField = async (fieldId) => {
     if (!window.confirm("⚠️ Видалити це поле назавжди?")) return;
-
     try {
       await fetch(`http://localhost:8000/api/product-card-template-fields/${fieldId}`, {
         method: "DELETE"
       });
-      alert("🗑️ Поле видалено!");
-      loadFields();
+      // reload fields
+      const data = await fetch(`http://localhost:8000/api/product-card-template-fields?template_id=${selectedTemplateId}`).then(r => r.json());
+      setFields(data);
     } catch (error) {
-      console.error("Помилка видалення:", error);
+      alert("❌ Помилка видалення: " + error.message);
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ padding: 40, textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-        <div>Завантажуємо поля...</div>
-      </div>
-    );
-  }
-
+  // --- UI ---
   const standardFields = fields.filter(f => f.IsStandard);
   const customFields = fields.filter(f => !f.IsStandard);
-  
-  console.log("🎯 Рендер компонента:");
-  console.log("   📦 Всього полів:", fields.length);
-  console.log("   🛡️ Стандартних:", standardFields.length);
-  console.log("   ⚡ Додаткових:", customFields.length);
 
   return (
     <div style={{ padding: 40, maxWidth: 1200, margin: "0 auto" }}>
+      {/* Вибір картки */}
+      <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 18 }}>
+        <label style={{ fontWeight: 600, fontSize: 18, color: "#b85450" }}>🗂️ Картка товару:</label>
+        <select
+          value={selectedTemplateId || ""}
+          onChange={e => setSelectedTemplateId(Number(e.target.value))}
+          style={{ padding: 10, fontSize: 16, borderRadius: 8, minWidth: 220, border: "1px solid #bbb" }}
+        >
+          {templates.map(tpl => (
+            <option key={tpl.ID} value={tpl.ID}>{tpl.Name}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Заголовок */}
       <div style={{ marginBottom: 30 }}>
         <h2 style={{ color: "#b85450", margin: 0, fontSize: 28 }}>
           🔧 Налаштування полів товару
         </h2>
-        <div style={{ 
-          color: "#666", 
-          margin: "12px 0 0 0", 
+        <div style={{
+          color: "#666",
+          margin: "12px 0 0 0",
           fontSize: 16,
           background: "#e7f3ff",
           padding: 16,
           borderRadius: 8,
           border: "1px solid #b6d7ff"
         }}>
-          <strong>Що це?</strong> Тут ви керуєте полями для створення товару.<br/>
+          <strong>Що це?</strong> Тут ви керуєте полями для створення товару.<br />
           <strong>Як працює?</strong> Додайте поле тут → воно з'явиться у формі товару.
         </div>
       </div>
@@ -183,7 +176,6 @@ export default function ProductCardTemplateFields() {
         <h3 style={{ color: "#28a745", margin: "0 0 16px 0", fontSize: 20 }}>
           🛡️ Основні поля <span style={{ fontSize: 14, color: "#666", fontWeight: 400 }}>(завжди є)</span>
         </h3>
-        
         <div style={{
           background: "white",
           borderRadius: 12,
@@ -218,8 +210,8 @@ export default function ProductCardTemplateFields() {
                       borderRadius: 12,
                       fontSize: 11
                     }}>
-                      {field.FieldType === "string" ? "Текст" : 
-                       field.FieldType === "number" ? "Число" : "Інше"}
+                      {field.FieldType === "string" ? "Текст" :
+                        field.FieldType === "number" ? "Число" : "Інше"}
                     </span>
                   </td>
                   <td style={{ padding: 12, textAlign: "center" }}>
@@ -241,7 +233,6 @@ export default function ProductCardTemplateFields() {
           <h3 style={{ color: "#007bff", margin: 0, fontSize: 20 }}>
             ⚡ Додаткові поля <span style={{ fontSize: 14, color: "#666", fontWeight: 400 }}>(ваші)</span>
           </h3>
-          
           <button
             onClick={() => setShowAddForm(!showAddForm)}
             style={{
@@ -258,7 +249,6 @@ export default function ProductCardTemplateFields() {
             {showAddForm ? "❌ Скасувати" : "➕ Додати поле"}
           </button>
         </div>
-
         {/* Форма */}
         {showAddForm && (
           <div style={{
@@ -271,7 +261,6 @@ export default function ProductCardTemplateFields() {
             <h4 style={{ margin: "0 0 20px 0", color: "#856404" }}>
               ✨ Нове поле
             </h4>
-            
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
               <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
@@ -283,7 +272,7 @@ export default function ProductCardTemplateFields() {
                   onChange={e => {
                     const displayName = e.target.value;
                     setNewField({
-                      ...newField, 
+                      ...newField,
                       DisplayName: displayName,
                       SqlName: newField.SqlName || generateSqlName(displayName)
                     });
@@ -297,15 +286,14 @@ export default function ProductCardTemplateFields() {
                     fontSize: 14
                   }}
                 />
-              </div>
-              
+        </div>
         <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
                   Тип
                 </label>
                 <select
                   value={newField.FieldType}
-                  onChange={e => setNewField({...newField, FieldType: e.target.value})}
+                  onChange={e => setNewField({ ...newField, FieldType: e.target.value })}
                   style={{
                     width: "100%",
                     padding: 12,
@@ -321,18 +309,16 @@ export default function ProductCardTemplateFields() {
           </select>
         </div>
             </div>
-
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={newField.IsRequired}
-                  onChange={e => setNewField({...newField, IsRequired: e.target.checked})}
+                  onChange={e => setNewField({ ...newField, IsRequired: e.target.checked })}
                 />
                 <span>⚠️ Обов'язкове для заповнення</span>
               </label>
             </div>
-
             <button
               onClick={handleAddField}
               style={{
@@ -352,7 +338,9 @@ export default function ProductCardTemplateFields() {
         )}
 
         {/* Список */}
-        {customFields.length > 0 ? (
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40 }}>⏳ Завантаження...</div>
+        ) : customFields.length > 0 ? (
           <div style={{
             background: "white",
             borderRadius: 12,
@@ -384,9 +372,9 @@ export default function ProductCardTemplateFields() {
                         borderRadius: 12,
                         fontSize: 11
                       }}>
-                        {field.FieldType === "string" ? "📝" : 
-                         field.FieldType === "number" ? "🔢" :
-                         field.FieldType === "date" ? "📅" : "📄"}
+                        {field.FieldType === "string" ? "📝" :
+                          field.FieldType === "number" ? "🔢" :
+                            field.FieldType === "date" ? "📅" : "📄"}
                       </span>
                     </td>
                     <td style={{ padding: 12, textAlign: "center" }}>
@@ -461,8 +449,8 @@ export default function ProductCardTemplateFields() {
           💡 Як це працює:
         </h4>
         <div style={{ color: "#0056b3", fontSize: 14 }}>
-          1. Додайте нове поле тут<br/>
-          2. Воно автоматично з'явиться при створенні товару<br/>
+          1. Додайте нове поле тут<br />
+          2. Воно автоматично з'явиться при створенні товару<br />
           3. Всі дані збережуться в базі
         </div>
         </div>

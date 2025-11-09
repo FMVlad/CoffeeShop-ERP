@@ -1,0 +1,420 @@
+.stock-table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  /* Додаємо кращий контроль над переповненням */
+  max-width: 100%;
+  /* Покращуємо скролінг */
+  scrollbar-width: thin;
+  scrollbar-color: #3b82f6 #e5e7eb;
+}
+
+/* Стилі для WebKit скролінгу (Chrome, Safari, Edge) */
+.stock-table-container::-webkit-scrollbar {
+  height: 12px;
+}
+
+.stock-table-container::-webkit-scrollbar-track {
+  background: #e5e7eb;
+  border-radius: 6px;
+}
+
+.stock-table-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  border-radius: 6px;
+  border: 2px solid #e5e7eb;
+}
+
+.stock-table-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+}
+
+.stock-table {
+  width: 100%;
+  /* Встановлюємо мінімальну ширину для таблиці */
+  min-width: 1400px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed; /* Фіксована ширина колонок для кращого контролю */
+  /* Додаємо кращий контроль над розмірами */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.stock-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: white;
+  padding: 16px 24px;
+  text-align: left;
+  font-weight: bold;
+  font-size: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  /* Додаємо кращий контроль над шириною заголовків */
+  min-width: 0;
+  max-width: none;
+}
+
+.stock-table thead th:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  transform: translateY(-1px);
+}
+
+.stock-table thead th:first-child {
+  border-top-left-radius: 24px;
+}
+
+.stock-table thead th:last-child {
+  border-top-right-radius: 24px;
+}
+
+.stock-table tbody tr {
+  transition: all 0.2s ease;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.stock-table tbody tr:hover {
+  background-color: #eff6ff;
+  transform: scale(1.01);
+}
+
+.stock-table tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.stock-table tbody tr:nth-child(even):hover {
+  background-color: #eff6ff;
+}
+
+.stock-table tbody td {
+  padding: 16px 24px;
+  vertical-align: middle;
+  border: none;
+  /* Додаємо кращий контроль над шириною комірок */
+  min-width: 0;
+  max-width: none;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Збільшуємо ширину колонок для кращого відображення */
+.stock-table th.column-photo,
+.stock-table td.column-photo {
+  width: 100px;
+  min-width: 100px;
+}
+
+.stock-table th.column-product,
+.stock-table td.column-product {
+  width: 350px;
+  min-width: 350px;
+}
+
+.stock-table th.column-barcode,
+.stock-table td.column-barcode {
+  width: 160px;
+  min-width: 160px;
+}
+
+.stock-table th.column-article,
+.stock-table td.column-article {
+  width: 140px;
+  min-width: 140px;
+}
+
+.stock-table th.column-quantity,
+.stock-table td.column-quantity {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.stock-table th.column-warehouse,
+.stock-table td.column-warehouse {
+  width: 180px;
+  min-width: 180px;
+}
+
+.stock-table th.column-costPrice,
+.stock-table td.column-costPrice {
+  width: 140px;
+  min-width: 140px;
+  text-align: right;
+}
+
+.stock-table th.column-retailPrice,
+.stock-table td.column-retailPrice {
+  width: 160px;
+  min-width: 160px;
+  text-align: right;
+}
+
+.stock-table th.column-retailWithDiscount,
+.stock-table td.column-retailWithDiscount {
+  width: 200px;
+  min-width: 200px;
+  text-align: right;
+}
+
+.stock-table th.column-discountPrice,
+.stock-table td.column-discountPrice {
+  width: 140px;
+  min-width: 140px;
+  text-align: right;
+}
+
+.stock-table th.column-amount,
+.stock-table td.column-amount {
+  width: 140px;
+  min-width: 140px;
+  text-align: right;
+}
+
+.stock-table th.column-category,
+.stock-table td.column-category {
+  width: 180px;
+  min-width: 180px;
+}
+
+.stock-table th.column-manufacturer,
+.stock-table td.column-manufacturer {
+  width: 200px;
+  min-width: 200px;
+}
+
+.stock-table th.column-unit,
+.stock-table td.column-unit {
+  width: 100px;
+  min-width: 100px;
+  text-align: center;
+}
+
+.stock-table th.column-vat,
+.stock-table td.column-vat {
+  width: 80px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.stock-table th.column-lastUpdate,
+.stock-table td.column-lastUpdate {
+  width: 160px;
+  min-width: 160px;
+  text-align: center;
+}
+
+/* Стилі для вмісту колонок */
+.stock-table .cell-photo img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+}
+
+.stock-table .cell-photo .placeholder {
+  width: 48px;
+  height: 48px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 12px;
+  border: 2px solid #e5e7eb;
+}
+
+.stock-table .cell-product .product-name {
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.stock-table .cell-product .product-description {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.stock-table .cell-quantity {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.stock-table .cell-quantity.positive {
+  color: #059669;
+}
+
+.stock-table .cell-quantity.negative {
+  color: #dc2626;
+}
+
+.stock-table .cell-price {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Responsive дизайн - адаптуємо ширину для різних екранів */
+@media (max-width: 1600px) {
+  .stock-table {
+    min-width: 1200px;
+  }
+  
+  .stock-table th.column-product,
+  .stock-table td.column-product {
+    width: 300px;
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 1400px) {
+  .stock-table {
+    min-width: 1000px;
+  }
+  
+  .stock-table th.column-product,
+  .stock-table td.column-product {
+    width: 250px;
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .stock-table {
+    min-width: 900px;
+  }
+  
+  .stock-table th.column-product,
+  .stock-table td.column-product {
+    width: 200px;
+    min-width: 200px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .stock-table {
+    min-width: 800px;
+  }
+  
+  .stock-table th,
+  .stock-table td {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  
+  /* Додаємо кращий контроль над шириною на малих екранах */
+  .stock-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Додаткові правила для дуже малих екранів */
+@media (max-width: 768px) {
+  .stock-table {
+    min-width: 700px;
+  }
+  
+  .stock-table th,
+  .stock-table td {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .stock-table th.column-photo,
+  .stock-table td.column-photo {
+    width: 80px;
+    min-width: 80px;
+  }
+  
+  .stock-table th.column-product,
+  .stock-table td.column-product {
+    width: 180px;
+    min-width: 180px;
+  }
+}
+
+/* Анімації для сортування */
+.stock-table th.sortable {
+  position: relative;
+}
+
+.stock-table th.sortable::after {
+  content: '↕';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.stock-table th.sortable:hover::after {
+  opacity: 1;
+}
+
+.stock-table th.sort-asc::after {
+  content: '↑';
+  opacity: 1;
+  color: #10b981;
+}
+
+.stock-table th.sort-desc::after {
+  content: '↓';
+  opacity: 1;
+  color: #ef4444;
+}
+
+/* Стилі для порожньої таблиці */
+.stock-table-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.stock-table-empty .icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.stock-table-empty .title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.stock-table-empty .description {
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+/* Стилі для завантаження */
+.stock-table-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6b7280;
+}
+
+.stock-table-loading .spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-radius: 50%;
+  border-top-color: #3b82f6;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

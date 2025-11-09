@@ -1,3 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Далі твій власний CSS — хочеш, міняй під Tailwind поступово, а хочеш — лишай як є! */
+
 body {
   margin: 0;
   font-family: "Segoe UI", "Roboto", Arial, sans-serif;

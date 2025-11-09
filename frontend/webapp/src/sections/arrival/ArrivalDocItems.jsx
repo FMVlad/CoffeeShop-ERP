@@ -1,0 +1,272 @@
+// src/sections/arrival/ArrivalDocItems.jsx
+import React, { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import ProductPicker from "../../components/ProductPicker";
+import BarcodeInput from "../../components/BarcodeInput";
+import ProductDirectoryModal from "../../components/ProductDirectoryModal";
+import { popSelection } from "../../utils/selectionBridge";
+
+export default function ArrivalDocItems({ doc, setDoc, focusKey = 0, onRequestFocus, showFC = false, rate = 1 }) {
+  const [localFocusBump, setLocalFocusBump] = useState(0);
+  const [showDirectory, setShowDirectory] = useState(false);
+  const navigate = useNavigate();
+
+  const addRow = useCallback(() => {
+    setDoc((d) => {
+      const baseItems = Array.isArray(d?.Items) ? d.Items : [];
+      return {
+        ...d,
+        Items: [
+          ...baseItems,
+          { ProductID: "", ProductName: "", Quantity: 1, Price: 0, TaxRateID: null },
+        ],
+      };
+    });
+  }, [setDoc]);
+
+  const onBarcodeResolved = React.useCallback((p) => {
+  if (!p) {
+    return;
+  }
+  const name =
+    p.FullName || p.fullName || p.full_name || p.ProductName || p.Name || p.name || "";
+  const id = p.ID ?? p.Id ?? p.id ?? p.ProductID ?? p.product_id ?? "";
+
+  setDoc((d) => {
+    const baseItems = Array.isArray(d?.Items) ? d.Items : [];
+    const newItems = [
+      ...baseItems,
+      {
+        ProductID: id,
+        ProductName: name,
+        Quantity: 1,
+        Price: 0,
+        TaxRateID: null,
+      },
+    ];
+    const total = newItems.reduce(
+      (s, r) => s + (+r.Quantity || 0) * (+r.Price || 0),
+      0
+    );
+    return { ...d, Items: newItems, TotalAmount: total };
+  });
+}, []);
+
+  const setItem = useCallback(
+    (idx, key, val) => {
+      setDoc((d) => {
+        const safeItems = Array.isArray(d?.Items) ? d.Items : [];
+        let items = safeItems.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
+        // Якщо користувач змінює PriceFC або змінився курс — перерахувати Price у гривні
+        if (key === 'PriceFC' || key === 'Quantity' || key === 'Price') {
+          const rate = Number(d.CurrencyRate || 1);
+          items = items.map((r, i) => {
+            if (i !== idx) return r;
+            const q = Number(r.Quantity || 0);
+            const priceFC = Number(r.PriceFC || 0);
+            const priceUAH = showFC && rate ? (priceFC * rate) : Number(r.Price || 0);
+            return { ...r, Price: showFC ? priceUAH : Number(r.Price || 0) };
+          });
+        }
+        const total = items.reduce((s, r) => s + (Number(r.Quantity || 0) * Number(r.Price || 0)), 0);
+        return { ...d, Items: items, TotalAmount: total };
+      });
+    },
+    [setDoc, showFC]
+  );
+
+  const delItem = useCallback(
+    (idx) => {
+      setDoc((d) => {
+        const safeItems = Array.isArray(d?.Items) ? d.Items : [];
+        const items = safeItems.filter((_, i) => i !== idx);
+        const total = items.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+        return { ...d, Items: items, TotalAmount: total };
+      });
+    },
+    [setDoc]
+  );
+
+  return (
+    <>
+      {/* штрихкод + дії пошуку */}
+      <div className="mt-4 flex flex-col md:flex-row gap-2 md:items-end">
+        <div className="flex-1 md:flex-[0.55]">
+          <label className="text-sm block mb-1">Штрихкод (Enter)</label>
+          <BarcodeInput
+            key={`${focusKey}-${localFocusBump}`}
+            autoFocus
+            onResolve={onBarcodeResolved}
+            universal
+            selectionKey="arrival"
+            backUrl={window.location.pathname + window.location.search}
+            onNotFound={(bc) => {
+              try {
+                const snapshot = { editingId: null, doc };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+                window.sessionStorage.setItem("prefill_barcode", bc);
+              } catch {}
+              // Виводимо дружню підказку і одразу переходимо у додавання
+              try { window.localStorage.setItem("__notify_add_product", "true"); } catch {}
+              navigate("/select-products?mode=add");
+            }}
+            placeholder="Скануй або введи та натисни Enter"
+          />
+        </div>
+        <div className="flex gap-2 md:flex-[0.45]">
+          <button
+            className="border rounded px-3 py-2"
+            onClick={() => {
+              // Зберігаємо стан форми документа, щоб не втратити постачальника тощо
+              try {
+                const snapshot = {
+                  editingId: null,
+                  doc,
+                };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+              } catch {}
+              const back = encodeURIComponent(window.location.pathname + window.location.search);
+              navigate(`/select-products?back=${back}`);
+            }}
+            title="Відкрити сторінку вибору товарів"
+          >
+            🔎 Пошук у довіднику
+          </button>
+          <button
+            className="border rounded px-3 py-2"
+            onClick={() => {
+              try {
+                const snapshot = { editingId: null, doc };
+                window.sessionStorage.setItem("arrival_restore_doc", JSON.stringify(snapshot));
+              } catch {}
+              const back = encodeURIComponent(window.location.pathname + window.location.search);
+              navigate(`/stock/state?select=1&back=${back}`);
+            }}
+            title="Переглянути стан складу (опційно)"
+          >
+            🏬 Стан складу
+          </button>
+          <button
+            id="arrival-items-add-row"
+            className="border rounded px-3 py-2"
+            onClick={() => {
+              addRow();
+              setLocalFocusBump((n) => n + 1);
+              onRequestFocus?.();
+            }}
+          >
+            + Рядок
+          </button>
+        </div>
+      </div>
+
+      {/* позиції */}
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full bg-white border rounded">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="p-2 border">Товар</th>
+              <th className="p-2 border w-28">К-сть</th>
+              <th className="p-2 border w-28">Ціна</th>
+              {showFC && <th className="p-2 border w-28">Ціна (валюта)</th>}
+              <th className="p-2 border w-28">Сума</th>
+              {showFC && <th className="p-2 border w-28">Сума (валюта)</th>}
+              <th className="p-2 border w-16">Дії</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(Array.isArray(doc?.Items) ? doc.Items : []).map((r, idx) => (
+              <tr key={idx}>
+                <td className="p-2 border">
+                  <ProductPicker
+                    value={r}
+                    onSelect={(p) => {
+                      setItem(idx, "ProductID", p.ProductID);
+                      setItem(idx, "ProductName", p.ProductName);
+                    }}
+                  />
+                </td>
+                <td className="p-2 border">
+                  <input
+                    className="border rounded p-2 w-full text-right"
+                    type="number"
+                    step="0.001"
+                    value={r.Quantity}
+                    onChange={(e) => setItem(idx, "Quantity", e.target.value)}
+                  />
+                </td>
+                <td className="p-2 border">
+                  <input
+                    className="border rounded p-2 w-full text-right"
+                    type="number"
+                    step="0.01"
+                    value={r.Price}
+                    onChange={(e) => setItem(idx, "Price", e.target.value)}
+                  />
+                </td>
+                {showFC && (
+                  <td className="p-2 border">
+                    <input
+                      className="border rounded p-2 w-full text-right"
+                      type="number"
+                      step="0.01"
+                      value={r.PriceFC || ""}
+                      onChange={(e) => setItem(idx, "PriceFC", e.target.value)}
+                      placeholder="в валюті"
+                    />
+                  </td>
+                )}
+                <td className="p-2 border text-right">
+                  {((+r.Quantity || 0) * (+r.Price || 0)).toFixed(2)}
+                </td>
+                {showFC && (
+                  <td className="p-2 border text-right">
+                    {((+r.Quantity || 0) * (+r.PriceFC || 0)).toFixed(2)}
+                  </td>
+                )}
+                <td className="p-2 border text-center">
+                  <button className="px-2 py-1 border" onClick={() => delItem(idx)}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {(Array.isArray(doc?.Items) ? doc.Items : []).length === 0 && (
+              <tr>
+                <td className="p-3 text-center text-gray-500 border" colSpan={5}>
+                  Додайте позиції
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {/* Обробка повернення зі сторінки вибору */}
+      {/* Один раз обробляємо кеш після повернення */}
+      {React.useMemo(() => {
+        try {
+          const sel = popSelection('arrival');
+          if (!sel || !Array.isArray(sel.items) || sel.items.length === 0) return null;
+          const selected = sel.items;
+          setTimeout(() => {
+            setDoc((d) => {
+              const appended = selected.map((p) => ({
+                ProductID: p.id,
+                ProductName: p.name || "",
+                Quantity: Number(p.qty || 1),
+                Price: 0,
+                TaxRateID: null,
+              }));
+              const baseItems = Array.isArray(d?.Items) ? d.Items : [];
+              const newItems = [...baseItems, ...appended];
+              const total = newItems.reduce((s, r) => s + (+r.Quantity || 0) * (+r.Price || 0), 0);
+              return { ...d, Items: newItems, TotalAmount: total };
+            });
+            setLocalFocusBump((n) => n + 1);
+          }, 0);
+        } catch {}
+        return null;
+      }, [])}
+    </>
+  );
+}

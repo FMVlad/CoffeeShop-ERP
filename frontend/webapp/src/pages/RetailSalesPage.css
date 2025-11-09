@@ -1,0 +1,66 @@
+.retail-root {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  background: linear-gradient(135deg,#eef2ff,#f5f3ff);
+}
+.retail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: linear-gradient(90deg,#7c3aed,#2563eb);
+  color: #fff;
+}
+.retail-main {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  padding: 16px 24px;
+}
+.retail-footer {
+  padding: 12px 24px;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+}
+
+
+/* Toolbar */
+.retail-toolbar {
+  display: grid;
+  grid-template-columns: 1.5fr 140px 180px 180px 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.retail-barcode-input {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 16px;
+}
+.retail-action-input {
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.btn-blue {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 10px;
+}
+.btn-blue-outline {
+  background: #eef2ff;
+  color: #1f2937;
+  border: 1px solid #c7d2fe;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 10px;
+}
+
+.retail-aside input[readonly] {
+  background: #f9fafb;
+}
+

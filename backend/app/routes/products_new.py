@@ -1,58 +1,304 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Query
+from app.security import require_roles
 from app.db_connection import get_db
 import os
-import uuid
 from PIL import Image
 
 router = APIRouter()
+from fastapi import Request
+import time
+
+# very lightweight in-memory throttle per ip+endpoint (MVP)
+_rate_cache = {}
+
+def _rate_limit_key(ip: str, endpoint: str) -> str:
+    return f"{ip}:{endpoint}"
+
+def _check_rate_limit(ip: str, endpoint: str, limit_per_sec: float = 5.0) -> None:
+    now = time.time()
+    key = _rate_limit_key(ip, endpoint)
+    window = 1.0 / limit_per_sec
+    last = _rate_cache.get(key)
+    if last and (now - last) < window:
+        raise HTTPException(status_code=429, detail="Забагато запитів. Спробуйте пізніше.")
+    _rate_cache[key] = now
+
+@router.get("/products/search")
+def search_products(q: str = Query(""), request: Request = None, db=Depends(get_db)):
+    try:
+        ip = request.client.host if request else "-"
+        _check_rate_limit(ip, "search", 10.0)
+    except Exception:
+        pass
+    s = (q or "").strip()
+    if not s:
+        return []
+    like = f"%{s}%"
+    cursor = db.cursor()
+    cursor.execute(
+        """
+        SELECT TOP 50 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+        FROM Products p
+        WHERE p.Name LIKE ? OR p.FullName LIKE ? OR p.Barcode LIKE ? OR p.DiscountBarcode LIKE ?
+        ORDER BY CASE WHEN p.FullName IS NULL THEN 1 ELSE 0 END, p.FullName, p.Name
+        """,
+        (like, like, like, like),
+    )
+    cols = [c[0] for c in cursor.description]
+    return [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+@router.get("/products/by-barcode/{barcode}")
+def get_product_by_barcode(barcode: str, request: Request = None, db=Depends(get_db)):
+    try:
+        ip = request.client.host if request else "-"
+        _check_rate_limit(ip, "by-barcode", 15.0)
+    except Exception:
+        pass
+    cursor = db.cursor()
+    # 1) Прямий збіг у Products.Barcode / Products.DiscountBarcode
+    cursor.execute(
+        """
+        SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+        FROM Products p
+        WHERE p.Barcode = ? OR p.DiscountBarcode = ?
+        """,
+        (barcode, barcode),
+    )
+    row = cursor.fetchone()
+    if row:
+        cols = [c[0] for c in cursor.description]
+        return dict(zip(cols, row))
+
+    # 2) Фолбек: уцінкові штрихкоди
+    # 2.1 Спочатку намагаємось знайти у власній таблиці відповідності ProductDiscountBarcodes
+    try:
+        cursor.execute(
+            """
+            SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID
+            FROM dbo.ProductDiscountBarcodes b
+            JOIN dbo.Products p ON p.ID = b.ProductID
+            WHERE b.DiscountBarcode = ?
+            """,
+            (barcode,),
+        )
+        row2 = cursor.fetchone()
+        if row2:
+            cols = [c[0] for c in cursor.description]
+            data = dict(zip(cols, row2))
+            # Визначаємо склад з коду: пробуємо 4, 3 та 2 цифри після '29'
+            discount_price = None
+            warehouse_id = None
+            try:
+                if str(barcode).startswith("29"):
+                    candidates = set()
+                    if len(barcode) >= 6:
+                        candidates.add(int(str(barcode)[2:6]))
+                    if len(barcode) >= 5:
+                        candidates.add(int(str(barcode)[2:5]))
+                    if len(barcode) >= 4:
+                        candidates.add(int(str(barcode)[2:4]))
+                    for wid in candidates:
+                        cursor.execute(
+                            """
+                            SELECT TOP 1 di.Price
+                            FROM DiscountDocItems di
+                            JOIN DiscountDocs d ON d.ID = di.DocID
+                            WHERE d.WarehouseID = ? AND d.Status = 'posted' AND di.ProductID = ?
+                            ORDER BY di.ID DESC
+                            """,
+                            (wid, data["ID"]),
+                        )
+                        rprice = cursor.fetchone()
+                        if rprice:
+                            warehouse_id = wid
+                            discount_price = float(rprice[0])
+                            break
+            except Exception:
+                pass
+
+            # Якщо по складу ціну не знайшли (наприклад, документ ще не проведено),
+            # пробуємо взяти останню ціну напряму з позицій за штрихкодом уцінки
+            if discount_price is None:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT TOP 1 di.Price
+                        FROM dbo.DiscountDocItems di
+                        WHERE di.DiscountBarcode = ?
+                        ORDER BY di.ID DESC
+                        """,
+                        (barcode,),
+                    )
+                    r2 = cursor.fetchone()
+                    if r2:
+                        discount_price = float(r2[0])
+                except Exception:
+                    pass
+
+            data["DiscountPrice"] = discount_price
+            data["IsDiscountBarcode"] = True
+            data["WarehouseIDFromBarcode"] = warehouse_id
+            return data
+    except Exception:
+        pass
+
+    # 2.2 Якщо запису немає — шукаємо безпосередньо у позиціях документів уцінки за кодом уцінки
+    try:
+        cursor.execute(
+            """
+            SELECT TOP 1 p.ID, p.Name, p.FullName, p.Barcode, p.DiscountBarcode, p.CategoryID, di.Price
+            FROM dbo.DiscountDocItems di
+            JOIN dbo.Products p ON p.ID = di.ProductID
+            WHERE di.DiscountBarcode = ?
+            ORDER BY di.ID DESC
+            """,
+            (barcode,),
+        )
+        row3 = cursor.fetchone()
+        if row3:
+            cols = [c[0] for c in cursor.description]
+            data = dict(zip(cols, row3))
+            data["DiscountPrice"] = float(data.pop("Price", 0))
+            data["IsDiscountBarcode"] = True
+            return data
+    except Exception:
+        pass
+
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Товар з цим штрихкодом не знайдено")
+
 
 def generate_ean13_barcode(db, barcode_prefix):
-    """Генерує EAN13 штрихкод з автоматичним інкрементом"""
     cursor = db.cursor()
-    
-    # Отримуємо поточний номер штрихкоду
     cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodeNum'")
     result = cursor.fetchone()
-    
-    if result and result[0]:
-        barcode_num = int(result[0])
-    else:
-        # Якщо BarcodeNum не налаштовано, почнемо з 1
-        barcode_num = 1
-    
+    barcode_num = int(result[0]) if result and result[0] else 1
     while True:
-        # Динамічно визначаємо кількість цифр для номера
         num_digits = 12 - len(barcode_prefix)
         barcode_without_checksum = f"{barcode_prefix}{barcode_num:0{num_digits}d}"
-        
-        # Обчислюємо контрольну суму EAN13
         odd_sum = sum(int(barcode_without_checksum[i]) for i in range(0, 12, 2))
         even_sum = sum(int(barcode_without_checksum[i]) for i in range(1, 12, 2))
         total = odd_sum + (even_sum * 3)
         checksum = (10 - (total % 10)) % 10
-        
-        # Повний штрихкод
         full_barcode = barcode_without_checksum + str(checksum)
-        
-        # Перевіряємо унікальність
         cursor.execute("SELECT COUNT(*) FROM Products WHERE Barcode = ?", (full_barcode,))
         exists = cursor.fetchone()[0]
         if not exists:
             break
         barcode_num += 1
-    
-    # Оновлюємо лічильник
-    cursor.execute("UPDATE SystemParameters SET ParamValue = ? WHERE ParamKey = 'BarcodeNum'", 
-                  (str(barcode_num + 1),))
-    
-    print(f"🏷️ Згенеровано унікальний штрихкод: {full_barcode} (номер: {barcode_num})")
-    
+    cursor.execute("UPDATE SystemParameters SET ParamValue = ? WHERE ParamKey = 'BarcodeNum'", (str(barcode_num + 1),))
     return full_barcode
 
-@router.get("/products")
-def get_products(db=Depends(get_db)):
+def _get_fullname_fields(db, template_id: int | None):
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM Products ORDER BY ID DESC")
+    if template_id is not None:
+        cursor.execute(
+            """
+            SELECT SqlName FROM ProductFullNameFields
+            WHERE IsIncluded=1 AND TemplateID = ?
+            ORDER BY DisplayOrder
+            """,
+            (template_id,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT SqlName FROM ProductFullNameFields
+            WHERE IsIncluded=1
+            ORDER BY DisplayOrder
+            """
+        )
+    return [row[0] for row in cursor.fetchall()]
+
+def _generate_fullname(product_id, db):
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM Products WHERE ID = ?", (product_id,))
+    row = cursor.fetchone()
+    if not row:
+        return ""
+    columns = [col[0] for col in cursor.description]
+    product = dict(zip(columns, row))
+
+    # 1. Визначаємо TemplateID за категорією товару
+    template_id = None
+    try:
+        cat_id = product.get("CategoryID")
+        if cat_id:
+            cursor.execute("SELECT ProductCardTemplateID FROM Categories WHERE ID = ?", (cat_id,))
+            r = cursor.fetchone()
+            if r:
+                template_id = r[0]
+    except Exception:
+        template_id = None
+
+    # 2. Атрибути (ProductAttributes)
+    cursor.execute("SELECT FieldID, AttrValue FROM ProductAttributes WHERE ProductID = ?", (product_id,))
+    attrs = cursor.fetchall()
+    attr_map = {}
+    if attrs:
+        cursor.execute("SELECT ID, SqlName FROM ProductCardTemplateFields")
+        field_id_map = {r[0]: r[1] for r in cursor.fetchall()}
+        for field_id, value in attrs:
+            sql = field_id_map.get(field_id)
+            if sql:
+                attr_map[sql] = value
+
+    # 3. Основні значення + атрибути
+    values = {**product, **attr_map}
+
+    # 4. Беремо потрібні поля для формування назви (за конкретним шаблоном)
+    fields = _get_fullname_fields(db, template_id)
+    full_name_parts = []
+    for sql in fields:
+        val = str(values.get(sql, "")).strip()
+        # Особлива обробка ManufacturerID: підставляємо назву та країну
+        if sql.lower() == "manufacturerid":
+            m_id = values.get("ManufacturerID")
+            if m_id:
+                cursor.execute("SELECT Name, Country FROM Manufacturers WHERE ID = ?", (m_id,))
+                man = cursor.fetchone()
+                if man:
+                    val = f"{man[0]} ({man[1]})" if man[1] and str(man[1]).strip() else man[0]
+                else:
+                    val = ""
+            else:
+                val = ""
+        if val:
+            full_name_parts.append(val)
+    return " ".join(full_name_parts).strip()
+
+# === Ось цей шматок для рекурсивного пошуку підкатегорій ===
+def get_all_subcategory_ids(db, parent_id):
+    cursor = db.cursor()
+    ids = set()
+    stack = [parent_id]
+    while stack:
+        cid = stack.pop()
+        ids.add(cid)
+        cursor.execute("SELECT ID FROM Categories WHERE ParentID = ?", (cid,))
+        children = [row[0] for row in cursor.fetchall()]
+        stack.extend(children)
+    return list(ids)
+
+@router.get("/products")
+def get_products(
+    search: str = Query(None, description="Пошук по назві або штрихкоду"),
+    category: int = Query(None, description="ID категорії"),
+    db=Depends(get_db)
+):
+    cursor = db.cursor()
+    query = "SELECT * FROM Products WHERE 1=1"
+    params = []
+    if search and search.strip():
+        query += " AND (Name LIKE ? OR Barcode LIKE ?)"
+        params.extend([f"%{search.strip()}%", f"%{search.strip()}%"])
+    if category:
+        cat_ids = get_all_subcategory_ids(db, category)
+        placeholders = ','.join('?' for _ in cat_ids)
+        query += f" AND CategoryID IN ({placeholders})"
+        params.extend(cat_ids)
+    query += " ORDER BY ID DESC"
+    cursor.execute(query, params)
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -66,224 +312,78 @@ def get_product(id: int, db=Depends(get_db)):
         return dict(zip(columns, row))
     raise HTTPException(status_code=404, detail="Товар не знайдено")
 
-@router.post("/upload-image")
-async def upload_image(file: UploadFile = File(...), db=Depends(get_db)):
-    """Завантаження фото з унікальним ім'ям"""
-    print(f"📤 Отримано файл: {file.filename}, тип: {file.content_type}")
-    
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="Файл повинен бути зображенням")
-    
-    # Використовуємо папку uploads напряму
-    photo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
-    print(f"📁 Папка для збереження: {photo_dir}")
-    os.makedirs(photo_dir, exist_ok=True)
-    
-    # Генеруємо унікальне ім'я файлу
-    file_extension = os.path.splitext(file.filename)[1] or '.jpg'
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(photo_dir, unique_filename)
-    print(f"💾 Шлях для збереження: {file_path}")
-    
-    # Зберігаємо файл
-    try:
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            print(f"📊 Розмір файлу: {len(content)} байт")
-            buffer.write(content)
-        
-        print(f"✅ Файл збережено: {unique_filename}")
-        
-        # Перевіряємо чи файл існує
-        if os.path.exists(file_path):
-            print(f"✅ Файл підтверджено: {file_path}")
-        else:
-            print(f"❌ Файл не знайдено після збереження: {file_path}")
-            
-    except Exception as e:
-        print(f"❌ Помилка збереження файлу: {e}")
-        raise HTTPException(status_code=500, detail=f"Помилка збереження файлу: {e}")
-    
-    return {"message": "Фото завантажено", "filename": unique_filename}
-
 @router.post("/products")
-def create_product(data: dict, db=Depends(get_db)):
+def create_product(data: dict, db=Depends(get_db), _=Depends(require_roles(["admin", "manager"]))):
     cursor = db.cursor()
-    
-    # Автоматична генерація штрихкоду якщо не вказано
     if not data.get('Barcode') or data.get('Barcode').strip() == '':
         try:
-            # Отримуємо префікс з BarcodePrefix параметру
             cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodePrefix'")
             prefix_result = cursor.fetchone()
-            
             if not prefix_result or not prefix_result[0]:
-                print("⚠️ BarcodePrefix не налаштовано, пропускаємо генерацію штрихкоду")
-                data['Barcode'] = ""  # Залишаємо пустим
+                data['Barcode'] = ""
             else:
                 prefix = prefix_result[0]
                 data['Barcode'] = generate_ean13_barcode(db, prefix)
-                print(f"🏷️ Автоматично згенеровано штрихкод: {data['Barcode']} (префікс: {prefix})")
-        except Exception as e:
-            print(f"⚠️ Помилка генерації штрихкоду: {e}, залишаємо пустим")
-            data['Barcode'] = ""  # Залишаємо пустим у разі помилки
-    
-    columns = list(data.keys())
-    values = list(data.values())
+        except Exception:
+            data['Barcode'] = ""
+    db_columns = ['Name', 'Description', 'Barcode', 'Photo', 'CategoryID', 'ManufacturerID', 'FullName',
+                  'DiscountBarcode', 'IsDiscountedAvailable', 'Article', 'IsActive']
+    columns = [col for col in db_columns if col in data]
+    values = [data[col] for col in columns]
     placeholders = ', '.join(['?' for _ in values])
     column_list = ', '.join(columns)
-    
-    # Використовуємо OUTPUT INSERTED.ID для отримання нового ID
     query = f"INSERT INTO Products ({column_list}) OUTPUT INSERTED.ID VALUES ({placeholders})"
-    print(f"🔍 SQL запит: {query}")
-    print(f"📊 Значення: {values}")
-    
     cursor.execute(query, values)
-    new_id = cursor.fetchone()[0]  # Отримуємо ID з OUTPUT
+    new_id = cursor.fetchone()[0]
+    fullname = _generate_fullname(new_id, db)
+    cursor.execute("UPDATE Products SET FullName = ? WHERE ID = ?", (fullname, new_id))
     db.commit()
-    
-    print(f"✅ Створено товар з ID: {new_id}")
-    
     return {"message": "Товар створено!", "id": int(new_id), "barcode": data.get('Barcode')}
 
 @router.put("/products/{id}")
-def update_product(id: int, data: dict, db=Depends(get_db)):
+def update_product(id: int, data: dict, db=Depends(get_db), _=Depends(require_roles(["admin", "manager"]))):
     cursor = db.cursor()
-    
-    # Автоматична генерація штрихкоду якщо не вказано (ПРИ ЗБЕРЕЖЕННІ ТАКОЖ!)
     if not data.get('Barcode') or data.get('Barcode').strip() == '':
         try:
-            # Отримуємо префікс з BarcodePrefix параметру
             cursor.execute("SELECT ParamValue FROM SystemParameters WHERE ParamKey = 'BarcodePrefix'")
             prefix_result = cursor.fetchone()
-            
             if not prefix_result or not prefix_result[0]:
-                print("⚠️ BarcodePrefix не налаштовано, пропускаємо генерацію штрихкоду")
-                data['Barcode'] = ""  # Залишаємо пустим
+                data['Barcode'] = ""
             else:
                 prefix = prefix_result[0]
                 data['Barcode'] = generate_ean13_barcode(db, prefix)
-                print(f"🏷️ Автоматично згенеровано штрихкод при збереженні: {data['Barcode']} (префікс: {prefix})")
-        except Exception as e:
-            print(f"⚠️ Помилка генерації штрихкоду: {e}, залишаємо пустим")
-            data['Barcode'] = ""  # Залишаємо пустим у разі помилки
-    
-    # Генеруємо SET частину запиту
+        except Exception:
+            data['Barcode'] = ""
+    db_columns = ['Name', 'Description', 'Barcode', 'Photo', 'CategoryID', 'ManufacturerID', 'FullName',
+                  'DiscountBarcode', 'IsDiscountedAvailable', 'Article', 'IsActive']
     set_clauses = []
     values = []
-    for key, value in data.items():
-        set_clauses.append(f"{key} = ?")
-        values.append(value)
-    
+    for col in db_columns:
+        if col in data:
+            set_clauses.append(f"{col} = ?")
+            values.append(data[col])
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="Дані для оновлення відсутні")
     set_clause = ', '.join(set_clauses)
     query = f"UPDATE Products SET {set_clause} WHERE ID = ?"
     values.append(id)
-    
-    print(f"🔍 SQL запит: {query}")
-    print(f"📊 Значення: {values}")
-    
     cursor.execute(query, values)
+    fullname = _generate_fullname(id, db)
+    cursor.execute("UPDATE Products SET FullName = ? WHERE ID = ?", (fullname, id))
     db.commit()
-
     return {"message": "Товар оновлено!", "barcode": data.get('Barcode')}
 
 @router.delete("/products/{id}")
-def delete_product(id: int, db=Depends(get_db)):
+def delete_product(id: int, db=Depends(get_db), _=Depends(require_roles(["admin"]))):
     cursor = db.cursor()
+    cursor.execute("DELETE FROM ProductAttributes WHERE ProductID = ?", (id,))
     cursor.execute("DELETE FROM Products WHERE ID = ?", (id,))
     db.commit()
-    return {"message": "Товар видалено!"}
+    return {"message": "Товар та його атрибути видалено!"}
 
-def create_preview(image_path, preview_path, size=(200, 200)):
-    """Створює прев'ю зображення"""
-    try:
-        with Image.open(image_path) as img:
-            # Створюємо прев'ю зберігаючи пропорції
-            img.thumbnail(size, Image.Resampling.LANCZOS)
-            
-            # Створюємо білий фон
-            background = Image.new('RGB', size, (255, 255, 255))
-            
-            # Центруємо зображення
-            offset = ((size[0] - img.size[0]) // 2, (size[1] - img.size[1]) // 2)
-            background.paste(img, offset)
-            
-            # Зберігаємо прев'ю
-            background.save(preview_path, 'JPEG', quality=85)
-            print(f"✅ Прев'ю створено: {preview_path}")
-            return True
-    except Exception as e:
-        print(f"❌ Помилка створення прев'ю: {e}")
-        return False
-
-@router.post("/products/{id}/upload-photo")
-async def upload_product_photo(id: int, file: UploadFile = File(...), db=Depends(get_db)):
-    """Завантаження фото товару з автоматичним створенням прев'ю"""
-    print(f"📤 Завантаження фото для товару ID: {id}")
-    
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="Файл повинен бути зображенням")
-    
-    cursor = db.cursor()
-    
-    # Отримуємо шляхи з системних параметрів
-    cursor.execute("SELECT ParamKey, ParamValue FROM SystemParameters WHERE ParamKey IN ('PhotoPath', 'PreviewPath')")
-    params = {row[0]: row[1] for row in cursor.fetchall()}
-    
-    photo_path = params.get('PhotoPath')
-    preview_path = params.get('PreviewPath')
-    
-    if not photo_path:
-        raise HTTPException(status_code=500, detail="PhotoPath не налаштовано в системних параметрах")
-    
-    if not preview_path:
-        raise HTTPException(status_code=500, detail="PreviewPath не налаштовано в системних параметрах")
-    
-    # Створюємо папки якщо не існують
-    os.makedirs(photo_path, exist_ok=True)
-    os.makedirs(preview_path, exist_ok=True)
-    
-    # Назва файлу = ID товару
-    filename = f"{id}.jpg"
-    full_photo_path = os.path.join(photo_path, filename)
-    full_preview_path = os.path.join(preview_path, filename)
-    
-    try:
-        # Зберігаємо оригінальне фото
-        content = await file.read()
-        with open(full_photo_path, "wb") as buffer:
-            buffer.write(content)
-        
-        print(f"✅ Оригінальне фото збережено: {full_photo_path}")
-        
-        # Створюємо прев'ю
-        if create_preview(full_photo_path, full_preview_path):
-            print(f"✅ Прев'ю створено: {full_preview_path}")
-        else:
-            print(f"⚠️ Не вдалося створити прев'ю, але основне фото збережено")
-        
-        # Оновлюємо запис у базі
-        cursor.execute("UPDATE Products SET Photo = ? WHERE ID = ?", (filename, id))
-        db.commit()
-        
-        print(f"✅ Запис у базі оновлено: Photo = {filename}")
-        
-        return {
-            "message": "Фото та прев'ю збережено!", 
-            "filename": filename,
-            "photo_path": full_photo_path,
-            "preview_path": full_preview_path
-        }
-        
-    except Exception as e:
-        print(f"❌ Помилка збереження фото: {e}")
-        raise HTTPException(status_code=500, detail=f"Помилка збереження фото: {e}")
-
-@router.get("/manufacturers")
-def get_manufacturers(db=Depends(get_db)):
-    cursor = db.cursor()
-    cursor.execute("SELECT ID, Name FROM Manufacturers ORDER BY Name")
-    return [{"ID": row[0], "ManufacturerName": row[1]} for row in cursor.fetchall()]
+@router.get("/products/{id}/fullname")
+def get_product_fullname(id: int, db=Depends(get_db)):
+    return {"FullName": _generate_fullname(id, db)}
 
 @router.get("/products/{id}/attributes")
 def get_product_attributes(id: int, db=Depends(get_db)):
@@ -293,77 +393,77 @@ def get_product_attributes(id: int, db=Depends(get_db)):
 
 @router.post("/products/{id}/attributes")
 def save_product_attributes(id: int, attributes: list = Body(...), db=Depends(get_db)):
-    print(f"Отримано додаткові параметри для товару {id}: {attributes}")
+    if not isinstance(attributes, list):
+        raise HTTPException(status_code=400, detail="Атрибути мають бути списком")
     cursor = db.cursor()
+    saved_count = 0
     for attr in attributes:
         field_id = attr.get("FieldID")
         value = attr.get("Value")
-        # Перевіряємо чи вже є такий запис
-        cursor.execute("SELECT ID FROM ProductAttributes WHERE ProductID = ? AND FieldID = ?", (id, field_id))
+        if field_id is None or not isinstance(field_id, int):
+            continue
+        cursor.execute(
+            "SELECT ID FROM ProductAttributes WHERE ProductID = ? AND FieldID = ?",
+            (id, field_id)
+        )
         row = cursor.fetchone()
         if row:
-            cursor.execute("UPDATE ProductAttributes SET AttrValue = ? WHERE ID = ?", (value, row[0]))
+            cursor.execute(
+                "UPDATE ProductAttributes SET AttrValue = ? WHERE ID = ?",
+                (value, row[0])
+            )
         else:
-            cursor.execute("INSERT INTO ProductAttributes (ProductID, FieldID, AttrValue) VALUES (?, ?, ?)", (id, field_id, value))
+            cursor.execute(
+                "INSERT INTO ProductAttributes (ProductID, FieldID, AttrValue) VALUES (?, ?, ?)",
+                (id, field_id, value)
+            )
+        saved_count += 1
     db.commit()
-    return {"message": "Додаткові параметри збережено!"}
-
-@router.get("/products/{id}/fullname")
-def get_product_fullname(id: int, db=Depends(get_db)):
-    cursor = db.cursor()
-    # 1. Підтягуємо товар
-    cursor.execute("SELECT * FROM Products WHERE ID = ?", (id,))
-    product = cursor.fetchone()
-    if not product:
-        raise HTTPException(status_code=404, detail="Товар не знайдено")
-    product_columns = [col[0] for col in cursor.description]
-    product_dict = dict(zip(product_columns, product))
-    # 2. Підтягуємо додаткові параметри
-    cursor.execute("SELECT FieldID, AttrValue FROM ProductAttributes WHERE ProductID = ?", (id,))
-    attr_dict = {row[0]: row[1] for row in cursor.fetchall()}
-    # 3. Підтягуємо правила формування назви
-    cursor.execute("SELECT SqlName, DisplayOrder, IsIncluded, FieldID FROM ProductFullNameFields WHERE IsIncluded = 1 ORDER BY DisplayOrder")
-    rules = cursor.fetchall()
-    # 4. Підтягуємо всі додаткові поля для мапи FieldID → SqlName
-    cursor.execute("SELECT ID, SqlName FROM ProductCardTemplateFields")
-    field_map = {row[0]: row[1] for row in cursor.fetchall()}
-    # 5. Формуємо повну назву
-    parts = []
-    for rule in rules:
-        sql_name, _, _, field_id = rule
-        value = None
-        if sql_name in product_dict:
-            value = product_dict[sql_name]
-            # Якщо це ManufacturerID — підтягуємо назву виробника
-            if sql_name.lower() == "manufacturerid" and value:
-                cursor.execute("SELECT Name, Country FROM Manufacturers WHERE ID = ?", (value,))
-                man = cursor.fetchone()
-                if man:
-                    value = f"{man[0]} ({man[1]})" if man[1] else man[0]
-        elif field_id and field_id in attr_dict:
-            value = attr_dict[field_id]
-        elif field_id and field_id in field_map:
-            value = ''
-        if value:
-            parts.append(str(value))
-    fullname = ' '.join(parts)
-    return {"FullName": fullname}
-
-@router.post("/products/refresh-fullnames")
-def refresh_fullnames(db=Depends(get_db)):
-    cursor = db.cursor()
-    # Підтягуємо всі товари
-    cursor.execute("SELECT ID FROM Products")
-    product_ids = [row[0] for row in cursor.fetchall()]
-    updated = 0
-    for pid in product_ids:
-        # Генеруємо повну назву для кожного товару
-        fullname = get_product_fullname(pid, db)["FullName"]
-        # Оновлюємо поле FullName у Products (якщо таке є)
-        try:
-            cursor.execute("UPDATE Products SET FullName = ? WHERE ID = ?", (fullname, pid))
-            updated += 1
-        except Exception as e:
-            print(f"⚠️ Не вдалося оновити FullName для товару {pid}: {e}")
+    fullname = _generate_fullname(id, db)
+    cursor.execute("UPDATE Products SET FullName = ? WHERE ID = ?", (fullname, id))
     db.commit()
-    return {"message": f"Оновлено повну назву у {updated} товарів!"} 
+    return {"message": f"Додаткові параметри збережено! Додано/оновлено: {saved_count}"}
+
+def create_preview(image_path, preview_path, size=(200, 200)):
+    try:
+        with Image.open(image_path) as img:
+            img.thumbnail(size, Image.Resampling.LANCZOS)
+            background = Image.new('RGB', size, (255, 255, 255))
+            offset = ((size[0] - img.size[0]) // 2, (size[1] - img.size[1]) // 2)
+            background.paste(img, offset)
+            background.save(preview_path, 'JPEG', quality=85)
+            return True
+    except Exception:
+        return False
+
+@router.post("/products/{id}/upload-photo")
+async def upload_product_photo(id: int, file: UploadFile = File(...), db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("SELECT ParamKey, ParamValue FROM SystemParameters WHERE ParamKey IN ('PhotoPath', 'PreviewPath')")
+    params = {row[0]: row[1] for row in cursor.fetchall()}
+    photo_path = params.get('PhotoPath')
+    preview_path = params.get('PreviewPath')
+    if not photo_path:
+        raise HTTPException(status_code=500, detail="PhotoPath не налаштовано в системних параметрах")
+    if not preview_path:
+        raise HTTPException(status_code=500, detail="PreviewPath не налаштовано в системних параметрах")
+    os.makedirs(photo_path, exist_ok=True)
+    os.makedirs(preview_path, exist_ok=True)
+    filename = f"{id}.jpg"
+    full_photo_path = os.path.join(photo_path, filename)
+    full_preview_path = os.path.join(preview_path, filename)
+    try:
+        content = await file.read()
+        with open(full_photo_path, "wb") as buffer:
+            buffer.write(content)
+        create_preview(full_photo_path, full_preview_path)
+        cursor.execute("UPDATE Products SET Photo = ? WHERE ID = ?", (filename, id))
+        db.commit()
+        return {
+            "message": "Фото та прев'ю збережено!",
+            "filename": filename,
+            "photo_path": full_photo_path,
+            "preview_path": full_preview_path
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Помилка збереження фото: {e}")

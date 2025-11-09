@@ -1,0 +1,1206 @@
+# app/services/arrival_service.py
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple
+
+import pyodbc
+
+
+
+from .utils import money, qty
+
+from . import typical_ops, taxes, inventory, costing, numbering
+
+from . import accounting_ledger as ledger
+
+
+
+
+
+T_ARR = "dbo.ArrivalDocuments"
+
+T_ITM = "dbo.ArrivalDocumentItems"
+
+T_POST = "dbo.DocumentPostings"
+
+
+
+
+
+# ---------------------------
+
+# Helpers (SQL mappers)
+
+# ---------------------------
+
+def _row_to_doc_head(r) -> Dict[str, Any]:
+
+    return {
+
+        "ID": r.ID,
+
+        "Number": r.Number or "",
+
+        "Date": r.Date,
+
+        "SupplierID": r.SupplierID,
+
+        "CurrencyID": r.CurrencyID,
+
+        "PricesIncludeVAT": bool(r.PricesIncludeVAT),
+
+        "CompanyID": r.CompanyID,
+
+        "CenterID": r.CenterID,
+
+        "TypicalOperationID": r.TypicalOperationID,
+
+        "TotalExtraCosts": float(r.TotalExtraCosts or 0),
+
+        "ExternalNumber": r.ExternalNumber or "",
+
+        "Comment": r.Comment or "",
+
+        "TotalAmount": float(r.TotalAmount or 0),
+
+        "Status": r.Status or "draft",
+
+    }
+
+
+
+
+
+def _row_to_item(r) -> Dict[str, Any]:
+
+    return {
+
+        "ID": r.ID,
+
+        "ProductID": r.ProductID,
+
+        "Quantity": float(r.Quantity or 0),
+
+        "Price": float(r.Price or 0),
+
+        "TaxRateID": r.TaxRateID,
+
+        "PartyID": r.PartyID,
+
+        "QtyOrdered": float(r.QtyOrdered or 0) if hasattr(r, "QtyOrdered") else None,
+
+        "QtyInvoiced": float(r.QtyInvoiced or 0) if hasattr(r, "QtyInvoiced") else None,
+
+    }
+
+
+
+
+
+# ---------------------------
+
+# Queries
+
+# ---------------------------
+
+def list_documents(
+
+    conn: pyodbc.Connection,
+
+    *,
+
+    date_from: Optional[str] = None,
+
+    date_to: Optional[str] = None,
+
+    supplier_id: Optional[int] = None,
+
+) -> List[Dict[str, Any]]:
+
+    where = ["1=1"]
+
+    params: List[Any] = []
+
+    if date_from:
+
+        where.append("a.[Date] >= ?")
+
+        params.append(date_from)
+
+    if date_to:
+
+        where.append("a.[Date] <= ?")
+
+        params.append(date_to)
+
+    if supplier_id:
+
+        where.append("a.[SupplierID] = ?")
+
+        params.append(supplier_id)
+
+
+
+    sql = f"""
+
+      SELECT a.ID, a.Number, a.Date, a.TotalAmount, a.Status,
+
+             s.Name as SupplierName, c.Name as CenterName, cur.CurrencyCode
+
+      FROM {T_ARR} a
+
+      LEFT JOIN dbo.Suppliers s ON s.ID = a.SupplierID
+
+      LEFT JOIN dbo.CentersOfAccounting c ON c.ID = a.CenterID
+
+      LEFT JOIN dbo.Currencies cur ON cur.ID = a.CurrencyID
+
+      WHERE {" AND ".join(where)}
+
+      ORDER BY a.Date DESC, a.ID DESC
+
+    """
+
+    cur = conn.cursor()
+
+    cur.execute(sql, tuple(params))
+
+    out: List[Dict[str, Any]] = []
+
+    for r in cur.fetchall():
+
+        out.append({
+
+            "ID": r.ID,
+
+            "Number": r.Number or "",
+
+            "Date": r.Date,
+
+            "SupplierName": r.SupplierName or "",
+
+            "CenterName": r.CenterName or "",
+
+            "CurrencyCode": r.CurrencyCode or "",
+
+            "TotalAmount": float(r.TotalAmount or 0),
+
+            "Status": r.Status or "draft",
+
+        })
+
+    return out
+
+
+
+
+
+def get_document(conn: pyodbc.Connection, doc_id: int) -> Dict[str, Any]:
+
+    cur = conn.cursor()
+
+    cur.execute(f"SELECT * FROM {T_ARR} WHERE ID=?", (doc_id,))
+
+    head = cur.fetchone()
+
+    if not head:
+
+        raise ValueError("Документ не знайдено")
+
+
+
+    doc = _row_to_doc_head(head)
+
+
+
+    cur.execute(f"SELECT * FROM {T_ITM} WHERE DocID=? ORDER BY ID", (doc_id,))
+
+    items = [_row_to_item(r) for r in cur.fetchall()]
+
+    doc["Items"] = items
+
+
+
+    # Фетчимо поточні проводки (для вкладки «Бухоблік»)
+
+    cur.execute(
+
+        f"""SELECT ID, DebitAccountID, CreditAccountID, Amount, Comment
+
+            FROM {T_POST} WHERE DocumentType='ARRIVAL' AND DocumentID=?
+
+            ORDER BY ID""",
+
+        (doc_id,),
+
+    )
+
+    postings = [{
+
+        "LineNo": i + 1,
+
+        "DebitAccount": str(r.DebitAccountID),
+
+        "CreditAccount": str(r.CreditAccountID),
+
+        "Amount": float(r.Amount or 0),
+
+        "Comment": r.Comment or "",
+
+    } for i, r in enumerate(cur.fetchall())]
+
+    doc["Postings"] = postings
+
+
+
+    return doc
+
+
+
+
+
+# ---------------------------
+
+# Save header & items
+
+# ---------------------------
+
+def _ensure_number(conn: pyodbc.Connection, number: str, date) -> str:
+
+    if (number or "").strip():
+
+        return number
+
+    return numbering.next_doc_number(conn, for_date=date)
+
+
+
+
+
+def _insert_header(conn: pyodbc.Connection, payload: Dict[str, Any]) -> int:
+
+    sql = f"""
+
+      INSERT INTO {T_ARR}
+
+        (Number, Date, SupplierID, CurrencyID, PricesIncludeVAT,
+
+         CompanyID, CenterID, TypicalOperationID, TotalExtraCosts,
+
+         ExternalNumber, Comment, TotalAmount, Status, CreatedAt, CreatedBy)
+
+      OUTPUT INSERTED.ID
+
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', GETDATE(), ?)
+
+    """
+
+    cur = conn.cursor()
+
+    cur.execute(sql, (
+
+        payload["Number"], payload["Date"], payload.get("SupplierID"),
+
+        payload.get("CurrencyID"), 1 if payload.get("PricesIncludeVAT") else 0,
+
+        payload.get("CompanyID"), payload.get("CenterID"),
+
+        payload.get("TypicalOperationID"),
+
+        money(payload.get("TotalExtraCosts", 0)),
+
+        payload.get("ExternalNumber"), payload.get("Comment"),
+
+        money(payload.get("TotalAmount", 0)),
+
+        payload.get("UserID"),
+
+    ))
+
+    doc_id = cur.fetchone()[0]
+
+    conn.commit()
+
+    return doc_id
+
+
+
+
+
+def _update_header(conn: pyodbc.Connection, doc_id: int, payload: Dict[str, Any]) -> None:
+
+    sql = f"""
+
+      UPDATE {T_ARR}
+
+         SET Number=?,
+
+             Date=?, SupplierID=?, CurrencyID=?, PricesIncludeVAT=?,
+
+             CompanyID=?, CenterID=?, TypicalOperationID=?, TotalExtraCosts=?,
+
+             ExternalNumber=?, Comment=?, TotalAmount=?,
+
+             UpdatedAt=GETDATE(), UpdatedBy=?
+
+       WHERE ID=?
+
+    """
+
+    cur = conn.cursor()
+
+    cur.execute(sql, (
+
+        payload["Number"], payload["Date"], payload.get("SupplierID"),
+
+        payload.get("CurrencyID"), 1 if payload.get("PricesIncludeVAT") else 0,
+
+        payload.get("CompanyID"), payload.get("CenterID"),
+
+        payload.get("TypicalOperationID"),
+
+        money(payload.get("TotalExtraCosts", 0)),
+
+        payload.get("ExternalNumber"), payload.get("Comment"),
+
+        money(payload.get("TotalAmount", 0)),
+
+        payload.get("UserID"), doc_id
+
+    ))
+
+    conn.commit()
+
+
+
+
+
+def _replace_items(conn: pyodbc.Connection, doc_id: int, items: List[Dict[str, Any]]) -> None:
+
+    cur = conn.cursor()
+
+    cur.execute(f"DELETE FROM {T_ITM} WHERE DocID=?", (doc_id,))
+
+    conn.commit()
+
+
+
+    ins = f"""
+
+      INSERT INTO {T_ITM}
+
+        (DocID, ProductID, Quantity, Price, TaxRateID, PartyID, QtyOrdered, QtyInvoiced, CreatedAt, CreatedBy)
+
+      VALUES (?, ?, ?, ?, ?, NULL, ?, ?, GETDATE(), ?)
+
+    """
+
+    for r in items:
+
+        cur.execute(ins, (
+
+            doc_id, r["ProductID"], qty(r.get("Quantity", 0)), money(r.get("Price", 0)),
+
+            r.get("TaxRateID"),
+
+            r.get("QtyOrdered"), r.get("QtyInvoiced"),
+
+            r.get("UserID", None)
+
+        ))
+
+    conn.commit()
+
+
+
+
+
+# ---------------------------
+
+# Inventory & costing
+
+# ---------------------------
+
+def _detect_vat_percent_for_doc(conn: pyodbc.Connection, typical_operation_id: Optional[int]) -> float:
+
+    """
+
+    Дістаємо відсоток ПДВ з типової операції (рядок з AmountType='percent').
+
+    Якщо немає — 0.
+
+    """
+
+    if not typical_operation_id:
+
+        return 0.0
+
+    entries = typical_ops.get_operation_entries(conn, typical_operation_id)
+
+    for e in entries:
+
+        if (e.get("AmountType") or "").lower() in ("percent", "pct", "%"):
+
+            # ставка з AccountTaxRates на рахунку Дт цього рядка
+
+            acc_tax = taxes.get_account_tax(conn, e["DebitAccountID"], on_date=None)
+
+            if acc_tax and acc_tax["Rate"] > 0:
+
+                return float(acc_tax["Rate"])
+
+    return 0.0
+
+
+
+
+
+def _perform_inventory_phase(
+
+    conn: pyodbc.Connection,
+
+    *,
+
+    doc_id: int,
+
+    header: Dict[str, Any],
+
+    items: List[Dict[str, Any]],
+
+    user_id: Optional[int],
+
+) -> List[int]:
+
+    """
+
+    Створюємо партії, рухи і оновлюємо залишки. Повертаємо список PartyID по кожному рядку.
+
+    Для розрахунку нетто-ціни, якщо PricesIncludeVAT=True — відрізаємо ПДВ за ставкою з типової операції.
+
+    """
+
+    vat_percent = _detect_vat_percent_for_doc(conn, header.get("TypicalOperationID"))
+
+
+
+    party_ids: List[int] = []
+
+    for r in items:
+
+        price = float(r.get("Price") or 0)
+
+        qty_val = float(r.get("Quantity") or 0)
+
+
+
+        if header.get("PricesIncludeVAT"):
+
+            parts = taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)
+
+            unit_net = parts["net"]
+
+        else:
+
+            unit_net = price
+
+
+
+        pid = inventory.receipt_item(
+
+            conn,
+
+            document_id=doc_id,
+
+            document_type="ARRIVAL",
+
+            warehouse_id=header["CenterID"],  # у твоїй схемі «центр = головний склад центру обліку»
+
+            supplier_id=header.get("SupplierID"),
+
+            company_id=header.get("CompanyID"),
+
+            date=header["Date"],
+
+            user_id=user_id,
+
+            product_id=r["ProductID"],
+
+            quantity=qty_val,
+
+            unit_cost=unit_net,
+
+            comment=f"Arrival {doc_id}",
+
+        )
+
+        party_ids.append(pid)
+
+
+
+        # оновимо PartyID в рядку документа
+
+        cur = conn.cursor()
+
+        cur.execute(f"UPDATE {T_ITM} SET PartyID=? WHERE DocID=? AND ProductID=? AND PartyID IS NULL",
+
+                    (pid, doc_id, r["ProductID"]))
+
+        conn.commit()
+
+
+
+    # розподіл додаткових витрат і запис у dbo.CostCalculations
+
+    if (header.get("TotalExtraCosts") or 0) > 0:
+
+        # готуємо "нетто" суми на позицію
+
+        prepared = []
+
+        for r, pid in zip(items, party_ids):
+
+            price = float(r.get("Price") or 0)
+
+            if header.get("PricesIncludeVAT"):
+
+                parts = taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)
+
+                unit_net = parts["net"]
+
+            else:
+
+                unit_net = price
+
+            prepared.append({"Quantity": r["Quantity"], "UnitCostNet": unit_net, "PartyID": pid, "ProductID": r["ProductID"]})
+
+
+
+        shares = costing.allocate_extra_costs(prepared, header.get("TotalExtraCosts") or 0)
+
+        for row, add_cost in zip(prepared, shares):
+
+            # фактична собівартість одиниці = нетто + частка/кількість
+
+            if float(row["Quantity"] or 0) > 0 and add_cost:
+
+                unit = money(add_cost / float(row["Quantity"]))
+
+            else:
+
+                unit = 0.0
+
+            costing.insert_cost_record(
+
+                conn,
+
+                product_id=row["ProductID"],
+
+                party_id=row["PartyID"],
+
+                method="arrival_extra",
+
+                calculated_cost=unit,
+
+                user_id=user_id,
+
+                comment=f"Розподіл витрат документа {doc_id}",
+
+            )
+
+
+
+    return party_ids
+
+
+
+
+
+# ---------------------------
+
+# Public API
+
+# ---------------------------
+
+def save_document(
+
+    conn: pyodbc.Connection,
+
+    payload: Dict[str, Any],
+
+    *,
+
+    editing_id: Optional[int] = None,
+
+) -> Dict[str, Any]:
+
+    """
+
+    Зберігає документ.
+
+    1) шапка + рядки
+
+    2) фаза складу (партії/рухи/залишки) — одразу при збереженні
+
+    Повертає head + items.
+
+    """
+
+    header = dict(payload)
+
+    header["Number"] = _ensure_number(conn, payload.get("Number", ""), payload["Date"])
+
+
+
+    if editing_id:
+
+        _update_header(conn, editing_id, header)
+
+        doc_id = editing_id
+
+    else:
+
+        doc_id = _insert_header(conn, header)
+
+
+
+    # рядки
+
+    items = payload.get("Items") or []
+
+    for r in items:
+
+        r["UserID"] = payload.get("UserID")
+
+    _replace_items(conn, doc_id, items)
+
+
+
+    # інвентарна фаза
+
+    _perform_inventory_phase(
+
+        conn,
+
+        doc_id=doc_id,
+
+        header=header,
+
+        items=items,
+
+        user_id=payload.get("UserID"),
+
+    )
+
+
+
+    return get_document(conn, doc_id)
+
+
+
+
+
+def delete_document(conn: pyodbc.Connection, doc_id: int) -> None:
+
+    # мінімальна перевірка: не видаляти проведені (за потреби)
+
+    cur = conn.cursor()
+
+    cur.execute(f"DELETE FROM {T_POST} WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
+
+    cur.execute(f"DELETE FROM {T_ITM} WHERE DocID=?", (doc_id,))
+
+    cur.execute(f"DELETE FROM {T_ARR} WHERE ID=?", (doc_id,))
+
+    conn.commit()
+
+
+
+
+
+def conduct_document(conn: pyodbc.Connection, doc_id: int, user_id: Optional[int]) -> List[Dict[str, Any]]:
+
+    """
+
+    Формує та перезаписує проводки згідно з типовою операцією документа.
+
+    Повертає список проводок для UI.
+
+    """
+
+    doc = get_document(conn, doc_id)  # з поточними items
+
+    op_id = doc.get("TypicalOperationID")
+
+    if not op_id:
+
+        return []
+
+
+
+    op_entries = typical_ops.get_operation_entries(conn, op_id)
+
+
+
+    # базова сума — нетто по рядках (сума Qty*UnitNet). Для %-рядків ledger сам обчислить суму.
+
+    vat_percent = _detect_vat_percent_for_doc(conn, op_id)
+
+    net_total = 0.0
+
+    for r in (doc.get("Items") or []):
+
+        price = float(r.get("Price") or 0)
+
+        if doc.get("PricesIncludeVAT"):
+
+            net_total += taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)["net"] * float(r.get("Quantity") or 0)
+
+        else:
+
+            net_total += price * float(r.get("Quantity") or 0)
+
+
+
+    postings = ledger.upsert_document_postings(
+
+        conn,
+
+        document_id=doc_id,
+
+        document_type="ARRIVAL",
+
+        entries=op_entries,
+
+        prices_include_vat=bool(doc.get("PricesIncludeVAT")),
+
+        base_amount=money(net_total),
+
+        currency_id=doc.get("CurrencyID"),
+
+        user_id=user_id,
+
+        comment_prefix=f"Прибуткова {doc.get('Number') or doc_id}",
+
+    )
+
+
+
+    # Для прозорості повертаємо те, що записали:
+
+    return [{
+
+        "LineNo": i + 1,
+
+        "DebitAccount": str(p["DebitAccountID"]),
+
+        "CreditAccount": str(p["CreditAccountID"]),
+
+        "Amount": float(p["Amount"]),
+
+        "Comment": p.get("Comment", ""),
+
+    } for i, p in enumerate(postings)]
+
+
+
+            r.get("TaxRateID"),
+
+            r.get("QtyOrdered"), r.get("QtyInvoiced"),
+
+            r.get("UserID", None)
+
+        ))
+
+    conn.commit()
+
+
+
+
+
+# ---------------------------
+
+# Inventory & costing
+
+# ---------------------------
+
+def _detect_vat_percent_for_doc(conn: pyodbc.Connection, typical_operation_id: Optional[int]) -> float:
+
+    """
+
+    Дістаємо відсоток ПДВ з типової операції (рядок з AmountType='percent').
+
+    Якщо немає — 0.
+
+    """
+
+    if not typical_operation_id:
+
+        return 0.0
+
+    entries = typical_ops.get_operation_entries(conn, typical_operation_id)
+
+    for e in entries:
+
+        if (e.get("AmountType") or "").lower() in ("percent", "pct", "%"):
+
+            # ставка з AccountTaxRates на рахунку Дт цього рядка
+
+            acc_tax = taxes.get_account_tax(conn, e["DebitAccountID"], on_date=None)
+
+            if acc_tax and acc_tax["Rate"] > 0:
+
+                return float(acc_tax["Rate"])
+
+    return 0.0
+
+
+
+
+
+def _perform_inventory_phase(
+
+    conn: pyodbc.Connection,
+
+    *,
+
+    doc_id: int,
+
+    header: Dict[str, Any],
+
+    items: List[Dict[str, Any]],
+
+    user_id: Optional[int],
+
+) -> List[int]:
+
+    """
+
+    Створюємо партії, рухи і оновлюємо залишки. Повертаємо список PartyID по кожному рядку.
+
+    Для розрахунку нетто-ціни, якщо PricesIncludeVAT=True — відрізаємо ПДВ за ставкою з типової операції.
+
+    """
+
+    vat_percent = _detect_vat_percent_for_doc(conn, header.get("TypicalOperationID"))
+
+
+
+    party_ids: List[int] = []
+
+    for r in items:
+
+        price = float(r.get("Price") or 0)
+
+        qty_val = float(r.get("Quantity") or 0)
+
+
+
+        if header.get("PricesIncludeVAT"):
+
+            parts = taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)
+
+            unit_net = parts["net"]
+
+        else:
+
+            unit_net = price
+
+
+
+        pid = inventory.receipt_item(
+
+            conn,
+
+            document_id=doc_id,
+
+            document_type="ARRIVAL",
+
+            warehouse_id=header["CenterID"],  # у твоїй схемі «центр = головний склад центру обліку»
+
+            supplier_id=header.get("SupplierID"),
+
+            company_id=header.get("CompanyID"),
+
+            date=header["Date"],
+
+            user_id=user_id,
+
+            product_id=r["ProductID"],
+
+            quantity=qty_val,
+
+            unit_cost=unit_net,
+
+            comment=f"Arrival {doc_id}",
+
+        )
+
+        party_ids.append(pid)
+
+
+
+        # оновимо PartyID в рядку документа
+
+        cur = conn.cursor()
+
+        cur.execute(f"UPDATE {T_ITM} SET PartyID=? WHERE DocID=? AND ProductID=? AND PartyID IS NULL",
+
+                    (pid, doc_id, r["ProductID"]))
+
+        conn.commit()
+
+
+
+    # розподіл додаткових витрат і запис у dbo.CostCalculations
+
+    if (header.get("TotalExtraCosts") or 0) > 0:
+
+        # готуємо "нетто" суми на позицію
+
+        prepared = []
+
+        for r, pid in zip(items, party_ids):
+
+            price = float(r.get("Price") or 0)
+
+            if header.get("PricesIncludeVAT"):
+
+                parts = taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)
+
+                unit_net = parts["net"]
+
+            else:
+
+                unit_net = price
+
+            prepared.append({"Quantity": r["Quantity"], "UnitCostNet": unit_net, "PartyID": pid, "ProductID": r["ProductID"]})
+
+
+
+        shares = costing.allocate_extra_costs(prepared, header.get("TotalExtraCosts") or 0)
+
+        for row, add_cost in zip(prepared, shares):
+
+            # фактична собівартість одиниці = нетто + частка/кількість
+
+            if float(row["Quantity"] or 0) > 0 and add_cost:
+
+                unit = money(add_cost / float(row["Quantity"]))
+
+            else:
+
+                unit = 0.0
+
+            costing.insert_cost_record(
+
+                conn,
+
+                product_id=row["ProductID"],
+
+                party_id=row["PartyID"],
+
+                method="arrival_extra",
+
+                calculated_cost=unit,
+
+                user_id=user_id,
+
+                comment=f"Розподіл витрат документа {doc_id}",
+
+            )
+
+
+
+    return party_ids
+
+
+
+
+
+# ---------------------------
+
+# Public API
+
+# ---------------------------
+
+def save_document(
+
+    conn: pyodbc.Connection,
+
+    payload: Dict[str, Any],
+
+    *,
+
+    editing_id: Optional[int] = None,
+
+) -> Dict[str, Any]:
+
+    """
+
+    Зберігає документ.
+
+    1) шапка + рядки
+
+    2) фаза складу (партії/рухи/залишки) — одразу при збереженні
+
+    Повертає head + items.
+
+    """
+
+    header = dict(payload)
+
+    header["Number"] = _ensure_number(conn, payload.get("Number", ""), payload["Date"])
+
+
+
+    if editing_id:
+
+        _update_header(conn, editing_id, header)
+
+        doc_id = editing_id
+
+    else:
+
+        doc_id = _insert_header(conn, header)
+
+
+
+    # рядки
+
+    items = payload.get("Items") or []
+
+    for r in items:
+
+        r["UserID"] = payload.get("UserID")
+
+    _replace_items(conn, doc_id, items)
+
+
+
+    # інвентарна фаза
+
+    _perform_inventory_phase(
+
+        conn,
+
+        doc_id=doc_id,
+
+        header=header,
+
+        items=items,
+
+        user_id=payload.get("UserID"),
+
+    )
+
+
+
+    return get_document(conn, doc_id)
+
+
+
+
+
+def delete_document(conn: pyodbc.Connection, doc_id: int) -> None:
+
+    # мінімальна перевірка: не видаляти проведені (за потреби)
+
+    cur = conn.cursor()
+
+    cur.execute(f"DELETE FROM {T_POST} WHERE DocumentType='ARRIVAL' AND DocumentID=?", (doc_id,))
+
+    cur.execute(f"DELETE FROM {T_ITM} WHERE DocID=?", (doc_id,))
+
+    cur.execute(f"DELETE FROM {T_ARR} WHERE ID=?", (doc_id,))
+
+    conn.commit()
+
+
+
+
+
+def conduct_document(conn: pyodbc.Connection, doc_id: int, user_id: Optional[int]) -> List[Dict[str, Any]]:
+
+    """
+
+    Формує та перезаписує проводки згідно з типовою операцією документа.
+
+    Повертає список проводок для UI.
+
+    """
+
+    doc = get_document(conn, doc_id)  # з поточними items
+
+    op_id = doc.get("TypicalOperationID")
+
+    if not op_id:
+
+        return []
+
+
+
+    op_entries = typical_ops.get_operation_entries(conn, op_id)
+
+
+
+    # базова сума — нетто по рядках (сума Qty*UnitNet). Для %-рядків ledger сам обчислить суму.
+
+    vat_percent = _detect_vat_percent_for_doc(conn, op_id)
+
+    net_total = 0.0
+
+    for r in (doc.get("Items") or []):
+
+        price = float(r.get("Price") or 0)
+
+        if doc.get("PricesIncludeVAT"):
+
+            net_total += taxes.split_amount_by_vat(price, prices_include_vat=True, percent=vat_percent)["net"] * float(r.get("Quantity") or 0)
+
+        else:
+
+            net_total += price * float(r.get("Quantity") or 0)
+
+
+
+    postings = ledger.upsert_document_postings(
+
+        conn,
+
+        document_id=doc_id,
+
+        document_type="ARRIVAL",
+
+        entries=op_entries,
+
+        prices_include_vat=bool(doc.get("PricesIncludeVAT")),
+
+        base_amount=money(net_total),
+
+        currency_id=doc.get("CurrencyID"),
+
+        user_id=user_id,
+
+        comment_prefix=f"Прибуткова {doc.get('Number') or doc_id}",
+
+    )
+
+
+
+    # Для прозорості повертаємо те, що записали:
+
+    return [{
+
+        "LineNo": i + 1,
+
+        "DebitAccount": str(p["DebitAccountID"]),
+
+        "CreditAccount": str(p["CreditAccountID"]),
+
+        "Amount": float(p["Amount"]),
+
+        "Comment": p.get("Comment", ""),
+
+    } for i, p in enumerate(postings)]
+

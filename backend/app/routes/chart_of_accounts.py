@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends
-from typing import Optional
-from app.db_connection import get_db   # ← виправлений імпорт!
+from fastapi import APIRouter, Depends, HTTPException
+from app.db_connection import get_db
 
 router = APIRouter()
 
-@router.get("/accounts")
-def get_accounts(db=Depends(get_db)):
+@router.get("/chart-of-accounts")
+def get_chart_of_accounts(db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("""
         SELECT ID, AccountCode, Name, ParentID, AccountType,
@@ -15,8 +14,8 @@ def get_accounts(db=Depends(get_db)):
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-@router.post("/accounts")
-def create_account(data: dict, db=Depends(get_db)):
+@router.post("/chart-of-accounts")
+def create_chart_account(data: dict, db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("""
         INSERT INTO ChartOfAccounts (
@@ -24,15 +23,15 @@ def create_account(data: dict, db=Depends(get_db)):
             AccountPurpose, CurrencyID, IsActive, IsSystem, Notes
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        data.get("AccountCode"), data.get("Name"), data.get("ParentID"), data.get("AccountType"),
-        data.get("AccountPurpose"), data.get("CurrencyID"), data.get("IsActive", True),
-        data.get("IsSystem", False), data.get("Notes")
+        data.get("AccountCode"), data.get("Name"), data.get("ParentID"),
+        data.get("AccountType"), data.get("AccountPurpose"), data.get("CurrencyID"),
+        data.get("IsActive", True), data.get("IsSystem", False), data.get("Notes")
     ))
     db.commit()
     return {"ok": True}
 
-@router.put("/accounts/{account_id}")
-def update_account(account_id: int, data: dict, db=Depends(get_db)):
+@router.put("/chart-of-accounts/{account_id}")
+def update_chart_account(account_id: int, data: dict, db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("""
         UPDATE ChartOfAccounts SET
@@ -40,15 +39,15 @@ def update_account(account_id: int, data: dict, db=Depends(get_db)):
             AccountPurpose = ?, CurrencyID = ?, IsActive = ?, IsSystem = ?, Notes = ?
         WHERE ID = ?
     """, (
-        data.get("AccountCode"), data.get("Name"), data.get("ParentID"), data.get("AccountType"),
-        data.get("AccountPurpose"), data.get("CurrencyID"), data.get("IsActive", True),
-        data.get("IsSystem", False), data.get("Notes"), account_id
+        data.get("AccountCode"), data.get("Name"), data.get("ParentID"),
+        data.get("AccountType"), data.get("AccountPurpose"), data.get("CurrencyID"),
+        data.get("IsActive", True), data.get("IsSystem", False), data.get("Notes"), account_id
     ))
     db.commit()
     return {"ok": True}
 
-@router.delete("/accounts/{account_id}")
-def delete_account(account_id: int, db=Depends(get_db)):
+@router.delete("/chart-of-accounts/{account_id}")
+def delete_chart_account(account_id: int, db=Depends(get_db)):
     cursor = db.cursor()
     cursor.execute("DELETE FROM ChartOfAccounts WHERE ID = ?", (account_id,))
     db.commit()

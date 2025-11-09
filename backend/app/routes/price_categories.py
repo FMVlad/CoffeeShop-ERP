@@ -1,31 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from app.db_connection import get_db   # <-- Виправлено тут
+from fastapi import APIRouter, Depends, HTTPException
+from app.db_connection import get_db
 
 router = APIRouter()
 
-@router.get("/price-categories")
-def get_price_categories(
-    search: str = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1),
-    db=Depends(get_db)
-):
+# --- Категорії товару ---
+@router.get("/categories")
+def get_categories(db=Depends(get_db)):
     cursor = db.cursor()
-    query = "SELECT ID, CategoryName FROM PriceCategories WHERE 1=1"
-    params = []
-    if search:
-        query += " AND CategoryName LIKE ?"
-        params.append(f"%{search}%")
-    query += " ORDER BY CategoryName OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
-    params.extend([skip, limit])
-    cursor.execute(query, tuple(params))
+    # Повертаємо також ParentID, щоб фронт міг будувати ієрархію
+    try:
+        cursor.execute("SELECT ID, CategoryName, ParentID FROM Categories ORDER BY CategoryName")
+    except Exception:
+        # Якщо немає ParentID — повернемо без нього
+        cursor.execute("SELECT ID, CategoryName FROM Categories ORDER BY CategoryName")
     columns = [col[0] for col in cursor.description]
-    rows = cursor.fetchall()
-    return [dict(zip(columns, row)) for row in rows]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+# --- Категорії цін (повний CRUD) ---
+@router.get("/price-categories")
+def get_price_categories(db=Depends(get_db)):
+    cursor = db.cursor()
+    # Повертаємо універсальні імена полів: Name замість CategoryName
+    try:
+        cursor.execute("SELECT ID, CategoryName AS Name FROM PriceCategories ORDER BY CategoryName")
+    except Exception:
+        # На випадок інших схем
+        cursor.execute("SELECT ID, CategoryName FROM PriceCategories ORDER BY CategoryName")
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 @router.post("/price-categories")
-def add_price_category(category: dict, db=Depends(get_db)):
-    name = category.get("CategoryName")
+def add_price_category(data: dict, db=Depends(get_db)):
+    name = data.get("CategoryName")
     if not name:
         raise HTTPException(status_code=400, detail="CategoryName is required")
     cursor = db.cursor()
@@ -34,8 +40,8 @@ def add_price_category(category: dict, db=Depends(get_db)):
     return {"message": "Категорію цін додано"}
 
 @router.put("/price-categories/{id}")
-def update_price_category(id: int, category: dict, db=Depends(get_db)):
-    name = category.get("CategoryName")
+def update_price_category(id: int, data: dict, db=Depends(get_db)):
+    name = data.get("CategoryName")
     if not name:
         raise HTTPException(status_code=400, detail="CategoryName is required")
     cursor = db.cursor()
@@ -49,3 +55,46 @@ def delete_price_category(id: int, db=Depends(get_db)):
     cursor.execute("DELETE FROM PriceCategories WHERE ID=?", (id,))
     db.commit()
     return {"message": "Категорію цін видалено"}
+
+# --- Націнки по категоріях ---
+@router.get("/category-margins")
+def get_category_margins(db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT cm.ID, cm.CategoryID, c.CategoryName, cm.PriceCategoryID, pc.CategoryName AS PriceCategoryName,
+               cm.MarginPercent, cm.Rounding
+        FROM CategoryMargins cm
+        JOIN Categories c ON cm.CategoryID = c.ID
+        JOIN PriceCategories pc ON cm.PriceCategoryID = pc.ID
+        ORDER BY c.CategoryName, pc.CategoryName
+    """)
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+@router.post("/category-margins")
+def add_category_margin(data: dict, db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("""
+        INSERT INTO CategoryMargins (CategoryID, PriceCategoryID, MarginPercent, Rounding)
+        VALUES (?, ?, ?, ?)
+    """, (data["CategoryID"], data["PriceCategoryID"], data["MarginPercent"], data["Rounding"]))
+    db.commit()
+    return {"message": "Націнку додано"}
+
+@router.put("/category-margins/{id}")
+def update_category_margin(id: int, data: dict, db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("""
+        UPDATE CategoryMargins
+        SET CategoryID=?, PriceCategoryID=?, MarginPercent=?, Rounding=?
+        WHERE ID=?
+    """, (data["CategoryID"], data["PriceCategoryID"], data["MarginPercent"], data["Rounding"], id))
+    db.commit()
+    return {"message": "Націнку оновлено"}
+
+@router.delete("/category-margins/{id}")
+def delete_category_margin(id: int, db=Depends(get_db)):
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM CategoryMargins WHERE ID=?", (id,))
+    db.commit()
+    return {"message": "Націнку видалено"}
