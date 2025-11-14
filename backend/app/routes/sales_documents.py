@@ -508,7 +508,8 @@ def list_items(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                p.FullName AS ProductName,
                i.Quantity, i.Price,
                i.CompanyID,
-               COALESCE(comp.Name, 'Без підприємства') as CompanyName
+               COALESCE(comp.Name, 'Без підприємства') as CompanyName,
+               ISNULL(i.Quantity,0) * ISNULL(i.Price,0) AS TotalAmount
           FROM SalesDocumentItems i
           LEFT JOIN Products p ON p.ID = i.ProductID
           LEFT JOIN Companies comp ON comp.ID = i.CompanyID

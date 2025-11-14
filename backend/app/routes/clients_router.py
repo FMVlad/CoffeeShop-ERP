@@ -110,17 +110,27 @@ def _get_or_create_default_retail_customer(db: pyodbc.Connection) -> int:
         prefix = _get_param(db, 'BarcodeClient', '990') or '990'
         body12 = (str(prefix) + "000000000000")[:12]
         barcode = body12 + _ean13_checksum(body12)
-    cur.execute("INSERT INTO Clients (Name, Barcode, Code, PriceCategoryID) OUTPUT INSERTED.ID VALUES (N'Роздрібний покупець', ?, 'RETAIL', ?)", (barcode, price_cat_id))
-    new_id = int(cur.fetchone()[0])
-
-    # Запишемо штрихкод з префіксом, якщо є
-    prefix = _get_param(db, 'BarcodeClient', '990') or '990'
+    
     try:
-        cur.execute("UPDATE Clients SET Barcode=? WHERE ID=?", (f"{prefix}{new_id}", new_id))
-    except Exception:
-        pass
-    db.commit()
-    return new_id
+        cur.execute("INSERT INTO Clients (Name, Barcode, Code, PriceCategoryID) OUTPUT INSERTED.ID VALUES (N'Роздрібний покупець', ?, 'RETAIL', ?)", (barcode, price_cat_id))
+        new_id = int(cur.fetchone()[0])
+
+        # Запишемо штрихкод з префіксом, якщо є
+        prefix = _get_param(db, 'BarcodeClient', '990') or '990'
+        try:
+            cur.execute("UPDATE Clients SET Barcode=? WHERE ID=?", (f"{prefix}{new_id}", new_id))
+        except Exception:
+            pass
+        db.commit()
+        return new_id
+    except Exception as e:
+        # Якщо помилка через дублікат (race condition) - шукаємо існуючий запис
+        db.rollback()
+        row = cur.execute("SELECT TOP 1 ID FROM Clients WHERE Code='RETAIL'").fetchone()
+        if row:
+            return int(row[0])
+        # Якщо все одно не знайдено - викидаємо помилку
+        raise
 
 
 @router.get("")
@@ -129,9 +139,9 @@ def list_clients(q: Optional[str] = Query(None), db: pyodbc.Connection = Depends
     cur = db.cursor()
     if q:
         like = f"%{q}%"
-        rows = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE Name LIKE ? OR Code LIKE ? OR Barcode LIKE ? ORDER BY Name", (like, like, like)).fetchall()
+        rows = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID, IsVATPayer, Address, Phone, Email FROM Clients WHERE Name LIKE ? OR Code LIKE ? OR Barcode LIKE ? ORDER BY Name", (like, like, like)).fetchall()
     else:
-        rows = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients ORDER BY Name").fetchall()
+        rows = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID, IsVATPayer, Address, Phone, Email FROM Clients ORDER BY Name").fetchall()
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, r)) for r in rows]
 
@@ -145,7 +155,7 @@ def options_root():
 def get_client(client_id: int, db: pyodbc.Connection = Depends(get_db)):
     _ensure_clients_table(db)
     cur = db.cursor()
-    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (client_id,)).fetchone()
+    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID, IsVATPayer, Address, Phone, Email FROM Clients WHERE ID=?", (client_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Клієнта не знайдено")
     cols = [c[0] for c in cur.description]
@@ -196,7 +206,7 @@ def create_client(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_d
     )
     new_id = int(cur.fetchone()[0])
     db.commit()
-    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (new_id,)).fetchone()
+    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID, IsVATPayer, Address, Phone, Email FROM Clients WHERE ID=?", (new_id,)).fetchone()
     cols = [c[0] for c in cur.description]
     return dict(zip(cols, row))
 
@@ -257,14 +267,20 @@ def update_client(client_id: int, payload: Dict[str, Any], db: pyodbc.Connection
     for field in ("Name", "Barcode", "Code", "PriceCategoryID", "Address", "Phone", "Email", "IsVATPayer"):
         if field in payload:
             sets.append(f"{field}=?")
-            vals.append(payload.get(field))
+            # Нормалізація IsVATPayer: boolean -> 1/0/NULL
+            if field == "IsVATPayer":
+                raw_is_vat = payload.get(field)
+                is_vat = (1 if bool(raw_is_vat) else 0) if raw_is_vat is not None else None
+                vals.append(is_vat)
+            else:
+                vals.append(payload.get(field))
     if not sets:
         return {"ok": True}
     vals.extend([client_id])
     cur = db.cursor()
     cur.execute(f"UPDATE Clients SET {', '.join(sets)} WHERE ID=?", tuple(vals))
     db.commit()
-    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID FROM Clients WHERE ID=?", (client_id,)).fetchone()
+    row = cur.execute("SELECT ID, Name, Barcode, Code, PriceCategoryID, IsVATPayer FROM Clients WHERE ID=?", (client_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Клієнта не знайдено")
     cols = [c[0] for c in cur.description]

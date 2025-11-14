@@ -16,23 +16,14 @@ export default function StockStatePage() {
   const [warehouseId, setWarehouseId] = useState("");
   const [warehouses, setWarehouses] = useState([]);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [priceCategories, setPriceCategories] = useState([]);
-  const [priceCategoryId, setPriceCategoryId] = useState("");
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [sortBy, setSortBy] = useState('');
-  const [sortDir, setSortDir] = useState('asc');
   const [loading, setLoading] = useState(false);
   const [previewSrc, setPreviewSrc] = useState(null);
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState([]);
-  const [categoryId, setCategoryId] = useState("");
-  const [qtyFilter, setQtyFilter] = useState("");
-  const [onlyWeight, setOnlyWeight] = useState(false);
-  const [onlyPiece, setOnlyPiece] = useState(false);
-  const [onlyDiscounted, setOnlyDiscounted] = useState(false);
   const [discountFilter, setDiscountFilter] = useState("");
   const [viewMode, setViewMode] = useState("table"); // "table" | "cards"
   // Режим вибору товарів (для документів, наприклад уцінки)
@@ -86,6 +77,13 @@ export default function StockStatePage() {
 
   // Функція для рендерингу значень комірок таблиці
   const renderCellValue = (row, columnKey) => {
+    const basePrice = Number(row.Price ?? 0);
+    const salePrice = Number(row.SalePrice ?? row.PriceWithDiscount ?? row.Price ?? 0);
+    const markdownPrice = row.DiscountPrice != null && !Number.isNaN(Number(row.DiscountPrice)) ? Number(row.DiscountPrice) : null;
+    const discountPrice = row.PriceWithDiscount != null && !Number.isNaN(Number(row.PriceWithDiscount)) ? Number(row.PriceWithDiscount) : null;
+    const hasMarkdown = markdownPrice !== null;
+    const hasPriceDiscount = !hasMarkdown && discountPrice !== null && discountPrice !== basePrice;
+
     switch (columnKey) {
       case 'photo':
         return row.Photo ? (
@@ -110,8 +108,13 @@ export default function StockStatePage() {
       
       case 'barcode':
         return (
-          <div className="font-mono text-gray-600">
-            {row.Barcode || row.BarCode || '—'}
+          <div className="flex flex-col items-start font-mono text-gray-600 gap-1">
+            <span>{row.OriginalBarcode || row.Barcode || row.BarCode || '—'}</span>
+            {row.DiscountBarcode && (
+              <span className="text-amber-600 text-sm font-semibold">
+                Уцінка: {row.DiscountBarcode}
+              </span>
+            )}
           </div>
         );
       
@@ -145,31 +148,39 @@ export default function StockStatePage() {
           </div>
         );
       
-      case 'retailPrice':
+      case 'retailPrice': {
+        const showStrikethrough = hasMarkdown || hasPriceDiscount;
+        const value = showStrikethrough ? (hasMarkdown ? (row.PriceBase ?? basePrice) : basePrice) : salePrice;
         return (
-          <div className="text-right font-mono">
-            {Number(row.Price || 0).toFixed(2)}
+          <div className={`text-right font-mono ${showStrikethrough ? 'line-through text-gray-400' : ''}`}>
+            {Number(value ?? 0).toFixed(2)}
           </div>
         );
+      }
       
       case 'retailWithDiscount':
-        return (
-          <div className="text-right font-mono text-green-600 font-bold">
-            {Number(row.PriceWithDiscount || row.Price || 0).toFixed(2)}
-          </div>
-        );
+        if (hasPriceDiscount) {
+          return (
+            <div className="text-right font-mono text-green-600 font-bold">
+              {Number(row.PriceWithDiscount || salePrice || 0).toFixed(2)}
+            </div>
+          );
+        }
+        return <div className="text-right font-mono text-gray-400">—</div>;
       
       case 'discountPrice':
-        return (
-          <div className="text-right font-mono text-red-600 font-bold">
-            {Number(row.PriceWithDiscount || row.Price || 0).toFixed(2)}
-          </div>
-        );
+        return hasMarkdown
+          ? (
+            <div className="text-right font-mono text-red-600 font-bold">
+              {markdownPrice.toFixed(2)}
+            </div>
+          )
+          : <div className="text-right font-mono text-gray-400">—</div>;
       
       case 'amount':
         return (
           <div className="text-right font-mono font-bold">
-            {(Number(row.Price || 0) * Number(row.Qty || row.Quantity || 0)).toFixed(2)}
+            {Number(row.Amount ?? (salePrice * Number(row.Qty || row.Quantity || 0))).toFixed(2)}
           </div>
         );
       
@@ -239,10 +250,9 @@ export default function StockStatePage() {
     console.log('🔍 StockStatePage: Початкове завантаження даних, employee:', employee);
     (async () => {
       try {
-        const [centersData, categoriesData, priceCategoriesData] = await Promise.all([
+        const [centersData, categoriesData] = await Promise.all([
           api.getCenters().catch(() => []),
-          api.getCategories().catch(() => []),
-          api.getPriceCategories().catch(() => [])
+          api.getCategories().catch(() => [])
         ]);
 
         console.log('🔍 StockStatePage: Отримані центри:', centersData);
@@ -251,14 +261,6 @@ export default function StockStatePage() {
         setCenters(Array.isArray(centersData) ? centersData : []);
         setCategories(Array.isArray(categoriesData) ? categoriesData : []);
 
-        if (Array.isArray(priceCategoriesData)) {
-          setPriceCategories(priceCategoriesData);
-        } else if (priceCategoriesData?.categories && Array.isArray(priceCategoriesData.categories)) {
-          setPriceCategories(priceCategoriesData.categories);
-        } else {
-          setPriceCategories([]);
-        }
-        
         // 1) Автоматично вибираємо центр зі статусбару (UserContext)
         if (userCenterId) {
           console.log('🔍 StockStatePage: Встановлюємо центр зі статусбару (UserContext):', userCenterId);
@@ -298,7 +300,7 @@ export default function StockStatePage() {
         console.error('Помилка завантаження даних:', error);
       }
     })();
-  }, [employee]);
+  }, [employee, userCenterId]);
 
   // Завантаження збережених налаштувань таблиці
   useEffect(() => {
@@ -330,17 +332,12 @@ export default function StockStatePage() {
         center_id: centerId ? Number(centerId) : undefined,
         warehouse_id: warehouse_id,
         on_date: date, // Backend очікує on_date
-        price_category_id: priceCategoryId ? Number(priceCategoryId) : undefined,
-        category_id: categoryId ? Number(categoryId) : undefined,
-        qty_filter: qtyFilter || undefined,
         // Мапимо узагальнений фільтр на параметри
-        only_weight: discountFilter === 'weight' ? true : (onlyWeight || undefined),
-        only_piece: discountFilter === 'piece' ? true : (onlyPiece || undefined),
+        only_weight: discountFilter === 'weight' ? true : undefined,
+        only_piece: discountFilter === 'piece' ? true : undefined,
         only_service: discountFilter === 'service' ? true : undefined,
         page,
         page_size: pageSize,
-        sort_by: sortBy || undefined,
-        sort_dir: sortDir || undefined,
       };
 
       console.log('🔍 StockStatePage: Логіка warehouse_id:');
@@ -382,7 +379,30 @@ export default function StockStatePage() {
     } finally {
       setLoading(false);
     }
-  }, [search, centerId, warehouseId, date, priceCategoryId, categoryId, qtyFilter, onlyWeight, onlyPiece, onlyDiscounted, discountFilter, page, pageSize, sortBy, sortDir, loading]);
+  }, [search, centerId, warehouseId, date, discountFilter, page, pageSize, loading]);
+
+  useEffect(() => {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const hasMarkdownRows = rows.some(
+      (r) => r && r.DiscountPrice != null && !Number.isNaN(Number(r.DiscountPrice))
+    );
+    if (!hasMarkdownRows) return;
+    setTableColumns((prev) => {
+      let changed = false;
+      const next = prev.map((col) => {
+        if (col.key === 'discountPrice' && !col.visible) {
+          changed = true;
+          return { ...col, visible: true };
+        }
+        return col;
+      });
+      if (!changed) return prev;
+      try {
+        localStorage.setItem('stockStateTableSettings', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, [rows]);
 
   // Допоміжні дії вибору
   const toggleRow = (pid) => {
@@ -399,7 +419,10 @@ export default function StockStatePage() {
   const commitSelection = () => {
     const items = rows
       .filter(r => selectedIds.has(r.ProductID || r.ID))
-      .map(r => ({ id: Number(r.ProductID || r.ID), quantity: 1, price: Number(r.PriceWithDiscount ?? r.Price ?? 0) }));
+      .map(r => {
+        const unitPrice = r.SalePrice ?? r.DiscountPrice ?? r.PriceWithDiscount ?? r.Price ?? 0;
+        return { id: Number(r.ProductID || r.ID), quantity: 1, price: Number(unitPrice) };
+      });
     try { window.sessionStorage.setItem(`selected::${selectionKey || 'stock'}`, JSON.stringify({ items })); } catch {}
     if (backUrl) {
       let url = backUrl;
@@ -428,7 +451,7 @@ export default function StockStatePage() {
          load();
        }
      }
-   }, [warehouseId, centerId, discountFilter]); // Прибрали load з залежностей
+   }, [warehouseId, centerId, discountFilter, load, loading, rows.length]);
 
       // Автоматичне оновлення при зміні фільтра товарів
    useEffect(() => {
@@ -500,7 +523,7 @@ export default function StockStatePage() {
         setWarehouses([]);
       });
     }
-  }, [centerId]); // Прибрали warehouseId з залежностей
+  }, [centerId, discountFilter, warehouseId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 p-8">
@@ -758,20 +781,30 @@ export default function StockStatePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, idx) => (
-                    <tr key={row.ID || idx} className="hover:bg-blue-50 transition-colors duration-200 border-b border-blue-100">
-                      {selectionMode && (
-                        <td className="p-4 text-center">
-                          <input type="checkbox" checked={selectedIds.has(row.ProductID || row.ID)} onChange={() => toggleRow(row.ProductID || row.ID)} />
-                        </td>
-                      )}
-                      {visibleColumns.map((column) => (
-                        <td key={column.key} className="p-4 text-center">
-                          {renderCellValue(row, column.key)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {rows.map((row, idx) => {
+                    const hasMarkdown = row.DiscountPrice != null && !Number.isNaN(Number(row.DiscountPrice));
+                    const hasPriceDiscount = !hasMarkdown && row.PriceWithDiscount != null && Number(row.PriceWithDiscount) !== Number(row.Price);
+                    const baseRowClass = "transition-colors duration-200 border-b border-blue-100";
+                    const highlightClass = hasMarkdown
+                      ? "bg-amber-50 hover:bg-amber-100 border-l-4 border-amber-400"
+                      : hasPriceDiscount
+                        ? "bg-emerald-50/60 hover:bg-emerald-100"
+                        : "hover:bg-blue-50";
+                    return (
+                      <tr key={row.ID || idx} className={`${baseRowClass} ${highlightClass}`}>
+                        {selectionMode && (
+                          <td className="p-4 text-center">
+                            <input type="checkbox" checked={selectedIds.has(row.ProductID || row.ID)} onChange={() => toggleRow(row.ProductID || row.ID)} />
+                          </td>
+                        )}
+                        {visibleColumns.map((column) => (
+                          <td key={column.key} className="p-4 text-center">
+                            {renderCellValue(row, column.key)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -785,8 +818,17 @@ export default function StockStatePage() {
         ) : (
           /* Картки */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {rows.map((row, idx) => (
-              <div key={row.ID || idx} className="bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105">
+            {rows.map((row, idx) => {
+              const hasMarkdown = row.DiscountPrice != null && !Number.isNaN(Number(row.DiscountPrice));
+              const hasPriceDiscount = !hasMarkdown && row.PriceWithDiscount != null && Number(row.PriceWithDiscount) !== Number(row.Price);
+              const markdownPrice = hasMarkdown ? Number(row.DiscountPrice) : null;
+              const highlightCardClass = hasMarkdown
+                ? "border-2 border-amber-400 bg-amber-50/80"
+                : hasPriceDiscount
+                  ? "border border-emerald-300 bg-emerald-50/70"
+                  : "border border-transparent bg-white";
+              return (
+                <div key={row.ID || idx} className={`${highlightCardClass} rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:scale-105`}>
                 {/* Фото */}
                 <div className="h-48 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                   {row.Photo ? (
@@ -814,8 +856,14 @@ export default function StockStatePage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Штрихкод:</span>
-                      <span className="font-mono">{row.Barcode || row.BarCode || '—'}</span>
+                      <span className="font-mono text-right">{row.OriginalBarcode || row.Barcode || row.BarCode || '—'}</span>
                     </div>
+                    {row.DiscountBarcode && (
+                      <div className="flex justify-between text-amber-600 font-semibold">
+                        <span>Штрихкод уцінки:</span>
+                        <span className="font-mono">{row.DiscountBarcode}</span>
+                      </div>
+                    )}
                                          <div className="flex justify-between">
                        <span>Кількість:</span>
                        <span className={`font-bold ${Number(row.Qty || row.Quantity || 0) > 0 ? 'text-green-600' : Number(row.Qty || row.Quantity || 0) < 0 ? 'text-red-600' : 'text-gray-500'}`}>
@@ -826,20 +874,29 @@ export default function StockStatePage() {
                        <span>Собівартість:</span>
                        <span className="font-bold text-gray-600">{Number(row.AvgCost || 0).toFixed(2)}</span>
                      </div>
-                     <div className="flex justify-between">
-                       <span>Роздрібна ціна:</span>
-                       <span className="font-bold">{Number(row.Price || 0).toFixed(2)}</span>
-                     </div>
-                     {row.PriceWithDiscount && Number(row.PriceWithDiscount) !== Number(row.Price) && (
+                    <div className="flex justify-between">
+                      <span>Роздрібна ціна:</span>
+                      <span className={`font-bold ${hasMarkdown || hasPriceDiscount ? 'line-through text-gray-400' : ''}`}>
+                        {Number(hasMarkdown ? (row.PriceBase ?? row.Price ?? 0) : row.Price ?? row.SalePrice ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                    {hasPriceDiscount && (
                        <div className="flex justify-between">
                          <span>Ціна зі знижкою:</span>
-                         <span className="font-bold text-green-600">{Number(row.PriceWithDiscount || 0).toFixed(2)}</span>
+                        <span className="font-bold text-green-600">{Number(row.PriceWithDiscount || row.SalePrice || 0).toFixed(2)}</span>
                        </div>
                      )}
+                    {hasMarkdown && (
+                      <div className="flex justify-between">
+                        <span>Ціна уцінки:</span>
+                        <span className="font-bold text-red-600">{(markdownPrice ?? 0).toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
             
             {rows.length === 0 && !loading && (
               <div className="col-span-full text-center py-12 text-gray-500 text-xl">

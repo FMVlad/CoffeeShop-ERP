@@ -414,11 +414,12 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
     if not product_id or qty <= 0:
         raise HTTPException(400, "ProductID і Quantity обов'язкові")
     # Перевіряємо чи товар вже є в цьому документі уцінки
-    existing_item = cur.execute(
-        "SELECT SUM(Quantity) FROM dbo.DiscountDocItems WHERE DocID=? AND ProductID=?",
+    existing_row = cur.execute(
+        "SELECT TOP 1 ID, Quantity, Price, PriceBase, AvgCost, DiscountBarcode FROM dbo.DiscountDocItems WHERE DocID=? AND ProductID=? ORDER BY ID DESC",
         (doc_id, product_id)
     ).fetchone()
-    existing_qty = float(existing_item[0] or 0) if existing_item else 0.0
+    existing_item_id = int(existing_row[0]) if existing_row else None
+    existing_qty = float(existing_row[1] or 0) if existing_row else 0.0
     
     print(f"DEBUG: doc_id={doc_id}, product_id={product_id}, existing_qty={existing_qty}")
     
@@ -498,7 +499,17 @@ def add_item(doc_id: int, payload: Dict[str, Any], db: pyodbc.Connection = Depen
         pass
     
     barcode = _get_or_create_discount_barcode(cur, product_id, writeoff_id, original_barcode)
-    cur.execute("INSERT INTO dbo.DiscountDocItems (DocID, ProductID, Quantity, Price, PriceBase, AvgCost, DiscountBarcode) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?, ?, ?)", (doc_id, product_id, qty, price, price_base, avg_cost, barcode))
+    if existing_item_id is not None:
+        cur.execute(
+            "UPDATE dbo.DiscountDocItems SET Quantity=?, Price=?, PriceBase=?, AvgCost=?, DiscountBarcode=? WHERE ID=? AND DocID=?",
+            (qty, price, price_base, avg_cost, barcode, existing_item_id, doc_id)
+        )
+        db.commit()
+        return {"ok": True, "ID": existing_item_id, "DiscountBarcode": barcode, "updated": True}
+    cur.execute(
+        "INSERT INTO dbo.DiscountDocItems (DocID, ProductID, Quantity, Price, PriceBase, AvgCost, DiscountBarcode) OUTPUT INSERTED.ID VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (doc_id, product_id, qty, price, price_base, avg_cost, barcode)
+    )
     new_id = int(cur.fetchone()[0]); db.commit()
     return {"ok": True, "ID": new_id, "DiscountBarcode": barcode}
 

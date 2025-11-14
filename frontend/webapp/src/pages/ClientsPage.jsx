@@ -95,7 +95,7 @@ export default function ClientsPage() {
       Phone: client.Phone || '',
       Email: client.Email || '',
       Code: client.Code || '',
-      IsVATPayer: client.IsVATPayer || false,
+      IsVATPayer: client.IsVATPayer === 1 || client.IsVATPayer === true,
       PriceCategoryID: client.PriceCategoryID || ''
     });
     setEditingClient(client);
@@ -329,11 +329,11 @@ export default function ClientsPage() {
                       </td>
                       <td className="px-8 py-6">
                         <span className={`inline-flex px-4 py-2 text-sm font-semibold rounded-full ${
-                          client.IsVATPayer 
+                          (client.IsVATPayer === 1 || client.IsVATPayer === true)
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {client.IsVATPayer ? '✅ Так' : '❌ Ні'}
+                          {(client.IsVATPayer === 1 || client.IsVATPayer === true) ? '✅ Так' : '❌ Ні'}
                         </span>
                       </td>
                       <td className="px-8 py-6">

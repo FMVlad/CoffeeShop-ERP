@@ -264,34 +264,39 @@ def stock_state(
 		except Exception:
 			pass
 
-	# Якщо обрано склад уцінки — підвантажуємо штрихкоди уцінки та ціни з останніх записаних документів уцінки
-	discount_barcode_by_product: Dict[int, str] = {}
-	discount_price_by_product: Dict[int, float] = {}
-	if is_writeoff and prod_ids:
+	# Якщо є дані по товарах, підтягуємо уцінку з DiscountDocs / DiscountDocItems (по центру + складу)
+	discount_info_by_product: Dict[int, Dict[int, Dict[str, Any]]] = {}
+	if prod_ids:
 		try:
 			placeholders = ",".join(["?"] * len(prod_ids))
 			rows_bc = db.cursor().execute(
-				f"SELECT ProductID, DiscountBarcode FROM ProductDiscountBarcodes WHERE WarehouseID=? AND ProductID IN ({placeholders})",
-				(warehouse_id, *prod_ids),
+				f"""
+				SELECT di.ProductID, di.DiscountBarcode, di.Price, di.PriceBase, d.WarehouseID, d.CenterID
+				FROM DiscountDocItems di
+				JOIN DiscountDocs d ON d.ID = di.DocID
+				WHERE di.ProductID IN ({placeholders})
+				  AND d.Status = 'posted'
+				ORDER BY di.ID DESC
+				""",
+				tuple(prod_ids),
 			).fetchall() or []
-			for pid, bc in rows_bc:
-				discount_barcode_by_product[int(pid)] = str(bc)
-		except Exception:
-			pass
-		# Ціна уцінки – з останніх posted документів по цьому складу
-		try:
-			placeholders = ",".join(["?"] * len(prod_ids))
-			query = (
-				"SELECT di.ProductID, di.Price "
-				"FROM DiscountDocItems di "
-				"JOIN DiscountDocs d ON d.ID = di.DocID "
-				"WHERE d.WarehouseID = ? AND d.Status = 'posted' AND di.ProductID IN (" + placeholders + ") "
-				"ORDER BY di.ID DESC"
-			)
-			rows_dp = db.cursor().execute(query, (warehouse_id, *prod_ids)).fetchall() or []
-			for pid, price in rows_dp:
-				if int(pid) not in discount_price_by_product:
-					discount_price_by_product[int(pid)] = float(price or 0)
+			for pid, bc, price, price_base, wh_id, doc_center in rows_bc:
+				pid_int = int(pid)
+				if center_id and doc_center is not None and int(doc_center) != int(center_id):
+					continue
+				try:
+					wh_key = int(wh_id) if wh_id is not None else -1
+				except Exception:
+					wh_key = -1
+				info_by_wh = discount_info_by_product.setdefault(pid_int, {})
+				if wh_key in info_by_wh:
+					continue  # вже маємо актуальні дані для цього складу
+				info: Dict[str, Any] = {
+					"DiscountPrice": float(price or 0),
+					"PriceBase": float(price_base or 0) if price_base is not None else None,
+					"DiscountBarcode": str(bc) if bc else None,
+				}
+				info_by_wh[wh_key] = info
 		except Exception:
 			pass
 
@@ -414,11 +419,14 @@ def stock_state(
 		price_disc = resolve_discount_price(pid)
 		# Визначаємо ваговий товар ТІЛЬКИ за полем у БД, без інференсу з штрихкоду
 		is_weight = bool(prod.get("IsWeight") or prod.get("IsWeighted") or False)
+		base_price_value = price if price is not None else 0.0
 		base_item = {
 			"ProductID": pid,
 			"WarehouseID": wid,
 			"FullName": prod.get("FullName", ""),
 			"Barcode": prod.get("Barcode", ""),
+			"OriginalBarcode": prod.get("Barcode", ""),
+			"DiscountBarcode": None,
 			"Article": prod.get("Article", ""),
 			"Photo": prod.get("Photo"),
 			"CategoryID": prod.get("CategoryID"),
@@ -426,16 +434,44 @@ def stock_state(
 			"IsWeight": is_weight,
 			"Qty": qty,
 			"AvgCost": avg_cost,
-			"Price": price,
-			"Amount": qty * price,
+			"Price": base_price_value,
+			"PriceBase": base_price_value,
 			"PriceWithDiscount": price_disc,
+			"DiscountPrice": None,
+			"IsDiscounted": False,
+			"SalePrice": base_price_value,
 		}
-		# Якщо склад уцінки — підміняємо штрихкод та уцінену ціну
-		if is_writeoff:
-			if pid in discount_barcode_by_product:
-				base_item["Barcode"] = discount_barcode_by_product[pid]
-			if pid in discount_price_by_product:
-				base_item["PriceWithDiscount"] = discount_price_by_product[pid]
+		info_by_wh = discount_info_by_product.get(pid, {})
+		info = None
+		try:
+			if wid is not None:
+				info = info_by_wh.get(int(wid))
+			if info is None:
+				info = info_by_wh.get(-1)
+		except Exception:
+			info = info_by_wh.get(-1)
+		if info:
+			if info.get("DiscountBarcode"):
+				base_item["DiscountBarcode"] = info["DiscountBarcode"]
+			if info.get("PriceBase") is not None:
+				base_item["PriceBase"] = float(info["PriceBase"])
+				if base_item["Price"] in (0, None):
+					base_item["Price"] = float(info["PriceBase"])
+			discount_price = float(info.get("DiscountPrice") or 0)
+			base_item["DiscountPrice"] = discount_price
+			base_item["SalePrice"] = discount_price
+			base_item["PriceWithDiscount"] = None
+			base_item["IsDiscounted"] = True
+		elif base_item["PriceWithDiscount"] is not None and base_item["PriceWithDiscount"] != base_item["Price"]:
+			base_item["IsDiscounted"] = True
+			base_item["SalePrice"] = float(base_item["PriceWithDiscount"])
+		else:
+			base_item["SalePrice"] = base_item["Price"]
+
+		if base_item["SalePrice"] in (None, 0) and base_item.get("DiscountPrice") not in (None, 0):
+			base_item["SalePrice"] = base_item["DiscountPrice"]
+
+		base_item["Amount"] = qty * float(base_item["SalePrice"] or 0.0)
 		# Додаємо всі кастомні поля (custom_*) в рядок відповіді
 		try:
 			custom_pairs = {k: v for k, v in prod.items() if isinstance(k, str) and k.startswith("custom_")}
@@ -451,6 +487,8 @@ def stock_state(
 		def _match(it: Dict[str, Any]) -> bool:
 			return (
 				(it.get("Barcode") or "").lower().find(s) >= 0
+				or (it.get("OriginalBarcode") or "").lower().find(s) >= 0
+				or (it.get("DiscountBarcode") or "").lower().find(s) >= 0
 				or (it.get("FullName") or "").lower().find(s) >= 0
 				or (it.get("Article") or "").lower().find(s) >= 0
 			)

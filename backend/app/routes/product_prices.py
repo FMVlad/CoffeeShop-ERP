@@ -371,6 +371,33 @@ def apply_discounts(payload: dict, db=Depends(get_db)):
     adhoc_type = (payload.get("discount_type") or "").strip().lower() or None
     adhoc_value = payload.get("discount_value")
     adhoc_round = payload.get("rounding_step")
+    try:
+        round_step_value = None if adhoc_round in (None, "") else float(adhoc_round)
+        if round_step_value is not None and round_step_value <= 0:
+            round_step_value = None
+    except (TypeError, ValueError):
+        round_step_value = None
+    if adhoc_type and adhoc_type not in {"percent", "amount"}:
+        raise HTTPException(400, "discount_type має бути 'percent' або 'amount'")
+    date_start = payload.get("date_start") or on_date
+    date_end = payload.get("date_end")
+    if isinstance(date_end, str) and not date_end.strip():
+        date_end = None
+    comment_val = payload.get("comment")
+    if isinstance(comment_val, str):
+        comment_val = comment_val.strip()[:250] or None
+    else:
+        comment_val = None
+    try:
+        warehouse_id = payload.get("warehouse_id")
+        warehouse_id = int(warehouse_id) if warehouse_id not in (None, "",) else None
+    except (TypeError, ValueError):
+        warehouse_id = None
+    try:
+        category_scope_id = payload.get("category_id")
+        category_scope_id = int(category_scope_id) if category_scope_id not in (None, "",) else None
+    except (TypeError, ValueError):
+        category_scope_id = None
 
     _ensure_exclusions_table(db)
     _ensure_product_prices_extra(db)
@@ -386,11 +413,87 @@ def apply_discounts(payload: dict, db=Depends(get_db)):
         rows = cur.execute(" ".join(q), tuple(params)).fetchall() or []
         product_ids = [int(r[0]) for r in rows]
 
+    seen_products: set[int] = set()
+    normalized_products: List[int] = []
+    for pid in product_ids:
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if pid_int not in seen_products:
+            seen_products.add(pid_int)
+            normalized_products.append(pid_int)
+    product_ids = normalized_products
+
     updated = 0
+    persisted_rules = 0
+
+    def _close_existing_discount(product_id: int):
+        if center_id is None:
+            cur.execute(
+                """
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=? AND CenterID IS NULL AND ISNULL(ProductID,0)=?
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (date_start, price_category_id, product_id, date_start, date_start),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=? AND CenterID=? AND ISNULL(ProductID,0)=?
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (date_start, price_category_id, center_id, product_id, date_start, date_start),
+            )
+
+    def _get_product_category(product_id: int) -> Optional[int]:
+        try:
+            row = cur.execute("SELECT CategoryID FROM Products WHERE ID=?", (product_id,)).fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+        except Exception:
+            return None
+
+    def _insert_price_discount(product_id: int, product_category_id: Optional[int]):
+        nonlocal persisted_rules
+        category_value = category_scope_id if category_scope_id is not None else product_category_id
+        effective_category = category_value if (category_value not in (None, 0)) else None
+        cur.execute(
+            """
+            INSERT INTO PriceDiscounts
+                (PriceCategoryID, CenterID, WarehouseID, CategoryID, ProductID,
+                 DiscountType, DiscountValue, RoundingStep, DateStart, DateEnd, Comment, CreatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())
+            """,
+            (
+                price_category_id,
+                center_id if center_id is not None else None,
+                warehouse_id,
+                effective_category,
+                product_id,
+                adhoc_type,
+                float(adhoc_value or 0),
+                round_step_value,
+                date_start,
+                date_end,
+                comment_val,
+            ),
+        )
+        persisted_rules += 1
+
+    if adhoc_type and adhoc_value is not None and product_ids:
+        for pid in product_ids:
+            prod_category = _get_product_category(pid)
+            _close_existing_discount(pid)
+            _insert_price_discount(pid, prod_category)
+
     for pid in product_ids:
         # Категорія товару (для категорних правил)
-        row_cat = cur.execute("SELECT ISNULL(CategoryID,0) FROM Products WHERE ID=?", (pid,)).fetchone()
-        prod_cat_id = int(row_cat[0] or 0) if row_cat else None
+        row_cat = cur.execute("SELECT CategoryID FROM Products WHERE ID=?", (pid,)).fetchone()
+        prod_cat_id = int(row_cat[0]) if row_cat and row_cat[0] is not None else 0
 
         # Базова ціна: спочатку по центру, потім глобальна
         def _get_base_price_row(for_center_id: Optional[int]):
@@ -430,7 +533,11 @@ def apply_discounts(payload: dict, db=Depends(get_db)):
         # Правило знижки або ad-hoc параметри з модалки
         rule = None
         if adhoc_type and adhoc_value is not None:
-            rule = {"DiscountType": adhoc_type, "DiscountValue": float(adhoc_value or 0), "RoundingStep": float(adhoc_round or 0) or 0.01}
+            rule = {
+                "DiscountType": adhoc_type,
+                "DiscountValue": float(adhoc_value or 0),
+                "RoundingStep": round_step_value,
+            }
         else:
             rule = _pick_rule_for_product(cur, price_category_id, center_id, pid, on_date, prod_cat_id)
         if not rule:
@@ -444,7 +551,11 @@ def apply_discounts(payload: dict, db=Depends(get_db)):
 
         dtype = (rule.get("DiscountType") or "").strip().lower()
         dval = float(rule.get("DiscountValue") or 0)
-        step = float(rule.get("RoundingStep") or 0) or 0.01
+        step_raw = rule.get("RoundingStep")
+        try:
+            step = float(step_raw) if step_raw is not None else None
+        except (TypeError, ValueError):
+            step = None
         if dtype == "percent":
             discounted = base_price * (1.0 - dval / 100.0)
         elif dtype == "amount":
@@ -460,7 +571,13 @@ def apply_discounts(payload: dict, db=Depends(get_db)):
         updated += 1
 
     db.commit()
-    return {"updated": updated, "active_on": on_date, "center_id": center_id or 0, "price_category_id": price_category_id}
+    return {
+        "updated": updated,
+        "persisted_rules": persisted_rules,
+        "active_on": on_date,
+        "center_id": center_id or 0,
+        "price_category_id": price_category_id,
+    }
 
 
 @router.post("/product-prices/clear-discounts")
@@ -483,6 +600,18 @@ def clear_discounts(payload: dict, db=Depends(get_db)):
 
     _ensure_product_prices_extra(db)
     cur = db.cursor()
+
+    seen_products: set[int] = set()
+    normalized_products: List[int] = []
+    for pid in product_ids:
+        try:
+            pid_int = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if pid_int not in seen_products:
+            seen_products.add(pid_int)
+            normalized_products.append(pid_int)
+    product_ids = normalized_products
 
     if product_ids:
         placeholders = ",".join(["?"] * len(product_ids))
@@ -511,6 +640,69 @@ def clear_discounts(payload: dict, db=Depends(get_db)):
         )
         cleared = cur.rowcount or 0
 
+    rules_cur = db.cursor()
+    closed_rules = 0
+    rule_date_end = payload.get("date_end") or on_date
+    if isinstance(rule_date_end, str) and not rule_date_end.strip():
+        rule_date_end = on_date
+    if product_ids:
+        placeholders = ",".join(["?"] * len(product_ids))
+        if center_id is None:
+            rules_cur.execute(
+                f"""
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=?
+                   AND CenterID IS NULL
+                   AND ProductID IN ({placeholders})
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (rule_date_end, price_category_id, *product_ids, rule_date_end, rule_date_end),
+            )
+        else:
+            rules_cur.execute(
+                f"""
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=?
+                   AND CenterID=?
+                   AND ProductID IN ({placeholders})
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (rule_date_end, price_category_id, center_id, *product_ids, rule_date_end, rule_date_end),
+            )
+        closed_rules = rules_cur.rowcount or 0
+    else:
+        if center_id is None:
+            rules_cur.execute(
+                """
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=?
+                   AND CenterID IS NULL
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (rule_date_end, price_category_id, rule_date_end, rule_date_end),
+            )
+        else:
+            rules_cur.execute(
+                """
+                UPDATE PriceDiscounts
+                   SET DateEnd=?
+                 WHERE PriceCategoryID=?
+                   AND CenterID=?
+                   AND DateStart<=? AND (DateEnd IS NULL OR DateEnd>=?)
+                """,
+                (rule_date_end, price_category_id, center_id, rule_date_end, rule_date_end),
+            )
+        closed_rules = rules_cur.rowcount or 0
+
     db.commit()
-    return {"cleared": cleared, "active_on": on_date, "center_id": center_id or 0, "price_category_id": price_category_id}
+    return {
+        "cleared": cleared,
+        "closed_rules": closed_rules,
+        "active_on": on_date,
+        "center_id": center_id or 0,
+        "price_category_id": price_category_id,
+    }
 

@@ -11,6 +11,12 @@ export default function SalesRegisterPage() {
   const [selectedSale, setSelectedSale] = useState(null);
   const [saleItems, setSaleItems] = useState([]);
   
+  // Модалка вибору клієнта
+  const [showClientPick, setShowClientPick] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientList, setClientList] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  
   // Фільтри з URL параметрами
   const [filters, setFilters] = useState({
     dateFrom: searchParams.get('dateFrom') || '',
@@ -26,9 +32,6 @@ export default function SalesRegisterPage() {
     const cashAmount = sales
       .filter(s => s.PaymentMethod === 'cash')
       .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
-    const cardAmount = sales
-      .filter(s => s.PaymentMethod === 'card')
-      .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
     const bankAmount = sales
       .filter(s => s.PaymentMethod === 'bank')
       .reduce((sum, s) => sum + (parseFloat(s.TotalAmount) || 0), 0);
@@ -37,7 +40,6 @@ export default function SalesRegisterPage() {
       count: sales.length,
       totalAmount,
       cashAmount,
-      cardAmount,
       bankAmount
     };
   }, [sales]);
@@ -47,14 +49,35 @@ export default function SalesRegisterPage() {
     loadSales();
   }, [filters]);
 
+  // Завантаження клієнтів при відкритті модалки
+  useEffect(() => {
+    (async () => {
+      if (!showClientPick) return;
+      try {
+        const res = await api.getClients({ q: clientSearch });
+        setClientList(Array.isArray(res) ? res : []);
+      } catch { 
+        setClientList([]); 
+      }
+    })();
+  }, [showClientPick, clientSearch]);
+
+  // Ініціалізація вибраного клієнта з фільтрів (якщо є в URL)
+  useEffect(() => {
+    if (filters.customer && !selectedCustomer) {
+      // Якщо є ім'я клієнта в фільтрах, але об'єкт не вибрано, створюємо мінімальний об'єкт для відображення
+      setSelectedCustomer({ Name: filters.customer });
+    }
+  }, [filters.customer]);
+
   const loadSales = async () => {
     try {
       setLoading(true);
       const params = {};
-      if (filters.dateFrom) params.dateFrom = filters.dateFrom;
-      if (filters.dateTo) params.dateTo = filters.dateTo;
+      if (filters.dateFrom) params.date_from = filters.dateFrom;
+      if (filters.dateTo) params.date_to = filters.dateTo;
       if (filters.customer) params.customer = filters.customer;
-      if (filters.paymentMethod) params.paymentMethod = filters.paymentMethod;
+      if (filters.paymentMethod) params.payment_method = filters.paymentMethod;
       if (filters.company) params.company = filters.company;
       
       const data = await api.getSales(params);
@@ -185,13 +208,37 @@ export default function SalesRegisterPage() {
             </div>
             <div>
               <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Клієнт:</label>
-              <input 
-                type="text" 
-                value={filters.customer}
-                onChange={e => setFilters({...filters, customer: e.target.value})}
-                placeholder="Пошук клієнта..."
-                style={{width:'100%',padding:8,borderRadius:6,border:'1px solid #ccc'}}
-              />
+              <div style={{display:'flex',gap:8}}>
+                <input 
+                  type="text" 
+                  value={selectedCustomer ? selectedCustomer.Name : ''}
+                  placeholder={selectedCustomer ? selectedCustomer.Name : "Оберіть клієнта..."}
+                  readOnly
+                  style={{flex:1,padding:8,borderRadius:6,border:'1px solid #ccc',background:'#f8f9fa',cursor:'pointer'}}
+                  onClick={() => setShowClientPick(true)}
+                />
+                <button 
+                  onClick={() => {
+                    setShowClientPick(true);
+                    setClientSearch('');
+                  }}
+                  style={{padding:'8px 16px',background:'#007bff',color:'#fff',border:'none',borderRadius:6,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}
+                >
+                  Вибрати
+                </button>
+                {selectedCustomer && (
+                  <button 
+                    onClick={() => {
+                      setSelectedCustomer(null);
+                      setFilters({...filters, customer: ''});
+                    }}
+                    style={{padding:'8px 12px',background:'#dc3545',color:'#fff',border:'none',borderRadius:6,cursor:'pointer'}}
+                    title="Очистити"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <label style={{display:'block',marginBottom:8,fontWeight:600,color:'#333'}}>Форма оплати:</label>
@@ -202,7 +249,6 @@ export default function SalesRegisterPage() {
               >
                 <option value="">Всі</option>
                 <option value="cash">Готівка</option>
-                <option value="card">Картка</option>
                 <option value="bank">Безготівка</option>
               </select>
             </div>
@@ -263,7 +309,6 @@ export default function SalesRegisterPage() {
                         </td>
                         <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0'}}>
                           {sale.PaymentMethod === 'cash' ? 'Готівка' :
-                           sale.PaymentMethod === 'card' ? 'Картка' :
                            sale.PaymentMethod === 'bank' ? 'Безготівка' : 'Невідомо'}
                         </td>
                         <td style={{padding:'8px 12px',borderRight:'1px solid #e0c9a0',textAlign:'center'}}>
@@ -399,10 +444,6 @@ export default function SalesRegisterPage() {
               <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>💵 Готівка</div>
               <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.cashAmount)} грн</div>
             </div>
-            <div style={{background:'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',padding:16,borderRadius:12,color:'#fff'}}>
-              <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>💳 Картка</div>
-              <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.cardAmount)} грн</div>
-            </div>
             <div style={{background:'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',padding:16,borderRadius:12,color:'#fff'}}>
               <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>🏦 Безготівка</div>
               <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.bankAmount)} грн</div>
@@ -410,6 +451,68 @@ export default function SalesRegisterPage() {
           </div>
         </div>
       </div>
+
+      {/* Модалка вибору клієнта */}
+      {showClientPick && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:50}}>
+          <div style={{background:'#fff',borderRadius:16,boxShadow:'0 4px 24px rgba(0,0,0,0.2)',width:'100%',maxWidth:'48rem',padding:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <div style={{fontSize:20,fontWeight:700}}>Вибір покупця</div>
+              <button 
+                onClick={() => setShowClientPick(false)} 
+                style={{padding:'4px 12px',background:'#e9ecef',border:'none',borderRadius:6,cursor:'pointer',fontSize:18}}
+              >
+                ✕
+              </button>
+            </div>
+            <input 
+              value={clientSearch} 
+              onChange={e => setClientSearch(e.target.value)} 
+              placeholder="Пошук..." 
+              style={{width:'100%',border:'1px solid #ccc',borderRadius:6,padding:'8px 12px',marginBottom:12}} 
+            />
+            <div style={{maxHeight:'24rem',overflow:'auto',border:'1px solid #e0c9a0',borderRadius:6}}>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead style={{background:'#f8f9fa'}}>
+                  <tr>
+                    <th style={{padding:8,textAlign:'left',borderBottom:'2px solid #e0c9a0',fontWeight:600}}>Назва</th>
+                    <th style={{padding:8,textAlign:'center',borderBottom:'2px solid #e0c9a0',fontWeight:600}}>Штрихкод</th>
+                    <th style={{padding:8,textAlign:'right',borderBottom:'2px solid #e0c9a0',fontWeight:600}}>Дія</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(clientList || []).map(c => (
+                    <tr key={c.ID} style={{borderTop:'1px solid #e0c9a0'}}>
+                      <td style={{padding:8}}>{c.Name}</td>
+                      <td style={{padding:8,textAlign:'center',fontFamily:'monospace'}}>{c.Barcode}</td>
+                      <td style={{padding:8,textAlign:'right'}}>
+                        <button 
+                          onClick={() => {
+                            setSelectedCustomer(c);
+                            setFilters({...filters, customer: c.Name});
+                            setShowClientPick(false);
+                            setClientSearch('');
+                          }}
+                          style={{padding:'4px 12px',background:'#4f46e5',color:'#fff',border:'none',borderRadius:6,cursor:'pointer',fontWeight:600}}
+                        >
+                          Обрати
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {clientList.length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{padding:12,textAlign:'center',color:'#666'}}>
+                        Нічого не знайдено
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

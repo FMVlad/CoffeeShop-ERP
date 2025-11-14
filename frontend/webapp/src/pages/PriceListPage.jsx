@@ -196,7 +196,8 @@ export default function PriceListPage() {
                   const pcid = Number(selectedCatId || (priceCategories[0]?.ID || 0));
                   if (!pcid) return alert('Оберіть категорію цін');
                   const pids = Array.from(selected);
-                  const payload = { price_category_id: pcid, product_ids: pids };
+                  const today = new Date().toISOString().slice(0,10);
+                  const payload = { price_category_id: pcid, product_ids: pids, active_on: today, date_end: today };
                   if (centerId !== '') payload.center_id = Number(centerId) || 0;
                   const res = await api.clearDiscounts(payload);
                   alert(`Знято знижку у записах: ${res.cleared}`);
@@ -359,6 +360,7 @@ export default function PriceListPage() {
           selectedProductIds={selectAll ? [] : Array.from(selected)}
           prices={prices}
           onApplied={async()=>{ await reloadPrices(); }}
+          defaultRounding={rounding}
         />
       )}
     </div>
@@ -366,7 +368,7 @@ export default function PriceListPage() {
 }
 
 // CategorySelectTree винесено у спільний компонент
-export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCategories, defaultCategoryId, selectedProductIds, prices, onApplied }){
+export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCategories, defaultCategoryId, selectedProductIds, prices, onApplied, defaultRounding }){
   const [allCenters, setAllCenters] = React.useState(true);
   const [centerIds, setCenterIds] = React.useState(new Set());
   const [pcid, setPcid] = React.useState(String(defaultCategoryId||''));
@@ -374,6 +376,12 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
   const [dval, setDval] = React.useState(10);
   const [dateStart, setDateStart] = React.useState(new Date().toISOString().slice(0,10));
   const [dateEnd, setDateEnd] = React.useState('');
+  const roundingChoices = React.useMemo(() => [0, 0.05, 0.1, 0.25, 0.5, 1, 5, 10], []);
+  const [roundStep, setRoundStep] = React.useState(() => {
+    const parsed = Number(defaultRounding);
+    return Number.isFinite(parsed) ? parsed : 1;
+  });
+  const [comment, setComment] = React.useState('');
 
   const runApply = async () => {
     try {
@@ -393,10 +401,14 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
           price_category_id: catId,
           discount_type: dtype,
           discount_value: Number(dval||0),
-          rounding_step: 1,
+          rounding_step: Number(roundStep) || 0,
+          date_start: dateStart,
+          active_on: dateStart,
         };
+        if (dateEnd) payload.date_end = dateEnd;
         if (cid != null) payload.center_id = Number(cid);
         if (selectedProductIds && selectedProductIds.length) payload.product_ids = selectedProductIds;
+        if (comment.trim()) payload.comment = comment.trim();
         // TODO: можна додати перевірку існуючих discount-цін і підтвердження
         await api.applyDiscounts(payload);
       }
@@ -434,12 +446,32 @@ export function ApplyDiscountModal({ onClose, centers, defaultCenterId, priceCat
             <input type="number" value={dval} onChange={e=>setDval(e.target.value)} style={{ width:'100%', padding:10, borderRadius:8 }} />
           </div>
           <div>
+            <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Заокруглення</div>
+            <select value={roundStep} onChange={e=>setRoundStep(Number(e.target.value))} style={{ width:'100%', padding:10, borderRadius:8 }}>
+              {roundingChoices.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt === 0 ? 'Без заокруглення' : `Крок ${opt}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Період дії</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
               <input type="date" value={dateStart} onChange={e=>setDateStart(e.target.value)} style={{ padding:10, borderRadius:8 }} />
               <input type="date" value={dateEnd} onChange={e=>setDateEnd(e.target.value)} style={{ padding:10, borderRadius:8 }} />
             </div>
           </div>
+        </div>
+        <div style={{ marginTop:12 }}>
+          <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Коментар</div>
+          <textarea
+            value={comment}
+            onChange={e=>setComment(e.target.value)}
+            rows={2}
+            style={{ width:'100%', padding:10, borderRadius:8, resize:'vertical' }}
+            placeholder="Опишіть умови знижки (за бажанням)"
+          />
         </div>
         <div style={{ marginTop:12 }}>
           <div style={{ fontSize:13, color:'#6c757d', marginBottom:6 }}>Центри</div>

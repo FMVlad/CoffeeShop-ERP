@@ -695,9 +695,16 @@ export const postPaymentPostings = (paymentId) =>
 export const deletePayment = (paymentId) =>
   fetchJSON(`/payments/${paymentId}`, { method: "DELETE" });
 
-// --- Клієнти (мінімум для підбору у роздрібній) ---
+// --- Клієнти ---
 export const getClients = (params = {}) =>
   fetchJSON("/clients", { query: params });
+export const getClient = (id) => fetchJSON(`/clients/${id}`);
+export const createClient = (data) =>
+  fetchJSON("/clients", { method: "POST", data });
+export const updateClient = (id, data) =>
+  fetchJSON(`/clients/${id}`, { method: "PUT", data });
+export const deleteClient = (id) =>
+  fetchJSON(`/clients/${id}`, { method: "DELETE" });
 
 // --- Глобальний експорт ---
 export const api = {
@@ -907,6 +914,10 @@ export const api = {
   deletePayment,
   // Клієнти
   getClients,
+  getClient,
+  createClient,
+  updateClient,
+  deleteClient,
   // Програмні параметри
   getProgrammParameters,
   upsertProgrammParameter,
