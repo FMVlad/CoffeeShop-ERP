@@ -631,6 +631,19 @@ export const deleteArrivalDocItem = (docId, itemId) =>
 export const cancelArrivalDocPostings = (id) =>
   fetchJSON(`/arrival-documents/${id}/postings`, { method: 'DELETE' });
 
+// Повернення постачальнику
+export const getReturnDocs = (params = {}) =>
+  fetchJSON("/return-documents", { query: params });
+export const getReturnDoc = (id) => fetchJSON(`/return-documents/${id}`);
+export const createReturnDoc = (data) =>
+  fetchJSON("/return-documents", { method: "POST", data });
+export const updateReturnDoc = (id, data) =>
+  fetchJSON(`/return-documents/${id}`, { method: "PUT", data });
+export const deleteReturnDoc = (id) =>
+  fetchJSON(`/return-documents/${id}`, { method: "DELETE" });
+export const getUnclosedPartiesFromArrival = (arrivalDocId) =>
+  fetchJSON(`/return-documents/arrival/${arrivalDocId}/unclosed-parties`);
+
 // --- Документи уцінки ---
 export const getDiscountDocs = (params = {}) =>
   fetchJSON("/discount-documents", { query: params });
@@ -881,6 +894,13 @@ export const api = {
   deleteArrivalDocItem,
   postArrivalDocPostings,
   cancelArrivalDocPostings,
+  // Повернення постачальнику
+  getReturnDocs,
+  getReturnDoc,
+  createReturnDoc,
+  updateReturnDoc,
+  deleteReturnDoc,
+  getUnclosedPartiesFromArrival,
   // Документи уцінки
   getDiscountDocs,
   getDiscountDoc,

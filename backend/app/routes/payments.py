@@ -297,7 +297,7 @@ def create_payment(payload: Dict[str, Any], db: pyodbc.Connection = Depends(get_
 
     # Визначаємо CreatedBy: з payload, або з документа SALE, або EmployeeID
     created_by = payload.get("CreatedBy") or employee_id or None
-    
+
     cols = [
         "RelatedObjectType","RelatedObjectID","PaymentMethod","Amount","CurrencyID",
         "DateTime","DebitAccountID","CreditAccountID","CompanyID","Comment","CreatedAt"

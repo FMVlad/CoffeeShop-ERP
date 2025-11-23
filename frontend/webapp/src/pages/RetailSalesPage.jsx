@@ -184,9 +184,9 @@ export default function RetailSalesPage() {
   async function reloadItems() {
     if (!current?.ID) return;
     try {
-      const rows = await api.getSaleItems(current.ID);
+    const rows = await api.getSaleItems(current.ID);
       console.log('reloadItems: отримано позиції з БД для документа', current.ID, ':', rows);
-      setItems(Array.isArray(rows) ? rows : []);
+    setItems(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('Помилка завантаження позицій:', err);
       setItems([]);
@@ -249,12 +249,12 @@ export default function RetailSalesPage() {
               setCurrent(sale);
               if (sale?.CustomerID) {
                 try { const c = await api.get('/clients/' + sale.CustomerID); setCustomer(c); } catch {}
-              }
+        }
               await reloadItems();
               navigate('/sales/retail', { replace: true });
               isInitializingRef.current = false;
               return;
-            } else {
+      } else {
               navigate('/sales/retail', { replace: true });
             }
           } catch {
@@ -278,7 +278,7 @@ export default function RetailSalesPage() {
           });
           const newDoc = await api.getSale(newDocRes.ID);
           setCurrent(newDoc);
-          if (retail?.ID) setCustomer(retail);
+        if (retail?.ID) setCustomer(retail);
         } catch (err) {
           console.error('Помилка створення документа:', err);
           alert(err?.message || 'Помилка створення документа');
@@ -604,22 +604,22 @@ export default function RetailSalesPage() {
         return;
       }
       
-      const isDisc = forcedDiscount || !!p.IsDiscountBarcode;
-      const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
-        ? Number(p.DiscountPrice)
-        : Number(priceMap[p.ID] ?? p.Price ?? 0);
+        const isDisc = forcedDiscount || !!p.IsDiscountBarcode;
+        const priceToUse = isDisc && typeof p.DiscountPrice === 'number'
+          ? Number(p.DiscountPrice)
+          : Number(priceMap[p.ID] ?? p.Price ?? 0);
       
       if (!priceToUse || priceToUse <= 0) {
         alert('Ціна товару не визначена');
         return;
       }
       
-      // Мерджимо з існуючим рядком з тією ж ціною (до 2 знаків); markdown не змішуємо зі звичайними
-      const candidate = (items || []).find(r =>
-        Number(r.ProductID) === Number(p.ID)
-          && Number(r.Price||0).toFixed(2) === Number(priceToUse||0).toFixed(2)
-          && (!!markdownItemIds.has(Number(r.ID)) === !!isDisc)
-      );
+        // Мерджимо з існуючим рядком з тією ж ціною (до 2 знаків); markdown не змішуємо зі звичайними
+        const candidate = (items || []).find(r =>
+          Number(r.ProductID) === Number(p.ID)
+            && Number(r.Price||0).toFixed(2) === Number(priceToUse||0).toFixed(2)
+            && (!!markdownItemIds.has(Number(r.ID)) === !!isDisc)
+        );
       // Якщо немає поточного документа - додаємо товар до існуючого (він має бути створений при відкритті)
       if (!current?.ID) {
         alert('Документ не створено. Спробуйте оновити сторінку.');
@@ -630,7 +630,7 @@ export default function RetailSalesPage() {
       const docIdToUse = current.ID;
       console.log('Додавання товару до документа', docIdToUse);
       
-      let newItemId = null;
+        let newItemId = null;
       try {
         if (candidate && candidate.ID){
           const newQty = Number(candidate.Quantity||0) + 1;
@@ -661,7 +661,7 @@ export default function RetailSalesPage() {
         } else {
           console.warn('Документ змінився під час додавання товару. Поточний:', current?.ID, 'Очікуваний:', docIdToUse);
           // Завантажуємо товари для поточного документа
-          await reloadItems();
+        await reloadItems();
         }
       } catch (err) {
         console.error('Помилка додавання товару:', err);
@@ -684,10 +684,10 @@ export default function RetailSalesPage() {
   const totalsByCompany = useMemo(() => {
     const acc = {};
     (Array.isArray(items) ? items : []).forEach((it) => {
-      const cid = it.CompanyID ?? null;
+    const cid = it.CompanyID ?? null;
       const amt = Number(it.Quantity || 0) * Number(it.Price || 0);
-      const key = cid == null ? 'no_company' : String(cid);
-      acc[key] = (acc[key] || 0) + amt;
+    const key = cid == null ? 'no_company' : String(cid);
+    acc[key] = (acc[key] || 0) + amt;
     });
     return acc;
   }, [items]);
@@ -768,7 +768,7 @@ export default function RetailSalesPage() {
         try {
           const items = await api.getSaleItems(current.ID);
           if (!Array.isArray(items) || items.length === 0) {
-            await api.deleteSale(current.ID);
+        await api.deleteSale(current.ID);
           }
         } catch {}
       }

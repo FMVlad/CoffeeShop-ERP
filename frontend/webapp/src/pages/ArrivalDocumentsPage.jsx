@@ -38,6 +38,7 @@ export default function ArrivalDocumentsPage() {
     () => ({
       Number: "",
       Date: new Date().toISOString().slice(0, 10),
+      PaymentDueDate: "",
       SupplierID: "",
       CurrencyID: "",
       CurrencyRate: 1,
@@ -207,6 +208,7 @@ export default function ArrivalDocumentsPage() {
     setDoc({
       ...d,
       Date: d.Date?.slice(0, 10),
+      PaymentDueDate: d.PaymentDueDate?.slice(0, 10) || "",
       SupplierID: d.SupplierID || "",
       CurrencyID: d.CurrencyID || "",
       CurrencyRate: d.CurrencyRate || 1,
@@ -553,6 +555,15 @@ export default function ArrivalDocumentsPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     value={doc.Date || ""}
                     onChange={(e) => setDoc({ ...doc, Date: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Дата оплати</label>
+                  <input
+                    type="date"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={doc.PaymentDueDate || ""}
+                    onChange={(e) => setDoc({ ...doc, PaymentDueDate: e.target.value || null })}
                   />
                 </div>
                 <div>

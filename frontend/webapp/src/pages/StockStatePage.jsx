@@ -160,20 +160,20 @@ export default function StockStatePage() {
       
       case 'retailWithDiscount':
         if (hasPriceDiscount) {
-          return (
-            <div className="text-right font-mono text-green-600 font-bold">
+        return (
+          <div className="text-right font-mono text-green-600 font-bold">
               {Number(row.PriceWithDiscount || salePrice || 0).toFixed(2)}
-            </div>
-          );
+          </div>
+        );
         }
         return <div className="text-right font-mono text-gray-400">—</div>;
       
       case 'discountPrice':
         return hasMarkdown
           ? (
-            <div className="text-right font-mono text-red-600 font-bold">
+          <div className="text-right font-mono text-red-600 font-bold">
               {markdownPrice.toFixed(2)}
-            </div>
+          </div>
           )
           : <div className="text-right font-mono text-gray-400">—</div>;
       
@@ -260,7 +260,7 @@ export default function StockStatePage() {
         console.log('🔍 StockStatePage: Всі центри (детально):', centersData?.map(c => ({ ID: c.ID, Name: c.Name, IsActive: c.IsActive })));
         setCenters(Array.isArray(centersData) ? centersData : []);
         setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-
+        
         // 1) Автоматично вибираємо центр зі статусбару (UserContext)
         if (userCenterId) {
           console.log('🔍 StockStatePage: Встановлюємо центр зі статусбару (UserContext):', userCenterId);
@@ -792,17 +792,17 @@ export default function StockStatePage() {
                         : "hover:bg-blue-50";
                     return (
                       <tr key={row.ID || idx} className={`${baseRowClass} ${highlightClass}`}>
-                        {selectionMode && (
-                          <td className="p-4 text-center">
-                            <input type="checkbox" checked={selectedIds.has(row.ProductID || row.ID)} onChange={() => toggleRow(row.ProductID || row.ID)} />
-                          </td>
-                        )}
-                        {visibleColumns.map((column) => (
-                          <td key={column.key} className="p-4 text-center">
-                            {renderCellValue(row, column.key)}
-                          </td>
-                        ))}
-                      </tr>
+                      {selectionMode && (
+                        <td className="p-4 text-center">
+                          <input type="checkbox" checked={selectedIds.has(row.ProductID || row.ID)} onChange={() => toggleRow(row.ProductID || row.ID)} />
+                        </td>
+                      )}
+                      {visibleColumns.map((column) => (
+                        <td key={column.key} className="p-4 text-center">
+                          {renderCellValue(row, column.key)}
+                        </td>
+                      ))}
+                    </tr>
                     );
                   })}
                 </tbody>
@@ -874,12 +874,12 @@ export default function StockStatePage() {
                        <span>Собівартість:</span>
                        <span className="font-bold text-gray-600">{Number(row.AvgCost || 0).toFixed(2)}</span>
                      </div>
-                    <div className="flex justify-between">
-                      <span>Роздрібна ціна:</span>
+                     <div className="flex justify-between">
+                       <span>Роздрібна ціна:</span>
                       <span className={`font-bold ${hasMarkdown || hasPriceDiscount ? 'line-through text-gray-400' : ''}`}>
                         {Number(hasMarkdown ? (row.PriceBase ?? row.Price ?? 0) : row.Price ?? row.SalePrice ?? 0).toFixed(2)}
                       </span>
-                    </div>
+                     </div>
                     {hasPriceDiscount && (
                        <div className="flex justify-between">
                          <span>Ціна зі знижкою:</span>
@@ -890,10 +890,10 @@ export default function StockStatePage() {
                       <div className="flex justify-between">
                         <span>Ціна уцінки:</span>
                         <span className="font-bold text-red-600">{(markdownPrice ?? 0).toFixed(2)}</span>
-                      </div>
-                    )}
                   </div>
+                    )}
                 </div>
+              </div>
                 </div>
               );
             })}

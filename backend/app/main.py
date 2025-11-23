@@ -34,6 +34,7 @@ from app.routes.roles import router as roles_router
 from app.routes.suppliers_router import router as suppliers_router
 from app.routes.auth import router as auth_router
 from app.routes import arrival_documents
+from app.routes import return_documents as return_documents_router
 from app.routes import stock_state as stock_state_router
 from app.routes import costing as costing_router
 from app.routes import service_tasks as service_tasks_router
@@ -101,6 +102,7 @@ app.include_router(roles_router, prefix="/api")
 app.include_router(suppliers_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(arrival_documents.router, prefix="/api")
+app.include_router(return_documents_router.router, prefix="/api")
 app.include_router(stock_state_router.router, prefix="/api")
 app.include_router(costing_router.router, prefix="/api")
 app.include_router(service_tasks_router.router, prefix="/api")

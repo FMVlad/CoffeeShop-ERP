@@ -383,7 +383,7 @@ export default function DiscountDocumentsPage() {
     }
   }, [reloadDocs]);
 
-  return (
+    return (
     <div className="min-h-screen bg-gradient-to-br from-violet-50 to-purple-100 py-8 px-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-gradient-to-r from-violet-500 to-purple-600 rounded-3xl shadow-2xl px-8 py-6">
@@ -392,19 +392,19 @@ export default function DiscountDocumentsPage() {
             <p className="text-violet-100 text-lg">Оберіть документ зі списку або створіть новий, щоб переглянути склад та ціни.</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => navigate("/stock")}
+              <button
+                onClick={() => navigate("/stock")}
               className="px-6 py-3 rounded-2xl font-semibold bg-white/15 hover:bg-white/25 text-white transition"
-            >
-              ← Назад до складів
-            </button>
-            <button
-              onClick={() => navigate("/")}
+              >
+                ← Назад до складів
+              </button>
+              <button
+                onClick={() => navigate("/")}
               className="px-6 py-3 rounded-2xl font-semibold bg-white/15 hover:bg-white/25 text-white transition"
-            >
-              🏠 На головну
-            </button>
-          </div>
+              >
+                🏠 На головну
+              </button>
+            </div>
         </header>
 
         <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6 items-start">
@@ -489,7 +489,7 @@ export default function DiscountDocumentsPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 border-t border-violet-100 text-right">
-                            <button
+              <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteDoc(doc.ID);
@@ -514,7 +514,7 @@ export default function DiscountDocumentsPage() {
               >
                 ✨ Створити документ
               </button>
-              <button
+              <button 
                 onClick={handleCleanup}
                 className="w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-semibold shadow-md hover:shadow-lg transition"
               >
@@ -528,13 +528,13 @@ export default function DiscountDocumentsPage() {
               <div>
                 <div className="text-2xl font-bold text-gray-800">
                   {current ? `Документ №${current.DocNumber || current.ID}` : 'Оберіть документ'}
-                </div>
+          </div>
                 <div className="text-sm text-gray-500 mt-1">
                   {current
                     ? `${String(current.DocDate).slice(0, 10)} · Центр ${centerNameById(current.CenterID)}`
                     : 'Щоб побачити позиції, виберіть документ ліворуч або створіть новий.'}
-                </div>
-              </div>
+        </div>
+      </div>
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={createDoc}
@@ -563,59 +563,59 @@ export default function DiscountDocumentsPage() {
                 >
                   🗑 Видалити
                 </button>
-              </div>
             </div>
+          </div>
 
             {current ? (
               <>
                 <div className="px-6 py-4 border-b border-violet-100 grid gap-4 md:grid-cols-2">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-gray-600">Коментар</label>
-                    <input
-                      type="text"
-                      value={current.Comment || ''}
-                      onChange={e=>setCurrentField('Comment', e.target.value)}
-                      onBlur={e=>persistCurrent({ Comment: e.target.value })}
+              <input
+                type="text"
+                value={current.Comment || ''}
+                onChange={e=>setCurrentField('Comment', e.target.value)}
+                onBlur={e=>persistCurrent({ Comment: e.target.value })}
                       className="w-full px-4 py-3 border border-violet-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    />
-                  </div>
+              />
+            </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-gray-600">Штрихкод та вибір зі складу</label>
                     <div className="flex gap-3">
-                      <input
-                        type="text"
+                <input
+                  type="text"
                         placeholder="Скануйте або введіть штрихкод та Enter"
-                        value={barcode}
-                        onChange={(e)=>setBarcode(e.target.value)}
-                        onKeyDown={async(e)=>{
-                          if (e.key === 'Enter') {
-                            const s = (barcode||'').trim();
+                  value={barcode}
+                  onChange={(e)=>setBarcode(e.target.value)}
+                  onKeyDown={async(e)=>{
+                    if (e.key === 'Enter') {
+                      const s = (barcode||'').trim();
                             if (!s || !current?.ID) return;
-                            try {
-                              const p = await api.getProductByBarcode(s);
-                              if (p && p.ID) {
-                                await api.addDiscountDocItem(current.ID, { ProductID: Number(p.ID||p.Id), Quantity: 1, Price: Number(p.Price||0) });
-                                setBarcode('');
+                      try {
+                        const p = await api.getProductByBarcode(s);
+                        if (p && p.ID) {
+                          await api.addDiscountDocItem(current.ID, { ProductID: Number(p.ID||p.Id), Quantity: 1, Price: Number(p.Price||0) });
+                          setBarcode('');
                                 await reloadItems(current.ID);
                               } else {
                                 alert('Товар не знайдено');
-                              }
-                            } catch(err) {
-                              alert(err?.message || 'Товар не знайдено');
-                            }
-                          }
-                        }}
+                        }
+                      } catch(err) {
+                        alert(err?.message || 'Товар не знайдено');
+                      }
+                    }
+                  }}
                         className="flex-1 px-4 py-3 border border-violet-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400"
-                      />
-                      <StockPickerButton
-                        selectionKey="discount_doc"
-                        centerId={String(current.CenterID)}
-                        label="Стан складу"
+                />
+                <StockPickerButton 
+                  selectionKey="discount_doc" 
+                  centerId={String(current.CenterID)} 
+                  label="Стан складу" 
                         className="bg-gradient-to-r from-violet-100 to-purple-200 border border-violet-300 rounded-2xl px-4 py-3 font-semibold hover:shadow-lg transition"
-                      />
-                    </div>
-                  </div>
-                </div>
+                />
+              </div>
+            </div>
+          </div>
 
                 <div className="px-6 py-4 border-b border-violet-100 flex flex-wrap gap-3 items-center">
                   <span className="text-sm font-medium text-gray-600">Заокруглення</span>
@@ -654,7 +654,7 @@ export default function DiscountDocumentsPage() {
                     ) : (
                       <>
                         <table className="min-w-full bg-white border border-violet-200 rounded-2xl overflow-hidden">
-                          <thead>
+              <thead>
                             <tr className="bg-gradient-to-r from-violet-100 to-purple-100 text-sm">
                               <th className="p-3 text-left font-semibold text-gray-700">Товар</th>
                               <th className="p-3 text-right font-semibold text-gray-700">К-сть</th>
@@ -664,19 +664,19 @@ export default function DiscountDocumentsPage() {
                               <th className="p-3 text-right font-semibold text-gray-700">Сума</th>
                               <th className="p-3 text-left font-semibold text-gray-700">ШК уцінки</th>
                               <th className="p-3 text-center font-semibold text-gray-700">Дії</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(items||[]).map(it => {
-                              const qty = Number(it.Quantity||0);
-                              const newPrice = Number(it.Price||0);
-                              const base = Number(it.BasePrice||it.PriceBase||newPrice);
-                              const computedPct = base ? Number(((1 - (newPrice/base)) * 100).toFixed(2)) : 0;
-                              const percentValue = Object.prototype.hasOwnProperty.call(pctEdit, it.ID)
-                                ? pctEdit[it.ID]
-                                : computedPct;
-                              const belowCost = typeof it.AvgCost === 'number' ? newPrice < Number(it.AvgCost) : false;
-                              return (
+                </tr>
+              </thead>
+              <tbody>
+                {(items||[]).map(it => {
+                  const qty = Number(it.Quantity||0);
+                  const newPrice = Number(it.Price||0);
+                  const base = Number(it.BasePrice||it.PriceBase||newPrice);
+                  const computedPct = base ? Number(((1 - (newPrice/base)) * 100).toFixed(2)) : 0;
+                  const percentValue = Object.prototype.hasOwnProperty.call(pctEdit, it.ID)
+                    ? pctEdit[it.ID]
+                    : computedPct;
+                  const belowCost = typeof it.AvgCost === 'number' ? newPrice < Number(it.AvgCost) : false;
+                  return (
                                 <tr
                                   key={it.ID}
                                   className={belowCost ? 'bg-red-50/70' : 'hover:bg-violet-50'}
@@ -689,27 +689,27 @@ export default function DiscountDocumentsPage() {
                                     <input
                                       type="number"
                                       value={qty}
-                                      onChange={e=>updateItemLocal(it.ID, { Quantity: Number(e.target.value)||0 })}
-                                      onBlur={e=>persistItem(it.ID, { Quantity: Number(e.target.value)||0 })}
+                               onChange={e=>updateItemLocal(it.ID, { Quantity: Number(e.target.value)||0 })}
+                               onBlur={e=>persistItem(it.ID, { Quantity: Number(e.target.value)||0 })}
                                       className="w-24 px-3 py-2 border border-violet-200 rounded-lg text-right focus:outline-none focus:ring-2 focus:ring-violet-400"
                                     />
-                                  </td>
+                      </td>
                                   <td className="p-3 border-t border-violet-200 text-right font-mono text-sm">{base.toFixed(2)}</td>
                                   <td className="p-3 border-t border-violet-200 text-right">
                                     <input
                                       type="number"
                                       value={percentValue}
-                                      onChange={e=> setPctEdit(prev => ({ ...prev, [it.ID]: e.target.value }))}
-                                      onKeyDown={async e=>{ if (e.key === 'Enter') { await commitPercentForItem(it, pctEdit[it.ID]); } }}
+                               onChange={e=> setPctEdit(prev => ({ ...prev, [it.ID]: e.target.value }))}
+                               onKeyDown={async e=>{ if (e.key === 'Enter') { await commitPercentForItem(it, pctEdit[it.ID]); } }}
                                       onBlur={async () => { await commitPercentForItem(it, pctEdit[it.ID]); }}
                                       className="w-24 px-3 py-2 border border-violet-200 rounded-lg text-right focus:outline-none focus:ring-2 focus:ring-violet-400"
                                     />
-                                  </td>
+                      </td>
                                   <td className="p-3 border-t border-violet-200 text-right">
                                     <input
                                       type="number"
                                       value={newPrice}
-                                      onChange={e=>{ const v = Number(e.target.value)||0; updateItemLocal(it.ID, { Price: v }); }}
+                               onChange={e=>{ const v = Number(e.target.value)||0; updateItemLocal(it.ID, { Price: v }); }}
                                       onBlur={async e=>{ const v = Number(e.target.value)||0; const price = roundPrice(v); updateItemLocal(it.ID, { Price: price }); await persistItem(it.ID, { Price: price }); }}
                                       className="w-28 px-3 py-2 border border-violet-200 rounded-lg text-right focus:outline-none focus:ring-2 focus:ring-violet-400"
                                     />
@@ -719,7 +719,7 @@ export default function DiscountDocumentsPage() {
                                   </td>
                                   <td className="p-3 border-t border-violet-200 font-mono text-sm text-gray-600">
                                     {it.DiscountBarcode||'—'}
-                                  </td>
+                      </td>
                                   <td className="p-3 border-t border-violet-200 text-center">
                                     <button
                                       onClick={async()=>{ await api.deleteDiscountDocItem(current.ID, it.ID); await reloadItems(current.ID); }}
@@ -727,15 +727,15 @@ export default function DiscountDocumentsPage() {
                                     >
                                       ✕
                                     </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        <div className="text-right mt-6 text-2xl font-bold text-gray-800">
-                          Разом: {(items||[]).reduce((s,it)=> s + Number(it.Price||0)*Number(it.Quantity||0), 0).toFixed(2)}
-                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="text-right mt-6 text-2xl font-bold text-gray-800">
+              Разом: {(items||[]).reduce((s,it)=> s + Number(it.Price||0)*Number(it.Quantity||0), 0).toFixed(2)}
+            </div>
                       </>
                     )}
                   </div>
@@ -750,7 +750,7 @@ export default function DiscountDocumentsPage() {
                 >
                   ✨ Створити документ
                 </button>
-              </div>
+          </div>
             )}
           </section>
         </div>

@@ -448,9 +448,9 @@ export default function SalesRegisterPage() {
               <div style={{fontSize:14,opacity:0.9,marginBottom:4}}>🏦 Безготівка</div>
               <div style={{fontSize:20,fontWeight:700}}>{formatAmount(stats.bankAmount)} грн</div>
             </div>
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Модалка вибору клієнта */}
       {showClientPick && (
@@ -509,8 +509,8 @@ export default function SalesRegisterPage() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
+        </div>
+      </div>
         </div>
       )}
     </div>

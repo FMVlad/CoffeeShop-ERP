@@ -246,7 +246,8 @@ def list_sales(
         WHERE RelatedObjectType = 'SALE'
     ) m ON m.RelatedObjectID = d.ID AND m.rn = 1
     """
-    sql += " WHERE " + " AND ".join(where)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY d.[Date] DESC, d.ID DESC"
     rows = cur.execute(sql, tuple(p)).fetchall()
     cols = [c[0] for c in cur.description]
@@ -700,7 +701,6 @@ def delete_sale(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         
         db.commit()
         return {"ok": True}
-        
     except Exception as e:
         db.rollback()
         raise HTTPException(500, f"Помилка при видаленні документа: {str(e)}")
@@ -1072,9 +1072,9 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                                 )
                             else:
                                 cur.execute(
-                                    "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
-                                    (party_id, float(take), on_date, doc_id, warehouse_id),
-                                )
+                                "INSERT INTO PartyMovements (PartyID, MovementType, Quantity, Date, DocumentID, DocumentType, WarehouseID) VALUES (?, 'sale', ?, ?, ?, 'SALE', ?)",
+                                (party_id, float(take), on_date, doc_id, warehouse_id),
+                            )
                         except Exception:
                             pass
 
@@ -1090,7 +1090,7 @@ def generate_postings(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
                                     cur.execute(
                                         "UPDATE Parties SET RemainingQty = RemainingQty - ? WHERE ID=?",
                                         (float(take), party_id),
-                                    )
+                                )
                             except Exception:
                                 pass
 

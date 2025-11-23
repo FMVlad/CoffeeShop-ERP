@@ -31,6 +31,15 @@ export default function ArrivalDocHeader({
         />
       </div>
       <div>
+        <label className="text-sm block mb-1">Дата оплати</label>
+        <input
+          type="date"
+          className="border rounded p-2 w-full"
+          value={doc.PaymentDueDate || ""}
+          onChange={(e) => setDoc({ ...doc, PaymentDueDate: e.target.value || null })}
+        />
+      </div>
+      <div>
         <label className="text-sm block mb-1">Постачальник</label>
         <select
           className="border rounded p-2 w-full"

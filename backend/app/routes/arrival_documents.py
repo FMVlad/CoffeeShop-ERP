@@ -30,6 +30,11 @@ def _fetch_one(db: pyodbc.Connection, query: str, params: List[Any] | tuple = ()
         cursor.execute("IF COL_LENGTH('dbo.PartyMovements','CompanyID') IS NULL ALTER TABLE dbo.PartyMovements ADD CompanyID INT NULL;")
     except Exception:
         pass
+    # ensure ArrivalDocuments has PaymentDueDate (best-effort)
+    try:
+        cursor.execute("IF COL_LENGTH('dbo.ArrivalDocuments','PaymentDueDate') IS NULL ALTER TABLE dbo.ArrivalDocuments ADD PaymentDueDate DATE NULL;")
+    except Exception:
+        pass
     print(f"[DEBUG] SQL: {query}")
     print(f"[DEBUG] Params: {params}")
     cursor.execute(query, params)
@@ -291,6 +296,13 @@ def list_arrival_documents(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     supplier_id: Optional[int] = Query(None),
+    center_id: Optional[int] = Query(None),
+    company_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    with_vat: Optional[str] = Query(None, description="Фільтр ПДВ: 'yes' - з ПДВ, 'no' - без ПДВ"),
+    payment_due_date: Optional[str] = Query(None, description="Фільтр по даті оплати (<= ця дата)"),
+    payment_due_date_from: Optional[str] = Query(None, description="Фільтр по даті оплати (від)"),
+    payment_due_date_to: Optional[str] = Query(None, description="Фільтр по даті оплати (до)"),
     db: pyodbc.Connection = Depends(get_db),
 ):
     where: list[str] = []
@@ -304,16 +316,45 @@ def list_arrival_documents(
     if supplier_id:
         where.append("d.SupplierID = ?")
         params.append(supplier_id)
+    if center_id:
+        where.append("d.CenterID = ?")
+        params.append(center_id)
+    if company_id:
+        where.append("d.CompanyID = ?")
+        params.append(company_id)
+    if status:
+        where.append("d.Status = ?")
+        params.append(status)
+    if with_vat:
+        if with_vat == 'yes':
+            where.append("d.PricesIncludeVAT = 1")
+        elif with_vat == 'no':
+            where.append("d.PricesIncludeVAT = 0")
+    
+    # Фільтри по даті оплати
+    has_payment_due = _table_has_column(db, "ArrivalDocuments", "PaymentDueDate")
+    if has_payment_due:
+        if payment_due_date:
+            where.append("d.PaymentDueDate <= ?")
+            params.append(payment_due_date)
+        if payment_due_date_from:
+            where.append("d.PaymentDueDate >= ?")
+            params.append(payment_due_date_from)
+        if payment_due_date_to:
+            where.append("d.PaymentDueDate <= ?")
+            params.append(payment_due_date_to)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
     query = (
         "SELECT d.ID, d.Number, d.[Date], d.SupplierID, s.Name AS SupplierName, "
         "d.CenterID, co.Name AS CenterName, d.TotalAmount, d.Status, d.CurrencyID, cur.CurrencyCode, "
-        "d.PricesIncludeVAT, d.ExternalNumber "
+        "d.PricesIncludeVAT, d.ExternalNumber, d.CompanyID, comp.Name AS CompanyName, "
+        + ("d.PaymentDueDate" if _table_has_column(db, "ArrivalDocuments", "PaymentDueDate") else "NULL AS PaymentDueDate") + " "
         "FROM ArrivalDocuments d "
         "LEFT JOIN Suppliers s ON s.ID = d.SupplierID "
         "LEFT JOIN CentersOfAccounting co ON co.ID = d.CenterID "
         "LEFT JOIN Currencies cur ON cur.ID = d.CurrencyID "
+        "LEFT JOIN Companies comp ON comp.ID = d.CompanyID "
         f"{where_sql} "
         "ORDER BY d.[Date] DESC, d.ID DESC"
     )
@@ -334,6 +375,9 @@ def list_arrival_documents(
             "CurrencyCode": r[10],
             "PricesIncludeVAT": bool(r[11]),
             "ExternalNumber": r[12],
+            "CompanyID": int(r[13]) if r[13] is not None else None,
+            "CompanyName": r[14] if r[14] is not None else None,
+            "PaymentDueDate": r[15] if len(r) > 15 and r[15] is not None else None,
         })
     return result
 
@@ -349,7 +393,8 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
             "SELECT ID, Number, Date, SupplierID, CenterID, PricesIncludeVAT, TotalAmount, Status, "
             "CurrencyID, ExternalNumber, Comment, TypicalOperationID, CompanyID, "
             + ("CurrencyRate" if _table_has_column(db, "ArrivalDocuments", "CurrencyRate") else "NULL AS CurrencyRate") + ", "
-            + ("CurrencyRateDate" if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate") else "NULL AS CurrencyRateDate") +
+            + ("CurrencyRateDate" if _table_has_column(db, "ArrivalDocuments", "CurrencyRateDate") else "NULL AS CurrencyRateDate") + ", "
+            + ("PaymentDueDate" if _table_has_column(db, "ArrivalDocuments", "PaymentDueDate") else "NULL AS PaymentDueDate") +
             " "
             "FROM ArrivalDocuments WHERE ID = ?"
         ),
@@ -408,6 +453,7 @@ def get_arrival_document(doc_id: int, db: pyodbc.Connection = Depends(get_db)):
         "CompanyID": head[12],
         "CurrencyRate": head[13] if len(head) > 13 else None,
         "CurrencyRateDate": head[14] if len(head) > 14 else None,
+        "PaymentDueDate": head[15] if len(head) > 15 else None,
         "Items": [
             {
                 "ID": int(r[0]),
@@ -514,6 +560,11 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
             if _table_has_column(db, "ArrivalDocuments", "Status"):
                 cols.append("Status")
                 params.append("draft")
+            # Payment due date
+            if _table_has_column(db, "ArrivalDocuments", "PaymentDueDate"):
+                payment_due_date = header.get("PaymentDueDate")
+                cols.append("PaymentDueDate")
+                params.append(payment_due_date if payment_due_date else None)
             placeholders = ", ".join(["?" for _ in cols])
             col_list = ", ".join(cols)
             cursor.execute(
@@ -538,6 +589,10 @@ def _insert_or_update_document(db: pyodbc.Connection, payload: Dict[str, Any], e
                 update_cols.append(("TypicalOperationID", header.get("TypicalOperationID")))
             if _table_has_column(db, "ArrivalDocuments", "CompanyID"):
                 update_cols.append(("CompanyID", company_id))
+            # Payment due date
+            if _table_has_column(db, "ArrivalDocuments", "PaymentDueDate"):
+                payment_due_date = header.get("PaymentDueDate")
+                update_cols.append(("PaymentDueDate", payment_due_date if payment_due_date else None))
 
             set_sql = ", ".join([f"{col} = ?" for col, _ in update_cols])
             values = [val for _, val in update_cols] + [doc_id]
